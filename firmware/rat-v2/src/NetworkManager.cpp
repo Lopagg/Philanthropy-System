@@ -6,6 +6,9 @@
 #include "NetworkManager.h"
 #include "HardwareManager.h"
 
+#include <HTTPClient.h>
+#include <HTTPUpdate.h>
+
 extern HardwareManager hardware;
 
 NetworkManager* NetworkManager::_instance = nullptr;
@@ -186,4 +189,47 @@ void NetworkManager::mqttCallback(char* topic, byte* payload, unsigned int lengt
     ev.stringData[sizeof(ev.stringData) - 1] = '\0';
     
     xQueueSend(_instance->_eventQueue, &ev, 0);
+}
+
+void NetworkManager::performHttpOTA(const String& url) {
+    Serial.println("[OTA-HTTP] Avvio download da: " + url);
+    hardware.noTone();
+    hardware.clearLcd();
+    hardware.printLcdLine(0, "OTA SERVER UPDATE", true);
+    hardware.printLcdLine(1, "Download in corso...", true);
+    hardware.clearOled();
+    hardware.setLedsColor(0, 0, 255);
+
+    WiFiClient client;
+    httpUpdate.rebootOnUpdate(false);
+
+    httpUpdate.onProgress([](int cur, int total) {
+        static int lastPct = -1;
+        int pct = (total > 0) ? ((cur * 100) / total) : 0;
+        if (pct != lastPct && (pct % 2 == 0 || pct == 100)) {
+            lastPct = pct;
+            hardware.drawProgressBar(2, cur, total);
+            hardware.printLcdLine(3, String(pct) + "%", true);
+        }
+    });
+
+    t_httpUpdate_return ret = httpUpdate.update(client, url);
+
+    if (ret == HTTP_UPDATE_OK) {
+        Serial.println("[OTA-HTTP] Aggiornamento completato! Riavvio...");
+        hardware.clearLcd();
+        hardware.printLcdLine(1, "OTA COMPLETATO!", true);
+        hardware.printLcdLine(2, "Riavvio...", true);
+        hardware.setLedsColor(0, 255, 0);
+        delay(1000);
+        ESP.restart();
+    } else {
+        Serial.printf("[OTA-HTTP] Errore (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+        hardware.clearLcd();
+        hardware.printLcdLine(1, "ERRORE OTA HTTP!", true);
+        hardware.printLcdLine(2, "Cod: " + String(httpUpdate.getLastError()), true);
+        hardware.setLedsColor(255, 0, 0);
+        hardware.playTone(250, 600);
+        delay(2500);
+    }
 }

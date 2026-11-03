@@ -6,10 +6,10 @@
  * - Connessione singleton Socket.IO e sincronizzazione real-time con il server Flask.
  * - Costruttore visuale delle sequenze modulari V2 (HOLD, PIN, KEY a 8 modalità, RFID a 4 modalità).
  * - Validazione automatica di coerenza per lo stato delle chiavi K1/K2 tra innesco e disinnesco.
- * - Gestione fazioni, meteo tattico, ritaglio foto profilo (Cropper.js) e registrazione tessere.
+ * - Gestione fazioni, meteo tattico, ritaglio foto profilo/prop (Cropper.js), OTA e registrazione tessere.
  */
 
-import { showView, logSystem, updateDeviceList, updateClock, activeInspectorId } from './ui_core.js';
+import { showView, logSystem, updateDeviceList, refreshActiveInspector, updateClock, activeInspectorId } from './ui_core.js';
 import { resetMonitorLayout, updateUniversalFeed, renderRules, updateMonitorDailyWins } from './game_monitor.js';
 import { renderArenaRoster, renderDatabase, populateProfileModal, getCurrentProfileUid, globalPlayersDB } from './roster_manager.js';
 
@@ -63,9 +63,6 @@ function applyFactionStyles(factions) {
     `;
 }
 
-/**
- * @brief Popola il menu a tendina dei terminali disponibili escludendo Kiosk e Server TDM.
- */
 export function updateSetupDropdown() {
     const elSetupTargetSelect = document.getElementById('setup-target-select');
     if (!elSetupTargetSelect) return;
@@ -161,10 +158,6 @@ function applyKeyModeState(modeVal, state) {
     if (meta.k2Next) state.k2 = meta.k2Next;
 }
 
-/**
- * @brief Simula lo stato delle chiavi lungo tutta la catena Innesco -> Disinnesco
- *        per disabilitare combinazioni fisicamente incoerenti.
- */
 function sanitizeKeySequences() {
     const state = { k1: 'FREE', k2: 'FREE' };
     const allSteps = [...window.v2ArmSequence, ...window.v2DefuseSequence];
@@ -553,6 +546,16 @@ if (!window.__zuluMainInitialized) {
             });
         }
 
+        const btnOta = document.getElementById('ota-update-btn');
+        if (btnOta) {
+            btnOta.addEventListener('click', () => {
+                if (activeInspectorId && confirm(`Avviare l'aggiornamento firmware OTA su ${activeInspectorId}? Il terminale si riavvierà automaticamente al termine.`)) {
+                    socket.emit('send_command', { target_id: activeInspectorId, command: { cmd: "TRIGGER_OTA" } });
+                    logSystem(`OTA: Inviato comando di aggiornamento a ${activeInspectorId}`);
+                }
+            });
+        }
+
         const btnHardReset = document.getElementById('hard-reset-btn');
         if (btnHardReset) {
             btnHardReset.addEventListener('click', () => {
@@ -690,6 +693,11 @@ if (!window.__zuluMainInitialized) {
         alert("IL SERVER SI STA RIAVVIANDO. Attendi qualche secondo che il pannello torni online.");
     });
 
+    socket.on('ota_manifest_update', (manifest) => {
+        window.__zuluOtaManifest = manifest || {};
+        refreshActiveInspector();
+    });
+
     socket.on('factions_update', (factions) => {
         Object.assign(currentFactions, factions);
         applyFactionStyles(currentFactions);
@@ -799,7 +807,7 @@ if (!window.__zuluMainInitialized) {
     });
 
     // ========================================================================
-    // AZIONI GLOBALI OPERATORE, FOTO PROFILO E REGISTRAZIONE TESSERE
+    // AZIONI GLOBALI OPERATORE, FOTO PROFILO/PROP E REGISTRAZIONE TESSERE
     // ========================================================================
 
     window.uiForceEndMission = function() {
@@ -881,7 +889,7 @@ if (!window.__zuluMainInitialized) {
         }
     };
 
-    let cropTargetType = 'operator'; // 'operator' oppure 'device'
+    let cropTargetType = 'operator';
 
     window.handlePhotoUpload = function(input) {
         if (input.files && input.files[0]) {

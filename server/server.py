@@ -1,11 +1,11 @@
 """
-control_panel.py
+server.py
 Server Web Flask + Flask-SocketIO per il Pannello di Controllo Zulu Game System.
 
 Espone:
 - Le viste tattiche per gli arbitri/admin (/, /mobile, /tv).
 - Il portale personale per i giocatori PRO (/portal/login, /portal/setup, /portal/dashboard).
-- Gli endpoint WebSocket (Socket.IO) per la gestione in tempo reale di roster, database e missioni.
+- Gli endpoint WebSocket (Socket.IO) per la gestione in tempo reale di roster, database, OTA e missioni.
 """
 
 from functools import wraps
@@ -106,7 +106,7 @@ def admin_required(f):
 
 
 # =============================================================================
-# SERVIZIO METEO E INIZIALIZZAZIONE SOTTOSISTEMI
+# SERVIZIO METEO, MANIFESTO OTA E INIZIALIZZAZIONE SOTTOSISTEMI
 # =============================================================================
 
 last_weather_update = 0
@@ -152,6 +152,18 @@ def fetch_weather():
     return cached_weather
 
 
+def get_ota_manifest():
+    """Legge il manifesto delle versioni firmware disponibili in static/firmware/manifest.json."""
+    manifest_path = os.path.join(app.root_path, 'static', 'firmware', 'manifest.json')
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
 @app.before_request
 def setup_database():
     """Inizializza in modo thread-safe DB, client MQTT e background task al primo avvio."""
@@ -159,10 +171,6 @@ def setup_database():
         with _init_lock:
             if not getattr(app, 'db_initialized', False):
                 db_manager.init_db()
-                # NOTA: Decommentare solo se si desidera forzare il reset delle password PRO all'avvio:
-                # with db_manager.get_db_connection() as conn:
-                #     conn.execute("UPDATE players SET username = NULL, password_hash = NULL WHERE username IS NOT NULL")
-                #     conn.commit()
                 game_engine.start_mqtt(socketio)
                 if not game_engine.background_thread_started:
                     socketio.start_background_task(game_engine.background_cleanup, fetch_weather)
@@ -354,6 +362,7 @@ def upload_photo():
         return jsonify({"status": "ok", "filename": filename})
     return jsonify({"status": "error"}), 400
 
+
 @app.route('/upload_device_photo', methods=['POST'])
 @admin_required
 def upload_device_photo():
@@ -393,6 +402,7 @@ def handle_connect():
     emit('factions_update', db_manager.get_factions_config())
     socketio.emit('roster_update', db_manager.get_full_roster())
     emit('database_update', db_manager.get_all_players())
+    emit('ota_manifest_update', get_ota_manifest())
 
 
 @socketio.on('update_factions')
@@ -602,6 +612,7 @@ def handle_rename(data):
 def handle_manual_scan():
     active_devs, _ = game_engine.registry.get_active_devices()
     socketio.emit('devices_update', active_devs)
+    emit('ota_manifest_update', get_ota_manifest())
 
 
 @socketio.on('send_command')
@@ -624,6 +635,17 @@ def handle_socket_command(data):
                 game_engine.publish_sd_settings_to_target(target_id, cmd_obj)
                 return
             elif c == "SET_TDM_SETTINGS":
+                return
+            elif c == "TRIGGER_OTA":
+                manifest = get_ota_manifest()
+                fw_key = "rat-v2" if "V2" in str(target_id).upper() else "rat-v1"
+                fw_file = manifest.get(fw_key, {}).get("file", f"{fw_key}.bin")
+                host_ip = request.host.split(':')[0]
+                ota_url = f"http://{host_ip}:5000/static/firmware/{fw_file}"
+                game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps({
+                    "cmd": "OTA_HTTP",
+                    "url": ota_url
+                }), qos=1)
                 return
 
         if target_id == "BROADCAST_ENV":

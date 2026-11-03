@@ -275,6 +275,14 @@ void loop() {
                         network.sendTelemetry(rep);
                         return;
                     }
+                    else if (strcmp(cmd, "OTA_HTTP") == 0) {
+                     const char* url = doc["url"] | "";
+                     if (strlen(url) > 0) {
+                         network.performHttpOTA(String(url));
+                         showStandbyScreen();
+                     }
+                     return;
+                    }
                     else if (strcmp(cmd, "RESET") == 0) {
                         ESP.restart();
                     }

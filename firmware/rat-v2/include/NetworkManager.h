@@ -24,6 +24,8 @@ public:
     void sendTelemetry(const String& payload);
     void setCurrentModeName(const char* modeName);
 
+    void performHttpOTA(const String& url);
+
 private:
     WiFiClient _espClient;
     PubSubClient _mqtt;

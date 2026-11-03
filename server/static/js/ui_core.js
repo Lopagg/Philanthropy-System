@@ -5,6 +5,7 @@
  */
 
 export let activeInspectorId = null;
+let cachedDevicesList = [];
 
 const MAX_LOG_ENTRIES = 50;
 
@@ -23,11 +24,6 @@ const VIEW_IDS = {
 // NAVIGAZIONE VISTE E LOG DI SISTEMA
 // ============================================================================
 
-/**
- * @brief Mostra la vista richiesta nascondendo tutte le altre.
- * @param {string} viewName Chiave identificativa della vista (es. 'hub', 'setup', 'monitor').
- * @param {object} socket   Istanza Socket.IO per richiedere dati aggiornati all'apertura.
- */
 export function showView(viewName, socket) {
     if (viewName === 'arena-db' && socket) {
         socket.emit('request_database');
@@ -56,10 +52,6 @@ export function showView(viewName, socket) {
     }
 }
 
-/**
- * @brief Aggiunge una riga in cima al Mini-Log laterale mantenendo al massimo 50 voci.
- * @param {string} text Messaggio da registrare.
- */
 export function logSystem(text) {
     const elMiniLog = document.getElementById('mini-log');
     if (!elMiniLog) return;
@@ -77,23 +69,21 @@ export function logSystem(text) {
 // LISTA DISPOSITIVI CONNESSI E PANNELLO INSPECTOR
 // ============================================================================
 
-/**
- * @brief Aggiorna la lista laterale dei nodi MQTT attivi e sincronizza l'Inspector se aperto.
- */
 export function updateDeviceList(devices, socket, setMonitoredDeviceCb) {
+    cachedDevicesList = devices || [];
     const elDeviceList = document.getElementById('device-list');
     const elAssetCount = document.getElementById('asset-count');
     if (!elDeviceList) return;
 
     elDeviceList.innerHTML = '';
-    if (elAssetCount) elAssetCount.textContent = devices.length;
+    if (elAssetCount) elAssetCount.textContent = cachedDevicesList.length;
 
-    if (devices.length === 0) {
+    if (cachedDevicesList.length === 0) {
         elDeviceList.innerHTML = '<li class="placeholder-msg">SCANNING NETWORK...</li>';
         return;
     }
 
-    devices.forEach(device => {
+    cachedDevicesList.forEach(device => {
         const isOnline = device.status === 'ONLINE';
         const cssClass = isOnline ? 'status-online' : 'status-offline';
         const displayName = device.name || device.id;
@@ -134,9 +124,12 @@ export function updateDeviceList(devices, socket, setMonitoredDeviceCb) {
     });
 }
 
-/**
- * @brief Popola i campi informativi della vista Inspector per il nodo selezionato.
- */
+export function refreshActiveInspector() {
+    if (!activeInspectorId) return;
+    const dev = cachedDevicesList.find(d => d.id === activeInspectorId);
+    if (dev) updateInspectorData(dev);
+}
+
 function updateInspectorData(device) {
     const setElText = (id, txt) => {
         const el = document.getElementById(id);
@@ -154,11 +147,6 @@ function updateInspectorData(device) {
     setElText('insp-mode', device.mode || 'N/A');
     setElText('insp-state', device.status || 'UNKNOWN');
     setElText('insp-ip', device.ip || 'UNKNOWN');
-
-    let fwText = `FW_VER: ${device.version || '--'}`;
-    if (typeof device.batt_v === 'number' && device.batt_v > 1.0) {
-        fwText += ` // BATT: ${device.batt_v.toFixed(2)}V`;
-    }
     setElText('insp-fw-ver', `FW_VER: ${device.version || '--'}`);
 
     // Foto personalizzata del Prop
@@ -217,10 +205,11 @@ function updateInspectorData(device) {
 
     setElText('insp-heap', tel.heap_kb !== undefined ? `${tel.heap_kb} KB` : '-- KB');
 
+    const isV2 = (device.version && device.version.includes('V2')) || (device.id && device.id.includes('V2'));
+
     // Stato pulsante Hardware Test (Launch vs Exit)
     const hwTestBtn = document.getElementById('hw-test-btn');
     if (hwTestBtn) {
-        const isV2 = (device.version && device.version.includes('V2')) || (device.id && device.id.includes('V2'));
         hwTestBtn.style.display = isV2 ? 'block' : 'none';
         if (device.mode === 'HW_TEST') {
             hwTestBtn.textContent = "[ EXIT HW TEST ]";
@@ -228,6 +217,25 @@ function updateInspectorData(device) {
         } else {
             hwTestBtn.textContent = "[ LAUNCH HW TEST ]";
             hwTestBtn.dataset.testing = "false";
+        }
+    }
+
+    // Stato pulsante OTA Update
+    const otaBtn = document.getElementById('ota-update-btn');
+    if (otaBtn) {
+        const isVirtual = (device.id === 'SERVER-TDM' || device.mode === 'KIOSK');
+        otaBtn.style.display = isVirtual ? 'none' : 'block';
+        const manifest = window.__zuluOtaManifest || {};
+        const latestVer = isV2 ? (manifest['rat-v2']?.version) : (manifest['rat-v1']?.version);
+
+        if (latestVer && device.version && device.version !== latestVer) {
+            otaBtn.textContent = `[ UPDATE OTA AVAILABLE: ${latestVer} ]`;
+            otaBtn.style.borderColor = 'var(--sop-success)';
+            otaBtn.style.color = 'var(--sop-success)';
+        } else {
+            otaBtn.textContent = latestVer ? `[ REFLASH OTA (${latestVer}) ]` : `[ UPDATE FIRMWARE OTA ]`;
+            otaBtn.style.borderColor = 'var(--sop-primary)';
+            otaBtn.style.color = 'var(--sop-primary)';
         }
     }
 
@@ -240,7 +248,7 @@ function updateInspectorData(device) {
         } else if (device.id === 'SERVER-TDM' || device.mode === 'TEAM_DEATHMATCH') {
             hwTitle.textContent = "VIRTUAL TDM SERVER";
             hwDesc.textContent = "Motore logico software in esecuzione sul server centrale.";
-        } else if ((device.version && device.version.includes('V2')) || (device.id && device.id.includes('V2'))) {
+        } else if (isV2) {
             hwTitle.textContent = "REMOTE ACCESS TERMINAL V2";
             hwDesc.textContent = "Prop interattivo avanzato I2C/I2S basato su ESP32-S3.";
         } else {
@@ -254,9 +262,6 @@ function updateInspectorData(device) {
 // OROLOGIO E DATA DI SISTEMA
 // ============================================================================
 
-/**
- * @brief Avvia l'aggiornamento ogni secondo dell'orologio e della data nell'header.
- */
 export function updateClock() {
     const elMissionClock = document.getElementById('mission-clock');
     const elMissionDate = document.getElementById('mission-date');
