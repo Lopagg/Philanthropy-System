@@ -1,0 +1,51 @@
+<!-- ==========================================================================
+     player_login.html
+     Schermata di accesso al Portale Personale per Operatori PRO.
+     Consente il primo accesso tramite UID della tessera o gli accessi
+     successivi tramite Username e Password.
+     ========================================================================== -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOP NODE // PRO ACCESS</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=17">
+</head>
+<body class="sop-theme login-body">
+    <div class="tactical-background"><div class="grid-overlay"></div><div class="scan-line"></div></div>
+
+    <div class="login-wrapper">
+        <div class="sop-panel login-box">
+            <div class="login-header">
+                <h1>SOP // PORTAL</h1>
+                <div class="sub">PRO OPERATOR ACCESS</div>
+            </div>
+
+            {% with messages = get_flashed_messages(category_filter=["error"]) %}
+                {% if messages %}
+                    <div class="error-console">
+                        {% for message in messages %}
+                            <div class="error-line">&gt; {{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <form class="login-form" method="POST" action="{{ url_for('player_login') }}">
+                <div>
+                    <label for="login_id">UID TESSERA O USERNAME</label>
+                    <input type="text" id="login_id" name="login_id" required autofocus autocomplete="off">
+                </div>
+                <div>
+                    <label for="password">PASSWORD (Vuoto se è il primo accesso con UID)</label>
+                    <input type="password" id="password" name="password">
+                </div>
+                <button type="submit" class="deck-btn login-btn" style="color: var(--sop-primary); border-color: var(--sop-primary);">[ INIZIALIZZA CONNESSIONE ]</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

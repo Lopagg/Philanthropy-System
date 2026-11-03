@@ -1,0 +1,13 @@
+<!-- ==========================================================================
+     index.html
+     Punto di ingresso delle viste SPA (Single Page Application) per l'Admin.
+     ========================================================================== -->
+{% extends "base.html" %}
+
+{% block content %}
+    {% include 'hub.html' %}
+    {% include 'setup.html' %}
+    {% include 'monitor.html' %}
+    {% include 'arena_command.html' %}
+    {% include 'inspector.html' %}
+{% endblock %}

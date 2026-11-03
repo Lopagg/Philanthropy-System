@@ -1,0 +1,114 @@
+<!-- ==========================================================================
+     login.html
+     Schermata di autenticazione riservata agli amministratori / arbitri SOP.
+     ========================================================================== -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SYSTEM ACCESS // PHILANTHROPY</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=17">
+
+    <style>
+        .login-logo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 55px;
+            animation: logo-glow 3s ease-in-out infinite alternate;
+        }
+        
+        .login-logo {
+            width: 120%;
+            max-width: 520px;
+            height: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .login-logo:hover {
+            transform: scale(1.02);
+        }
+
+        @keyframes logo-glow {
+            0% {
+                filter: drop-shadow(0 0 3px rgba(0, 255, 204, 1)) drop-shadow(0 0 15px rgba(0, 255, 204, 0.4));
+            }
+            100% {
+                filter: drop-shadow(0 0 6px rgba(0, 255, 204, 1)) drop-shadow(0 0 35px rgba(0, 255, 204, 0.7));
+            }
+        }
+
+        .login-footer {
+            margin-top: 60px;
+            opacity: 0.8;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body class="sop-theme login-body">
+
+    <div class="tactical-background">
+        <div class="grid-overlay"></div>
+        <div class="scan-line"></div>
+    </div>
+
+    <div class="login-wrapper">
+        
+        <div class="login-logo-container">
+            <img src="{{ url_for('static', filename='Philanthropy.svg') }}" class="login-logo" alt="Philanthropy Logo">
+        </div>
+
+        <div class="sop-panel login-box">
+            <div class="login-header">
+                <h1>PHILANTHROPY SYSTEM</h1>
+                <span class="sub">RESTRICTED ACCESS AREA</span>
+            </div>
+
+            <div class="login-status">
+                <span class="blink">&gt; WAITING FOR AUTHENTICATION...</span>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="error-console">
+                        {% for category, message in messages %}
+                            <div class="error-line">&gt; ERROR: {{ message | upper }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <!-- L'attributo action="" preserva eventuali query string come ?next=/mobile -->
+            <form method="POST" action="" class="login-form">
+                <div class="input-group">
+                    <label for="username">OPERATOR ID:</label>
+                    <input type="text" name="username" id="username" autofocus autocomplete="off" placeholder="Inserire ID...">
+                </div>
+
+                <div class="input-group">
+                    <label for="password">PASSCODE:</label>
+                    <input type="password" name="password" id="password" placeholder="Inserire Codice...">
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="deck-btn login-btn">[ AUTHENTICATE ]</button>
+                </div>
+            </form>
+            
+            <div class="login-footer">
+                Unauthorized access is a violation of protocol SOP-77.
+                <br>Connection traced: {{ request.remote_addr }}
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

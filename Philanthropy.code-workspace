@@ -1,0 +1,32 @@
+{
+    "folders": [
+        {
+            "name": "🖥️ SOP Server (Python/Web)",
+            "path": "server"
+        },
+        {
+            "name": "💣 Firmware RAT-V2 (ESP32-S3)",
+            "path": "firmware/rat-v2"
+        },
+        {
+            "name": "📠 Firmware RAT-V1 (Legacy)",
+            "path": "firmware/rat-v1"
+        },
+        {
+            "name": "📦 Root & Deploy Scripts",
+            "path": ".",
+            "settings": {
+                "files.exclude": {
+                    "firmware": true,
+                    "server": true
+                }
+            }
+        }
+    ],
+    "settings": {
+        "files.exclude": {
+            "**/.git": true,
+            "**/__pycache__": true
+        }
+    }
+}

@@ -1,0 +1,43 @@
+<!-- ==========================================================================
+     hub.html
+     Menu principale a 4 card (Configurazione Missione, Monitor Live, Arena, TV).
+     ========================================================================== -->
+<div id="view-hub" class="view-panel active">
+    <div class="hub-grid">
+        <div class="hub-card" id="btn-mode-setup" onclick="showView('setup')">
+            <div class="card-icon">⚡</div>
+            <div class="card-content">
+                <h3>INITIATE OPERATION</h3>
+                <p>Configura parametri di missione e invia comando di avvio alla rete.</p>
+                <span class="card-action">[ EXECUTE ]</span>
+            </div>
+        </div>
+
+        <div class="hub-card" id="btn-mode-observe" onclick="showView('monitor')">
+            <div class="card-icon">👁️</div>
+            <div class="card-content">
+                <h3>LIVE TELEMETRY</h3>
+                <p>Monitora telemetria, timer, eventi e punteggi della partita globale in corso.</p>
+                <span class="card-action">[ MONITOR ]</span>
+            </div>
+        </div>
+
+        <div class="hub-card" id="btn-mode-arena" onclick="showView('arena-menu')">
+            <div class="card-icon">🛡️</div>
+            <div class="card-content">
+                <h3>ARENA COMMAND</h3>
+                <p>Gestione roster, smistamento operatori e override ambientali.</p>
+                <span class="card-action">[ ACCESS ]</span>
+            </div>
+        </div>
+
+        <div class="hub-card" onclick="window.open('/tv', '_blank')">
+            <div class="card-icon">📺</div>
+            <div class="card-content">
+                <h3>WAITING ROOM TV</h3>
+                <p>Dashboard pubblica e personalizzabile per i giocatori in attesa. (Sola Lettura)</p>
+                <span class="card-action" style="color: var(--sop-primary);">[ OPEN DISPLAY ]</span>
+            </div>
+        </div>
+    </div>
+</div>

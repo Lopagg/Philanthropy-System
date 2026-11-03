@@ -1,0 +1,91 @@
+<!-- ==========================================================================
+     inspector.html
+     Pannello di diagnostica, test di rete, collaudo hardware remoto,
+     rinomina alias e riavvio del singolo nodo.
+     ========================================================================== -->
+<div id="view-inspector" class="view-panel hidden">
+    <div class="inspector-header">
+        <h2 id="inspector-title">NODE-UNKNOWN // CONFIG</h2>
+        <button type="button" class="close-inspector-btn" onclick="showView('hub')">[CLOSE LINK]</button>
+    </div>
+
+    <div class="inspector-grid">
+        <!-- Scheda Profilo Hardware, Foto Prop & Telemetria di Rete -->
+        <div class="sop-card profile-panel" style="padding: 20px;">
+            <h3 style="color: var(--sop-primary); margin-bottom: 15px; letter-spacing: 2px;">ASSET PROFILE</h3>
+            <div class="profile-content">
+                <div class="asset-illustration" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <div id="insp-default-icon" class="tech-circle" style="width: 110px; height: 110px;">NODE</div>
+                    <img id="insp-device-photo" class="hidden" src="" alt="Foto Prop" style="width: 110px; height: 110px; object-fit: cover; border: 2px solid var(--sop-primary); box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);">
+                    
+                    <input type="file" id="device-photo-input" accept="image/*" class="hidden" onchange="handleDevicePhotoUpload(this)">
+                    <div style="display: flex; gap: 5px; width: 110px;">
+                        <button type="button" class="deck-btn" style="flex: 1; margin: 0; padding: 4px; font-size: 11px;" onclick="document.getElementById('device-photo-input').click()">[ FOTO ]</button>
+                        <button type="button" id="del-dev-photo-btn" class="deck-btn btn-danger hidden" style="margin: 0; padding: 4px 8px; font-size: 11px;" onclick="deleteDevicePhoto()" title="Rimuovi foto">[X]</button>
+                    </div>
+                </div>
+                <div class="asset-desc">
+                    <h4 id="insp-hw-title">REMOTE ACCESS TERMINAL V2</h4>
+                    <p id="insp-hw-desc" class="desc-text">Prop interattivo avanzato I2C/I2S basato su ESP32-S3.</p>
+                    <div class="specs">
+                        <span>HW_VER: 2.0</span>
+                        <span id="insp-fw-ver">FW_VER: --</span>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <h3 style="color: var(--sop-primary); margin-bottom: 15px; letter-spacing: 2px;">POWER &amp; NETWORK DIAGNOSTICS</h3>
+            <div class="data-row" style="margin-bottom: 8px;">
+                <span class="label" style="color: #888;">BATTERY STATUS:</span>
+                <span id="insp-batt" class="value" style="font-family: monospace; font-weight: bold;">EXT / USB</span>
+            </div>
+            <div class="data-row" style="margin-bottom: 8px;">
+                <span class="label" style="color: #888;">WIFI SIGNAL (RSSI):</span>
+                <span id="insp-rssi" class="value" style="font-family: monospace; font-weight: bold;">-- dBm</span>
+            </div>
+            <div class="data-row" style="margin-bottom: 8px;">
+                <span class="label" style="color: #888;">MQTT PING (RTT):</span>
+                <span id="insp-rtt" class="value" style="font-family: monospace; font-weight: bold;">-- ms</span>
+            </div>
+            <div class="data-row" style="margin-bottom: 15px;">
+                <span class="label" style="color: #888;">FREE MEMORY (HEAP):</span>
+                <span id="insp-heap" class="value" style="font-family: monospace;">-- KB</span>
+            </div>
+            <button type="button" id="net-test-btn" class="deck-btn full-width" style="border-color: var(--sop-primary); color: var(--sop-primary); font-size: 14px; padding: 10px;">
+                [ TEST NETWORK LINK ]
+            </button>
+        </div>
+
+        <!-- Scheda Configurazione, Collaudo Hardware e Manutenzione -->
+        <div class="sop-card config-panel" style="padding: 20px;">
+            <h3 style="color: var(--sop-primary); margin-bottom: 15px; letter-spacing: 2px;">CONFIGURATION &amp; MAINTENANCE</h3>
+            <div class="data-row" style="margin-bottom: 8px;"><span class="label" style="color: #888;">STATUS:</span> <span id="insp-state" class="value" style="font-weight: bold;">--</span></div>
+            <div class="data-row" style="margin-bottom: 8px;"><span class="label" style="color: #888;">CURRENT IP:</span> <span id="insp-ip" class="value" style="font-family: monospace;">--</span></div>
+            <div class="data-row" style="margin-bottom: 8px;"><span class="label" style="color: #888;">CURRENT MODE:</span> <span id="insp-mode" class="value">--</span></div>
+            
+            <hr class="separator">
+            
+            <div class="input-group-tactical">
+                <label class="setup-label" for="insp-alias-input">ASSET ALIAS</label>
+                <div class="row-inputs">
+                    <input type="text" id="insp-alias-input" class="setup-input" placeholder="Es. NODE-ALPHA">
+                    <button type="button" id="save-alias-btn" class="deck-btn" style="margin-left: 0;">[SAVE]</button>
+                </div>
+            </div>
+            
+            <hr class="separator">
+            
+            <div class="danger-zone">
+                <span class="danger-label" style="color: var(--sop-secondary);">DIAGNOSTICS &amp; OVERRIDE</span>
+                <button type="button" id="hw-test-btn" class="deck-btn btn-warning full-width" style="margin-bottom: 12px; font-size: 14px; padding: 12px;">
+                    [ LAUNCH HW TEST ]
+                </button>
+                <button type="button" id="hard-reset-btn" class="deck-btn btn-danger">
+                    [ HARDWARE RESET ]
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

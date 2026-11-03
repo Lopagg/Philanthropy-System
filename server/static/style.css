@@ -1,0 +1,728 @@
+/* ==========================================================================
+   PHILANTHROPY SYSTEM - SOP NODE STYLESHEET
+   Foglio di stile principale per Dashboard Arbitro, Monitor TV e Login
+   ========================================================================== */
+
+/* --- 1. VARIABILI GLOBALI TEMA TATTICO --- */
+:root {
+    --sop-bg: #050505;
+    --sop-panel: #0a0a0a;
+    --sop-primary: #00ffcc;
+    --sop-secondary: #ff9900;
+    --sop-alert: #ff3333;
+    --sop-success: #55ff55;
+    --sop-dim: #333333;
+    --sop-text: #e0e0e0;
+    --team-a-color: #ff3333;
+    --team-b-color: #55ff55;
+    --grid-gap: 12px;
+    --scanline-color: rgba(0, 255, 204, 0.05);
+}
+
+/* --- 2. RESET & IMPOSTAZIONI BASE --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--sop-bg);
+    color: var(--sop-text);
+    font-family: 'Share Tech Mono', monospace;
+    height: 100vh;
+    overflow: hidden;
+    font-size: 16px;
+}
+
+/* --- 3. CLASSI DI UTILITÀ E ANIMAZIONI GLOBALI --- */
+.glow-primary { text-shadow: 0 0 10px var(--sop-primary); color: var(--sop-primary); }
+.glow-alert   { text-shadow: 0 0 15px rgba(255, 51, 51, 0.8); color: var(--sop-alert); }
+.glow-success { text-shadow: 0 0 15px rgba(85, 255, 85, 0.8); color: var(--sop-success); }
+.hidden       { display: none !important; }
+.blink        { animation: blinker 1s linear infinite; }
+
+@keyframes blinker {
+    50% { opacity: 0; }
+}
+
+@keyframes victoryPulse {
+    0%   { background-color: rgba(0, 0, 0, 0.3); }
+    50%  { background-color: rgba(255, 255, 255, 0.1); }
+    100% { background-color: rgba(0, 0, 0, 0.3); }
+}
+
+@keyframes progress-stripe {
+    0%   { background-position: 1rem 0; }
+    100% { background-position: 0 0; }
+}
+
+@keyframes scanline {
+    0%   { bottom: 100%; }
+    100% { bottom: -100px; }
+}
+
+.match-ended {
+    animation: victoryPulse 2s infinite;
+    border-color: var(--sop-primary);
+}
+
+/* --- 4. SFONDO TATTICO CRT & GRIGLIA --- */
+.tactical-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+}
+
+.grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: linear-gradient(var(--sop-dim) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--sop-dim) 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.1;
+}
+
+.scan-line {
+    width: 100%;
+    height: 100px;
+    z-index: 10;
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, var(--scanline-color) 50%, rgba(0, 0, 0, 0) 100%);
+    opacity: 0.1;
+    position: absolute;
+    bottom: 100%;
+    animation: scanline 10s linear infinite;
+    pointer-events: none;
+}
+
+/* --- 5. STRUTTURA GRID PRINCIPALE DELL'APPLICAZIONE --- */
+.app-container {
+    display: grid;
+    height: 100vh;
+    grid-template-areas:
+        "header header"
+        "sidebar main"
+        "footer footer";
+    grid-template-rows: 65px minmax(0, 1fr) 55px;
+    grid-template-columns: 320px 1fr;
+    gap: var(--grid-gap);
+    padding: var(--grid-gap);
+}
+
+/* --- 6. PANNELLI CONTENITORE COMUNI --- */
+.sop-panel,
+.sop-card {
+    background: var(--sop-panel);
+    border: 1px solid var(--sop-dim);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    position: relative;
+}
+
+.sop-panel::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 15px 15px 0;
+    border-color: transparent var(--sop-bg) transparent transparent;
+}
+
+.setup-panel {
+    padding: 25px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--sop-primary);
+}
+
+.panel-header h2 {
+    letter-spacing: 2px;
+    color: var(--sop-text);
+}
+
+/* --- 7. HEADER SUPERIORE DI SISTEMA --- */
+.system-header {
+    grid-area: header;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 25px;
+    border-bottom: 2px solid var(--sop-primary);
+}
+
+.logo-text { font-size: 26px; font-weight: bold; color: var(--sop-text); letter-spacing: 2px; }
+.logo-sub  { font-size: 13px; color: var(--sop-primary); margin-left: 10px; }
+
+.status-value  { font-weight: bold; padding: 2px 8px; border-radius: 2px; }
+.status-normal { color: var(--sop-bg); background: var(--sop-primary); box-shadow: 0 0 10px var(--sop-primary); }
+.status-alert  { color: var(--sop-bg); background: var(--sop-alert); box-shadow: 0 0 10px var(--sop-alert); }
+
+.hud-center-group { display: flex; flex-direction: column; align-items: center; }
+#mission-clock    { font-size: 30px; color: var(--sop-text); text-shadow: 0 0 5px var(--sop-primary); }
+.hud-weather      { font-size: 12px; color: var(--sop-secondary); text-shadow: 0 0 5px var(--sop-secondary); margin-top: 2px; letter-spacing: 2px; text-transform: uppercase; }
+
+.header-right { display: flex; gap: 20px; align-items: center; font-size: 13px; color: var(--sop-primary); }
+.logout-btn   { color: var(--sop-alert); text-decoration: none; margin-left: 10px; border: 1px solid var(--sop-alert); padding: 2px 6px; transition: 0.2s; }
+.logout-btn:hover { background: var(--sop-alert); color: #000; box-shadow: 0 0 8px var(--sop-alert); }
+
+/* --- 8. SIDEBAR ASSET HARDWARE & MINI-LOG --- */
+.asset-sidebar {
+    grid-area: sidebar;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-header {
+    padding: 15px;
+    background: rgba(0, 255, 204, 0.05);
+    border-bottom: 1px solid var(--sop-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sidebar-header h3 { font-size: 16px; margin: 0; letter-spacing: 2px; color: var(--sop-text); }
+
+#scan-btn {
+    background: transparent;
+    border: 1px solid var(--sop-dim);
+    color: var(--sop-dim);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+#scan-btn:hover  { border-color: var(--sop-primary); color: var(--sop-primary); box-shadow: 0 0 8px rgba(0, 255, 204, 0.2); }
+#scan-btn:active { background: var(--sop-primary); color: #000; }
+
+.device-list { flex: 1; overflow-y: auto; list-style: none; padding: 12px; }
+
+.device-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--sop-dim);
+    margin-bottom: 10px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.device-item:hover,
+.device-item.active { border-color: var(--sop-primary); background: rgba(0, 255, 204, 0.1); }
+
+.device-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--sop-dim);
+    color: var(--sop-bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    font-size: 12px;
+    margin-right: 12px;
+}
+.device-item.status-online .device-icon  { background: var(--sop-primary); box-shadow: 0 0 8px rgba(0, 255, 204, 0.4); }
+.device-item.status-offline .device-icon { background: var(--sop-alert); }
+
+.device-info { flex: 1; display: flex; flex-direction: column; }
+.device-id   { font-size: 15px; font-weight: bold; color: var(--sop-text); letter-spacing: 1px; }
+.device-mode { font-size: 11px; color: #888; margin-top: 2px; }
+
+.sidebar-footer {
+    height: 250px;
+    background: #000;
+    border-top: 1px solid var(--sop-dim);
+    padding: 8px;
+    overflow: hidden;
+}
+
+.console-log {
+    height: 100%;
+    padding: 5px;
+    font-size: 12px;
+    color: #0f0;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    line-height: 1.4;
+}
+
+/* --- 9. MAIN STAGE & CARD DEL MENU HUB --- */
+.main-stage { grid-area: main; position: relative; overflow: hidden; }
+.view-panel { width: 100%; height: 100%; display: none; overflow-y: hidden; padding-bottom: 20px; }
+.view-panel.active { display: block; }
+
+.hub-grid {
+    display: flex;
+    gap: 35px;
+    height: 100%;
+    justify-content: center;
+    align-items: center;
+    padding: 50px;
+    flex-wrap: wrap;
+}
+
+.hub-card {
+    flex: 1;
+    min-width: 260px;
+    max-width: 420px;
+    height: 320px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--sop-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.hub-card::before,
+.hub-card::after {
+    content: '';
+    position: absolute;
+    width: 25px;
+    height: 25px;
+    transition: all 0.3s;
+}
+.hub-card::before { top: 0; left: 0; border-top: 2px solid var(--sop-dim); border-left: 2px solid var(--sop-dim); }
+.hub-card::after  { bottom: 0; right: 0; border-bottom: 2px solid var(--sop-dim); border-right: 2px solid var(--sop-dim); }
+
+.hub-card:hover {
+    background: rgba(0, 255, 204, 0.05);
+    border-color: var(--sop-primary);
+    box-shadow: 0 0 25px rgba(0, 255, 204, 0.1);
+    transform: translateY(-5px);
+}
+.hub-card:hover::before,
+.hub-card:hover::after { border-color: var(--sop-primary); width: 100%; height: 100%; }
+
+.card-icon       { font-size: 55px; margin-bottom: 25px; filter: drop-shadow(0 0 5px var(--sop-primary)); }
+.card-content h3 { color: var(--sop-text); margin-bottom: 12px; font-size: 22px; letter-spacing: 2px; }
+.card-content p  { font-size: 15px; color: #888; margin-bottom: 30px; padding: 0 25px; line-height: 1.5; }
+.card-action     { color: var(--sop-dim); font-weight: bold; letter-spacing: 2px; transition: color 0.3s; font-size: 18px; }
+.hub-card:hover .card-action { color: var(--sop-primary); text-shadow: 0 0 8px var(--sop-primary); }
+
+/* --- 10. PULSANTI, CONTROLLI FORM & PANNELLO SETUP --- */
+.deck-btn {
+    background: transparent;
+    border: 1px solid var(--sop-dim);
+    color: var(--sop-text);
+    padding: 8px 18px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    margin-left: 10px;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+}
+.deck-btn:hover     { border-color: var(--sop-primary); color: var(--sop-primary); box-shadow: 0 0 10px rgba(0, 255, 204, 0.3); }
+.btn-danger         { border-color: var(--sop-alert); color: var(--sop-alert); }
+.btn-danger:hover   { background: var(--sop-alert); color: #000; box-shadow: 0 0 15px var(--sop-alert); }
+.btn-warning        { border-color: var(--sop-secondary); color: var(--sop-secondary); }
+.btn-warning:hover  { background: var(--sop-secondary); color: #000; box-shadow: 0 0 15px var(--sop-secondary); }
+.disabled           { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+
+.setup-label {
+    display: block;
+    text-align: left;
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 8px;
+    letter-spacing: 1.5px;
+    font-weight: bold;
+}
+
+.setup-input,
+.tactical-select {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--sop-dim);
+    color: var(--sop-text);
+    padding: 12px 15px;
+    font-family: inherit;
+    font-size: 18px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+.setup-input:focus,
+.tactical-select:focus {
+    border-color: var(--sop-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
+    background: rgba(0, 255, 204, 0.05);
+    color: var(--sop-primary);
+}
+.tactical-select option { background-color: var(--sop-bg); color: var(--sop-text); padding: 10px; }
+
+.setup-params-group {
+    background: rgba(0, 255, 204, 0.02);
+    border: 1px solid var(--sop-dim);
+    border-left: 3px solid var(--sop-primary);
+    padding: 25px;
+    margin-bottom: 20px;
+}
+.setup-params-group h3 { font-size: 20px; letter-spacing: 2px; text-shadow: 0 0 5px rgba(0, 255, 204, 0.3); }
+.row-inputs { display: flex; gap: 20px; }
+
+.setup-roster-summary {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--sop-dim);
+    padding: 15px;
+    margin-bottom: 25px;
+    border-radius: 4px;
+}
+.setup-roster-team  { text-align: center; width: 45%; }
+.setup-roster-label { font-size: 14px; color: #888; letter-spacing: 2px; font-weight: bold; }
+.setup-roster-count { font-size: 36px; font-weight: bold; margin-top: 5px; font-family: 'Share Tech Mono', monospace; text-shadow: 0 0 10px currentColor; }
+.setup-roster-alpha { color: var(--team-a-color); }
+.setup-roster-bravo { color: var(--team-b-color); }
+
+/* --- 11. MONITOR DASHBOARD (TELEMETRIA DI PARTITA LIVE) --- */
+.monitor-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 5px; }
+.monitor-label    { float: right; font-size: 13px; letter-spacing: 1px; color: #888; margin-top: 5px; }
+
+.grid-dashboard {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 20px;
+    height: calc(100% - 95px);
+}
+
+.widget {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--sop-dim);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+.widget-header {
+    background: var(--sop-dim);
+    color: var(--sop-text);
+    padding: 8px 12px;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    font-weight: bold;
+}
+.widget-body {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    padding: 15px;
+    min-height: 0;
+}
+
+.widget-timer    { grid-column: 1 / 2; grid-row: 1 / 2; }
+.widget-factions { grid-column: 2 / 3; grid-row: 1 / 2; }
+.widget-tactical,
+.widget-map      { grid-column: 1 / 2; grid-row: 2 / 3; }
+.widget-rules    { grid-column: 2 / 3; grid-row: 2 / 3; }
+
+#global-timer-display {
+    font-size: 6.5rem;
+    color: var(--sop-primary);
+    text-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+    line-height: 1;
+    margin: 15px 0;
+}
+
+.tactical-body { flex-direction: column; justify-content: space-evenly; width: 100%; height: 100%; }
+
+.bomb-status-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--sop-dim);
+    padding-bottom: 15px;
+    width: 100%;
+    font-size: 45px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: var(--sop-text);
+}
+
+.detonation-title {
+    font-size: 28px !important;
+    color: #aaa;
+    letter-spacing: 5px;
+    margin: 20px 0 15px 0;
+    text-align: center;
+    width: 100%;
+    display: block;
+}
+
+.digital-clock {
+    font-size: 110px;
+    color: var(--sop-alert);
+    text-align: center;
+    letter-spacing: 8px;
+    text-shadow: 0 0 25px rgba(255, 51, 51, 0.7);
+    background: rgba(0, 0, 0, 0.7);
+    border: 3px solid var(--sop-alert);
+    border-radius: 8px;
+    margin: 0 auto;
+    padding: 10px 0 10px 8px;
+    width: fit-content;
+    min-width: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.progress-section { margin-top: 30px; width: 100%; padding: 0 20px; }
+.prog-group       { margin-bottom: 25px; }
+.prog-label       { font-size: 20px; color: #aaa; display: block; width: 100%; text-align: left; margin-bottom: 10px; letter-spacing: 3px; font-weight: bold; }
+.progress-track   { width: 100%; height: 35px; background: #0a0a0a; border: 1px solid var(--sop-dim); border-radius: 4px; position: relative; overflow: hidden; }
+.progress-fill    { height: 100%; width: 0%; transition: width 0.3s linear; }
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: linear-gradient(
+        45deg,
+        rgba(0, 0, 0, 0.15) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.15) 50%,
+        rgba(0, 0, 0, 0.15) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: 1rem 1rem;
+    animation: progress-stripe 1s linear infinite;
+}
+.fill-red   { background-color: var(--sop-alert); box-shadow: 0 0 15px var(--sop-alert); }
+.fill-green { background-color: var(--sop-success); box-shadow: 0 0 15px var(--sop-success); }
+
+/* --- 12. PUNTEGGI DOMINATION & WIDGET FAZIONI --- */
+.dom-scores-box {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    width: 100%;
+    margin: 25px 0;
+    padding: 20px 0;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 8px;
+    border: 1px solid var(--sop-dim);
+}
+.d-score     { display: flex; flex-direction: column; align-items: center; width: 40%; }
+.d-label     { font-size: 18px; color: #888; letter-spacing: 3px; margin-bottom: 8px; font-weight: bold; }
+.d-val-red,
+.d-val-green { font-size: 70px; font-weight: bold; line-height: 1; }
+.d-val-red   { color: var(--team-a-color); text-shadow: 0 0 15px rgba(255, 51, 51, 0.5); }
+.d-val-green { color: var(--team-b-color); text-shadow: 0 0 15px rgba(85, 255, 85, 0.5); }
+.d-vs        { font-size: 30px; color: #555; font-weight: bold; font-style: italic; }
+
+.faction-container { flex-direction: column !important; align-items: stretch !important; justify-content: flex-start !important; padding: 20px !important; min-height: 0; }
+.faction-grid      { width: 100%; display: flex; justify-content: space-around; margin-bottom: 15px; flex-shrink: 0; }
+
+.faction {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    width: 45%;
+}
+.faction-score           { display: block; font-size: 55px; font-weight: bold; line-height: 1; margin-bottom: 5px; text-align: center; }
+.faction-a .faction-score { color: var(--team-a-color); }
+.faction-b .faction-score { color: var(--team-b-color); }
+.vs-divider              { font-size: 28px; color: #555; align-self: center; font-weight: bold; }
+
+.faction-rosters         { display: flex; justify-content: space-between; width: 100%; border-top: 1px solid var(--sop-dim); padding-top: 15px; margin-top: 5px; flex: 1; overflow-y: auto; min-height: 0; }
+.monitor-roster-list     { list-style: none; padding: 0; margin: 0; width: 48%; }
+.monitor-roster-list li  { font-size: 24px; font-weight: bold; padding: 10px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.1); text-align: center; }
+.alpha-list li           { color: var(--team-a-color); }
+.bravo-list li           { color: var(--team-b-color); }
+
+.clickable-name {
+    cursor: pointer;
+    transition: color 0.2s, text-shadow 0.2s;
+    text-decoration: underline dashed rgba(0, 255, 204, 0.3);
+    text-underline-offset: 4px;
+}
+.clickable-name:hover {
+    color: var(--sop-primary) !important;
+    text-decoration: underline dashed var(--sop-primary);
+    text-shadow: 0 0 10px var(--sop-primary);
+}
+
+/* --- 13. WIDGET REGOLE DI MISSIONE --- */
+.rules-body    { display: flex !important; flex-direction: column !important; flex: 1 !important; min-height: 0 !important; justify-content: flex-start !important; padding: 0 !important; }
+.rules-list    { flex: 1; overflow-y: auto; padding: 20px !important; margin: 0; min-height: 0; width: 100%; }
+.rules-list li { display: flex; justify-content: space-between; align-items: center; gap: 15px; border-bottom: 1px dashed var(--sop-dim); padding: 15px 0; font-size: 18px; color: var(--sop-text); }
+.rule-key      { color: var(--sop-primary); font-weight: bold; font-size: 18px; letter-spacing: 1px; flex-shrink: 0; }
+.rule-val      { color: #fff; font-weight: bold; text-align: right; word-break: break-word; }
+.rules-footer  { flex-shrink: 0; padding: 15px !important; border-top: 1px solid var(--sop-dim); background: rgba(255, 0, 0, 0.05); }
+.full-width    { width: 100%; font-size: 18px; padding: 15px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin: 0; }
+
+/* --- 14. MODAL PROFILO OPERATORE, STATISTICHE E KARMA --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(5px);
+}
+.profile-modal     { width: 950px; max-width: 95%; background: var(--sop-bg); border: 2px solid var(--sop-primary); box-shadow: 0 0 30px rgba(0, 255, 204, 0.2); }
+.profile-grid      { display: grid; grid-template-columns: 320px 1fr; gap: 30px; padding: 30px; }
+.photo-frame       { width: 100%; height: 300px; border: 1px solid var(--sop-dim); background: rgba(0, 255, 204, 0.05); display: flex; justify-content: center; align-items: center; margin-bottom: 15px; overflow: hidden; }
+.photo-frame img   { width: 100%; height: 100%; object-fit: cover; }
+.tactical-textarea { resize: none; font-size: 16px; background: rgba(0, 0, 0, 0.8); padding: 15px; font-family: 'Share Tech Mono', monospace; line-height: 1.5; border-color: var(--sop-dim); }
+.close-modal-btn   { background: transparent; border: none; color: var(--sop-alert); font-size: 24px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.close-modal-btn:hover { text-shadow: 0 0 15px var(--sop-alert); transform: scale(1.1); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px; }
+.stat-box   { background: rgba(0, 0, 0, 0.5); border: 1px solid var(--sop-dim); padding: 15px; text-align: center; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; }
+.stat-lbl   { font-size: 11px; color: #888; letter-spacing: 1.5px; margin-bottom: 8px; display: block; font-weight: bold; }
+.stat-val   { font-size: 32px; font-weight: bold; font-family: monospace; }
+
+.karma-container       { display: flex; align-items: stretch; justify-content: space-between; gap: 5px; height: 65px; }
+.karma-btn             { flex: 1; background: transparent; border: 1px solid var(--sop-dim); color: var(--sop-text); font-family: monospace; font-size: 24px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.karma-btn.minus:hover { background: rgba(255, 51, 51, 0.2); border-color: var(--sop-alert); color: var(--sop-alert); }
+.karma-btn.plus:hover  { background: rgba(85, 255, 85, 0.2); border-color: var(--sop-success); color: var(--sop-success); }
+.karma-badge           { flex: 1.5; background: var(--sop-primary); color: var(--sop-bg); display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 28px; font-weight: bold; border-radius: 4px; }
+.karma-badge.negative  { background: var(--sop-alert); color: #fff; }
+.karma-badge.positive  { background: var(--sop-secondary); color: #000; }
+
+/* --- 15. ARENA COMMAND CENTER & ROSTER LISTS --- */
+.arena-grid             { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(250px, 1fr) auto; gap: 20px; height: calc(100% - 55px); }
+.roster-box             { display: flex; flex-direction: column; overflow: hidden; }
+.roster-list            { list-style: none; padding: 12px; overflow-y: auto; flex: 1; }
+.roster-item            { display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--sop-dim); padding: 12px 18px; margin-bottom: 10px; font-size: 20px; }
+.roster-item.in-field   { border-left: 4px solid var(--sop-success); background: rgba(85, 255, 85, 0.05); }
+.roster-item.eliminated { border-left: 4px solid var(--sop-dim); opacity: 0.5; }
+.env-controls           { grid-column: 1 / -1; display: flex; flex-direction: column; }
+.override-grid          { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 20px; }
+.override-btn           { background: rgba(0, 0, 0, 0.5); border: 1px solid var(--sop-dim); color: var(--sop-text); padding: 18px 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; letter-spacing: 1.5px; }
+.override-btn:hover     { border-color: currentColor; background: rgba(255, 255, 255, 0.05); box-shadow: 0 0 15px currentColor; }
+.arena-header           { font-size: 22px !important; font-weight: bold; letter-spacing: 3px; padding: 15px 12px !important; text-align: center; }
+.action-btn             { cursor: pointer; margin-left: 18px; padding: 5px; transition: all 0.2s; }
+.action-btn:hover       { color: #fff !important; text-shadow: 0 0 12px currentColor; }
+
+/* --- 16. PANNELLO INSPECTOR NODI HARDWARE --- */
+.inspector-header    { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 2px solid var(--sop-primary); padding-bottom: 15px; }
+.inspector-grid      { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+.profile-content     { display: flex; gap: 25px; align-items: flex-start; padding: 15px; }
+.asset-illustration  { flex-shrink: 0; }
+.tech-circle         { width: 90px; height: 90px; border: 2px solid var(--sop-primary); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 22px; font-weight: bold; color: var(--sop-primary); box-shadow: 0 0 15px rgba(0, 255, 204, 0.2); background: rgba(0, 255, 204, 0.05); }
+.asset-desc h4       { color: var(--sop-text); margin-bottom: 8px; font-size: 18px; }
+.desc-text           { font-size: 14px; color: #aaa; line-height: 1.5; margin-bottom: 12px; }
+.specs               { font-size: 12px; color: var(--sop-secondary); display: flex; gap: 15px; font-weight: bold; }
+.separator           { border: 0; border-top: 1px dashed var(--sop-dim); margin: 20px 0; }
+.danger-zone         { margin-top: 15px; }
+.danger-label        { color: var(--sop-alert); font-size: 12px; font-weight: bold; display: block; margin-bottom: 10px; }
+#hard-reset-btn      { width: 100%; margin: 0; text-align: center; padding: 12px; }
+.close-inspector-btn { background: transparent; border: 1px solid var(--sop-primary); color: var(--sop-primary); padding: 6px 15px; cursor: pointer; transition: 0.2s; }
+.close-inspector-btn:hover { background: var(--sop-primary); color: #000; box-shadow: 0 0 10px var(--sop-primary); }
+
+/* --- 17. FOOTER COMMAND DECK, SCROLLBAR & CROPPER.JS --- */
+.command-deck { grid-area: footer; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; border-top: 1px solid var(--sop-alert); z-index: 50; background: var(--sop-bg); }
+.deck-label   { color: var(--sop-alert); font-weight: bold; letter-spacing: 3px; font-size: 18px; }
+
+::-webkit-scrollbar              { width: 8px; height: 8px; background: var(--sop-bg); }
+::-webkit-scrollbar-track        { background: rgba(0, 0, 0, 0.3); border-left: 1px solid var(--sop-dim); }
+::-webkit-scrollbar-thumb        { background: var(--sop-dim); border: 1px solid var(--sop-bg); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover  { background: var(--sop-primary); border-color: var(--sop-primary); box-shadow: 0 0 8px var(--sop-primary); }
+.console-log::-webkit-scrollbar  { width: 5px; }
+
+.cropper-view-box,
+.cropper-face  { border-radius: 0 !important; }
+.cropper-line,
+.cropper-point { background-color: var(--sop-primary) !important; }
+.cropper-view-box { outline-color: var(--sop-primary) !important; outline-width: 2px !important; }
+
+.pro-badge   { color: #ffd700; font-weight: bold; margin-right: 12px; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); font-size: 16px; }
+.guest-badge { color: #888; font-weight: bold; margin-right: 12px; font-size: 16px; }
+
+/* --- 18. SCHERMATA DI LOGIN --- */
+.login-body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    flex-direction: column;
+}
+.login-wrapper { width: 100%; max-width: 480px; z-index: 10; position: relative; padding: 20px; }
+.login-box     { padding: 40px; width: 100%; background: rgba(10, 10, 10, 0.95); }
+.login-header  { text-align: center; border-bottom: 2px solid var(--sop-primary); padding-bottom: 15px; margin-bottom: 25px; }
+.login-header h1   { font-size: 28px; margin: 0 0 5px 0; color: var(--sop-text); letter-spacing: 2px; }
+.login-header .sub { color: var(--sop-alert); font-weight: bold; letter-spacing: 4px; font-size: 14px; }
+.login-status      { text-align: center; color: var(--sop-primary); margin-bottom: 25px; font-size: 14px; letter-spacing: 1px; }
+.error-console     { background: rgba(255, 51, 51, 0.1); border: 1px solid var(--sop-alert); padding: 15px; margin-bottom: 20px; }
+.error-line        { color: var(--sop-alert); font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+
+.login-form       { display: flex; flex-direction: column; gap: 20px; }
+.login-form label { display: block; text-align: left; font-size: 14px; color: #888; margin-bottom: 8px; letter-spacing: 1.5px; font-weight: bold; }
+.login-form input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--sop-dim);
+    color: var(--sop-text);
+    padding: 12px 15px;
+    font-family: inherit;
+    font-size: 18px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+.login-form input:focus {
+    border-color: var(--sop-primary);
+    box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
+    background: rgba(0, 255, 204, 0.05);
+}
+.login-btn {
+    width: 100%;
+    padding: 15px;
+    font-size: 18px;
+    border-color: var(--sop-primary);
+    color: var(--sop-primary);
+    font-weight: bold;
+    margin-top: 10px;
+    margin-left: 0;
+}

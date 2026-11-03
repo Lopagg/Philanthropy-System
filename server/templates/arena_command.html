@@ -1,0 +1,120 @@
+<!-- ==========================================================================
+     arena_command.html
+     Viste di gestione Arena: Menu Arena, Gestione Squadre, Tracking IN/OUT
+     e Archivio Globale Operatori (Database).
+     ========================================================================== -->
+
+<!-- 1. Sotto-Menu Arena Command -->
+<div id="view-arena-menu" class="view-panel hidden">
+    <div class="monitor-controls">
+        <button type="button" class="back-btn deck-btn" onclick="showView('hub')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; RETURN TO HUB ]</button>
+        <span class="monitor-label">ARENA COMMAND // <span style="color: var(--sop-primary);">MAIN</span></span>
+    </div>
+    <div class="hub-grid">
+        <div class="hub-card" onclick="showView('arena-manage')">
+            <div class="card-icon">👥</div>
+            <div class="card-content">
+                <h3>TEAM MANAGEMENT</h3>
+                <p>Gestione roster, rinomina, spostamento e rimozione operatori.</p>
+                <span class="card-action">[ ACCESS ]</span>
+            </div>
+        </div>
+        <div class="hub-card" onclick="showView('arena-tracking')">
+            <div class="card-icon">📍</div>
+            <div class="card-content">
+                <h3>LIVE TRACKING</h3>
+                <p>Monitoraggio presenze in campo e area di sosta (IN / OUT).</p>
+                <span class="card-action">[ ACCESS ]</span>
+            </div>
+        </div>
+        <div class="hub-card" onclick="showView('arena-db')">
+            <div class="card-icon">🗄️</div>
+            <div class="card-content">
+                <h3>PLAYER DATABASE</h3>
+                <p>Archivio globale. Modifica, rinomina o elimina definitivamente i profili operatori.</p>
+                <span class="card-action">[ ACCESS ]</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Vista Gestione Roster Attivo -->
+<div id="view-arena-manage" class="view-panel hidden">
+    <div class="monitor-controls">
+        <div>
+            <button type="button" class="back-btn deck-btn" onclick="showView('arena-menu')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; BACK ]</button>
+            <button type="button" class="deck-btn btn-danger" onclick="clearActiveRoster()" style="margin-bottom: 10px; margin-left: 10px;">[ CLEAR ROSTER ]</button>
+            <button type="button" class="deck-btn btn-warning" onclick="resetDailyWins()" style="margin-bottom: 10px; margin-left: 10px;">[ RESET VITTORIE ]</button>
+            <button type="button" class="deck-btn" onclick="openAddPlayerModal()" style="margin-bottom: 10px; margin-left: 10px; color: var(--sop-primary); border-color: var(--sop-primary);">[ ADD FROM DB ]</button>
+        </div>
+        <span class="monitor-label">STATUS: <span style="color: var(--sop-success);">MANAGEMENT LIVE</span> | OPERATORI TOTALI: <span id="total-op-count" style="color: var(--sop-primary); font-weight: bold; font-size: 16px;">0</span></span>
+    </div>
+    
+    <div class="arena-grid" style="grid-template-rows: 1fr;">
+        <div class="sop-card roster-box team-alpha-box">
+            <div id="header-alpha-manage" class="widget-header arena-header" style="background: rgba(255, 51, 51, 0.2); color: var(--team-a-color);">TEAM A (0)</div>
+            <ul id="roster-alpha-manage" class="roster-list"></ul>
+        </div>
+        <div class="sop-card roster-box team-bravo-box">
+            <div id="header-bravo-manage" class="widget-header arena-header" style="background: rgba(85, 255, 85, 0.2); color: var(--team-b-color);">TEAM B (0)</div>
+            <ul id="roster-bravo-manage" class="roster-list"></ul>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Vista Tracking Operatori IN CAMPO / FUORI -->
+<div id="view-arena-tracking" class="view-panel hidden">
+    <div class="monitor-controls">
+        <button type="button" class="back-btn deck-btn" onclick="showView('arena-menu')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; BACK ]</button>
+        <span class="monitor-label">STATUS: <span style="color: var(--sop-success);">TRACKING LIVE</span> | IN CAMPO: <span id="track-in-count" style="color: var(--sop-primary); font-weight: bold; font-size: 16px;">0</span></span>
+    </div>
+    <div class="arena-grid">
+        <div class="sop-card roster-box">
+            <div id="header-alpha-track-in" class="widget-header arena-header" style="background: rgba(255, 51, 51, 0.2); color: var(--team-a-color);">A IN CAMPO (0)</div>
+            <ul id="track-alpha-in" class="roster-list"></ul>
+            <div id="header-alpha-track-out" class="widget-header arena-header" style="background: rgba(255, 51, 51, 0.05); color: #888; border-top: 1px solid var(--sop-dim);">A FUORI (0)</div>
+            <ul id="track-alpha-out" class="roster-list"></ul>
+        </div>
+        <div class="sop-card roster-box">
+            <div id="header-bravo-track-in" class="widget-header arena-header" style="background: rgba(85, 255, 85, 0.2); color: var(--team-b-color);">B IN CAMPO (0)</div>
+            <ul id="track-bravo-in" class="roster-list"></ul>
+            <div id="header-bravo-track-out" class="widget-header arena-header" style="background: rgba(85, 255, 85, 0.05); color: #888; border-top: 1px solid var(--sop-dim);">B FUORI (0)</div>
+            <ul id="track-bravo-out" class="roster-list"></ul>
+        </div>
+    </div>
+</div>
+
+<!-- 4. Vista Database Globale Giocatori -->
+<div id="view-arena-db" class="view-panel hidden">
+    <div class="monitor-controls">
+        <div>
+            <button type="button" class="back-btn deck-btn" onclick="showView('arena-menu')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; BACK ]</button>
+            <button type="button" class="deck-btn" onclick="openRegistrationModal()" style="margin-bottom: 10px; margin-left: 10px; color: var(--sop-secondary); border-color: var(--sop-secondary);">[ REGISTER NEW TAG ]</button>
+            <button type="button" class="deck-btn btn-danger" onclick="purgeGuests()" style="margin-bottom: 10px; margin-left: 10px;">[ PURGE GUESTS ]</button>
+        </div>
+        <span class="monitor-label">STATUS: <span style="color: var(--sop-success);">DATABASE LIVE</span> | TOTALE ARCHIVIATI: <span id="db-total-count" style="color: var(--sop-primary); font-weight: bold; font-size: 16px;">0</span></span>
+    </div>
+    <div class="arena-grid" style="grid-template-columns: 1fr;">
+        <div class="sop-card roster-box">
+            <div class="widget-header arena-header" style="background: rgba(0, 255, 204, 0.2); color: var(--sop-primary); display: flex; justify-content: space-between; align-items: center;">
+                <span>GLOBAL ARCHIVE</span>
+                <div style="display: flex; gap: 10px; font-size: 14px;">
+                    <input type="text" id="db-search" class="setup-input" style="padding: 5px 10px; width: 220px; font-size: 14px;" placeholder="Cerca Nome o UID...">
+                    <select id="db-filter" class="tactical-select" style="padding: 5px 10px; font-size: 14px; width: 140px;">
+                        <option value="ALL">TUTTI</option>
+                        <option value="PRO">SOLO PRO</option>
+                        <option value="GUEST">SOLO GUEST</option>
+                    </select>
+                    <select id="db-sort" class="tactical-select" style="padding: 5px 10px; font-size: 14px; width: 190px;">
+                        <option value="NAME">ORDINA: A-Z</option>
+                        <option value="GAMES">ORDINA: PARTITE</option>
+                        <option value="WINS">ORDINA: VITTORIE</option>
+                    </select>
+                </div>
+            </div>
+            <ul id="db-list" class="roster-list">
+                <li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">CARICAMENTO DATABASE...</li>
+            </ul>
+        </div>
+    </div>
+</div>

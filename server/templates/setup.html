@@ -1,0 +1,166 @@
+<!-- ==========================================================================
+     setup.html
+     Pannello di configurazione missione (S&D V1/V2 modulare, Domination, TDM).
+     ========================================================================== -->
+<div id="view-setup" class="view-panel hidden">
+    <div class="sop-card setup-panel">
+        <div class="panel-header">
+            <h2>MISSION CONFIGURATION</h2>
+            <button type="button" class="back-btn deck-btn" onclick="showView('hub')">[ CANCEL ]</button>
+        </div>
+
+        <div class="panel-body" style="overflow-y: auto; max-height: 75vh;">
+            
+            <!-- Riepilogo Operatori Pronti per Squadra -->
+            <div class="setup-roster-summary">
+                <div class="setup-roster-team">
+                    <div class="setup-roster-label" id="setup-label-alpha">TEAM ALPHA</div>
+                    <div class="setup-roster-count setup-roster-alpha" id="setup-alpha-count">0/0</div>
+                </div>
+                <div class="setup-roster-team">
+                    <div class="setup-roster-label" id="setup-label-bravo">TEAM BRAVO</div>
+                    <div class="setup-roster-count setup-roster-bravo" id="setup-bravo-count">0/0</div>
+                </div>
+            </div>
+            
+            <!-- Selezione Modalità e Terminale Hardware -->
+            <div class="input-group-tactical" style="margin-bottom: 25px;">
+                <label class="setup-label" for="setup-mode-select">SELECT OPERATION MODE:</label>
+                <select id="setup-mode-select" class="tactical-select">
+                    <option value="sd">SEARCH &amp; DESTROY</option>
+                    <option value="dom">DOMINATION</option>
+                    <option value="tdm">TEAM DEATHMATCH</option>
+                </select>
+            </div>
+
+            <div id="target-selection-row" class="input-group-tactical" style="margin-bottom: 25px;">
+                <label class="setup-label" for="setup-target-select">SELECT TARGET TERMINAL:</label>
+                <select id="setup-target-select" class="tactical-select" onchange="updateUIForTargetVersion()">
+                    <option value="">-- Seleziona un nodo nel Menu Principale --</option>
+                </select>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Parametri Team Deathmatch -->
+            <div id="setup-tdm-params" class="setup-params-group hidden">
+                <h3 style="color: var(--sop-primary); margin-bottom: 20px;">TDM PARAMETERS</h3>
+                <div class="row-inputs" style="margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="tdm-game-dur">GAME DURATION (MIN)</label>
+                        <input type="number" id="tdm-game-dur" class="setup-input" value="15" min="1">
+                    </div>
+                </div>
+                <p style="color: #888; font-size: 12px; margin-top: 10px;">* Team Deathmatch non richiede un terminale fisico. Il server calcolerà il tempo e le eliminazioni in automatico.</p>
+            </div>
+
+            <!-- Parametri Search & Destroy -->
+            <div id="setup-sd-params" class="setup-params-group">
+                <h3 style="color: var(--sop-primary); margin-bottom: 20px;">S&amp;D PARAMETERS</h3>
+                <div class="row-inputs" style="margin-bottom: 20px;">
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="sd-attacker-team" style="color: var(--sop-alert);">ATTACKING TEAM (PLANTS BOMB)</label>
+                        <select id="sd-attacker-team" class="tactical-select">
+                            <option value="ALPHA">TEAM ALPHA</option>
+                            <option value="BRAVO">TEAM BRAVO</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row-inputs" style="margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="sd-game-dur">GAME DURATION (MIN)</label>
+                        <input type="number" id="sd-game-dur" class="setup-input" value="20" min="1">
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="sd-bomb-time">BOMB TIMER (MIN)</label>
+                        <input type="number" id="sd-bomb-time" class="setup-input" value="10" min="1">
+                    </div>
+                </div>
+                
+                <!-- Blocco Parametri Legacy RAT-V1 -->
+                <div id="sd-v1-legacy-params">
+                    <div class="row-inputs" style="margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-arm-time">ARM TIME (SEC)</label>
+                            <input type="number" id="sd-arm-time" class="setup-input" value="5" min="1">
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-defuse-time">DEFUSE TIME (SEC)</label>
+                            <input type="number" id="sd-defuse-time" class="setup-input" value="10" min="1">
+                        </div>
+                    </div>
+                    <div class="row-inputs" style="margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-use-arm-pin">USE ARM PIN</label>
+                            <select id="sd-use-arm-pin" class="tactical-select"><option value="true">YES</option><option value="false">NO</option></select>
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-use-defuse-pin">USE DEFUSE PIN</label>
+                            <select id="sd-use-defuse-pin" class="tactical-select"><option value="true">YES</option><option value="false">NO</option></select>
+                        </div>
+                    </div>
+                    <div class="row-inputs" style="margin-bottom: 20px;">
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-arm-pin">ARM PIN</label>
+                            <input type="number" id="sd-arm-pin" class="setup-input" value="1234">
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-defuse-pin">DEFUSE PIN</label>
+                            <input type="number" id="sd-defuse-pin" class="setup-input" value="4321">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Blocco Sequenze Modulari RAT-V2 -->
+                <div id="sd-v2-modular-params" class="hidden" style="background: rgba(0, 0, 0, 0.2); padding: 15px; border: 1px dashed var(--sop-dim);">
+                    <h4 style="color: var(--sop-text); margin-bottom: 15px; letter-spacing: 2px;">V2 MODULAR SEQUENCE</h4>
+                    
+                    <label class="setup-label">ARMING SEQUENCE (ATTACKERS)</label>
+                    <div id="v2-arm-sequence-container" style="margin-bottom: 15px;"></div>
+                    <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('arm')">+ ADD ARM STEP</button>
+
+                    <label class="setup-label">DEFUSING SEQUENCE (DEFENDERS)</label>
+                    <div id="v2-defuse-sequence-container" style="margin-bottom: 10px;"></div>
+                    <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('defuse')">+ ADD DEFUSE STEP</button>
+
+                    <h5 style="color: var(--sop-dim); margin-top: 15px; margin-bottom: 10px; letter-spacing: 1px;">EXTRA EFFECTS (HARDWARE REQUIRED)</h5>
+                    <div class="row-inputs" style="margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-v2-fx-smoke">ENABLE SMOKE FX</label>
+                            <select id="sd-v2-fx-smoke" class="tactical-select"><option value="false">NO</option><option value="true">YES</option></select>
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-v2-fx-relay">ENABLE 12V RELAY (C4)</label>
+                            <select id="sd-v2-fx-relay" class="tactical-select"><option value="false">NO</option><option value="true">YES</option></select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Parametri Domination -->
+            <div id="setup-dom-params" class="setup-params-group hidden">
+                <h3 style="color: var(--sop-primary); margin-bottom: 20px;">DOMINATION PARAMETERS</h3>
+                <div class="row-inputs" style="margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="dom-game-dur">GAME DURATION (MIN)</label>
+                        <input type="number" id="dom-game-dur" class="setup-input" value="15" min="1">
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="dom-capture-time">CAPTURE TIME (SEC)</label>
+                        <input type="number" id="dom-capture-time" class="setup-input" value="10" min="1">
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="dom-countdown">COUNTDOWN (SEC)</label>
+                        <input type="number" id="dom-countdown" class="setup-input" value="10" min="1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Azioni di Trasmissione e Avvio -->
+            <div class="setup-actions" style="margin-top: 30px; text-align: right;">
+                <button type="button" id="btn-transmit-setup" class="deck-btn" style="border-color: var(--sop-secondary); color: var(--sop-secondary);">[ 1. TRANSMIT CONFIG ]</button>
+                <button type="button" id="btn-start-mission" class="deck-btn disabled" disabled style="border-color: var(--sop-primary); color: var(--sop-primary); font-weight: bold; font-size: 16px; padding: 10px 20px; margin-left: 10px;">[ 2. START MISSION ]</button>
+            </div>
+        </div>
+    </div>
+</div>

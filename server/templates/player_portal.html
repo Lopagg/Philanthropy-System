@@ -1,0 +1,218 @@
+<!-- ==========================================================================
+     player_portal.html
+     Dossier personale dell'Operatore PRO (Statistiche di carriera, Storico
+     ultime 10 partite, cambio Callsign/ASD e upload foto profilo).
+     Ottimizzato anche per lo scorrimento verticale su smartphone.
+     ========================================================================== -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOP NODE // {{ player.alias }}</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=17">
+    <style>
+        /* Abilita lo scorrimento verticale su mobile e schermi compatti */
+        body.portal-body {
+            height: auto;
+            min-height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .portal-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            z-index: 10;
+            position: relative;
+        }
+        .portal-grid {
+            grid-template-columns: 300px 1fr;
+            gap: 40px;
+        }
+        @media (max-width: 768px) {
+            .portal-container { margin: 15px auto; padding: 12px; }
+            .portal-grid      { grid-template-columns: 1fr !important; gap: 25px !important; padding: 20px !important; }
+            .monitor-controls { flex-direction: column; align-items: flex-start; gap: 12px; }
+        }
+    </style>
+</head>
+<body class="sop-theme portal-body">
+    <div class="tactical-background"><div class="grid-overlay"></div><div class="scan-line"></div></div>
+
+    <div class="portal-container">
+        <div class="monitor-controls" style="margin-bottom: 20px;">
+            <div>
+                <a href="{{ url_for('logout') }}" class="deck-btn btn-danger" style="text-decoration: none; margin-left: 0;">[ LOGOUT ]</a>
+                <button type="button" class="deck-btn" style="color: var(--sop-primary); border-color: var(--sop-primary);" onclick="renameMe()">[ CAMBIA NOME ]</button>
+            </div>
+            <span class="monitor-label" style="font-size: 16px;">PERSONAL DOSSIER // <span style="color: var(--sop-primary);" id="display-alias">{{ player.alias }}</span></span>
+        </div>
+
+        <div class="sop-card profile-modal" style="width: 100%; border-color: #ffd700; box-shadow: 0 0 20px rgba(255,215,0,0.1);">
+            <div class="panel-header" style="border-bottom: 2px solid #ffd700; padding: 15px; margin-bottom: 0;">
+                <h2 style="margin: 0; color: #ffd700; letter-spacing: 2px; font-size: 24px;" id="dossier-title">[★ PRO] STATUS // {{ player.alias }}</h2>
+            </div>
+            
+            <div class="panel-body profile-grid portal-grid">
+                
+                <!-- Colonna Foto Profilo -->
+                <div class="profile-photo-col">
+                    <div class="photo-frame" style="height: 350px;">
+                        {% set photo_url = url_for('static', filename='uploads/' + player.photo) if player.photo else "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBmaWxsPSIjMzMzIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjM1IiByPSIyMCIvPjxwYXRoIGQ9Ik0yMCA5MCBRMjAgNjAgNTAgNjAgUTgwIDYwIDgwIDkwIFoiLz48L3N2Zz4=" %}
+                        <img id="my-photo" src="{{ photo_url }}" alt="Foto Operatore">
+                    </div>
+                    
+                    <input type="file" id="photo-upload" accept="image/*" class="hidden">
+                    <button type="button" class="deck-btn full-width" style="margin: 15px 0 0 0; color: #ffd700; border-color: #ffd700;" onclick="document.getElementById('photo-upload').click()">[ CARICA NUOVA FOTO ]</button>
+                    <div id="upload-status" style="text-align: center; margin-top: 10px; font-size: 12px; color: var(--sop-success);"></div>
+                </div>
+
+                <!-- Colonna Dati Anagrafici, Statistiche e Storico -->
+                <div class="profile-info-col">
+                    <div style="background: rgba(0,0,0,0.4); padding: 25px; border: 1px solid var(--sop-dim); margin-bottom: 25px;">
+                        <div class="data-row" style="margin-bottom: 15px; border-bottom: 1px dashed var(--sop-dim); padding-bottom: 15px;">
+                            <span class="label" style="color: #888;">SQUADRA (ASD):</span> 
+                            <span class="value" style="font-weight: bold; font-size: 20px;" id="display-asd">{{ player.asd_team }}</span>
+                            <span class="action-btn" onclick="editAsd()" style="font-size: 14px; margin-left: 15px; color: var(--sop-primary);">[EDIT]</span>
+                        </div>
+                        
+                        <div class="data-row" style="margin-bottom: 15px;"><span class="label" style="color: #888;">USERNAME:</span> <span class="value" style="font-family: monospace; color: var(--sop-primary);">{{ player.username }}</span></div>
+                        <div class="data-row" style="margin-bottom: 15px;"><span class="label" style="color: #888;">UID TESSERA:</span> <span class="value" style="font-family: monospace;">{{ player.uid }}</span></div>
+                        <div class="data-row"><span class="label" style="color: #888;">REGISTRATO IL:</span> <span class="value">{{ player.registered_at }}</span></div>
+                        <div class="data-row" style="margin-top: 15px; border-top: 1px dashed var(--sop-dim); padding-top: 15px;">
+                            <span class="label" style="color: #888;">ULTIMA GIOCATA:</span> 
+                            <span class="value" style="color: var(--sop-primary);">
+                                {% if history %}
+                                    {{ history[0].match_date }}
+                                {% else %}
+                                    MAI IN CAMPO
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                        <div class="stat-box" style="padding: 25px;">
+                            <span class="stat-lbl">PARTITE GIOCATE</span>
+                            <span class="stat-val" style="color: var(--sop-primary); font-size: 45px;">{{ player.games_played }}</span>
+                        </div>
+                        <div class="stat-box" style="padding: 25px;">
+                            <span class="stat-lbl">VITTORIE (W)</span>
+                            <span class="stat-val" style="color: var(--sop-success); font-size: 45px;">{{ player.wins }}</span>
+                        </div>
+                        <div class="stat-box" style="padding: 25px;">
+                            <span class="stat-lbl">MORTI (D)</span>
+                            <span class="stat-val" style="color: var(--sop-alert); font-size: 45px;">{{ player.deaths }}</span>
+                        </div>
+                        <div class="stat-box" style="padding: 25px;">
+                            <span class="stat-lbl">WIN RATE</span>
+                            <span class="stat-val" style="color: #aaa; font-size: 45px;">{{ player.win_rate }}%</span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 30px; background: rgba(0,0,0,0.4); border: 1px solid var(--sop-dim); padding: 15px;">
+                        <span style="font-size: 14px; color: #888; letter-spacing: 2px; font-weight: bold; display: block; margin-bottom: 15px; border-bottom: 1px solid var(--sop-dim); padding-bottom: 5px;">
+                            STORICO RECENTE (ULTIME 10)
+                        </span>
+                        
+                        {% if history %}
+                            <ul style="list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto;">
+                                {% for match in history %}
+                                    <li style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(255,255,255,0.1); padding: 10px 0; font-size: 14px;">
+                                        <span style="color: #aaa; width: 40%;">{{ match.match_date }}</span>
+                                        <span style="color: var(--sop-text); width: 35%;">{{ match.game_mode }}</span>
+                                        
+                                        {% if match.result == 'VITTORIA' %}
+                                            <span style="color: var(--sop-success); font-weight: bold; width: 25%; text-align: right;">VITTORIA</span>
+                                        {% elif match.result == 'SCONFITTA' %}
+                                            <span style="color: var(--sop-alert); font-weight: bold; width: 25%; text-align: right;">SCONFITTA</span>
+                                        {% else %}
+                                            <span style="color: #ff9900; font-weight: bold; width: 25%; text-align: right;">PAREGGIO</span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div style="text-align: center; color: var(--sop-dim); padding: 20px;">Nessuna registrazione tattica disponibile.</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function renameMe() {
+            const currentName = document.getElementById('display-alias').innerText;
+            const newName = prompt("Inserisci il tuo nuovo Nome Operatore:", currentName);
+            if (newName && newName.trim() !== "" && newName.trim().toUpperCase() !== currentName) {
+                const formData = new FormData();
+                formData.append('new_name', newName.trim());
+                fetch("{{ url_for('rename_player_portal') }}", { method: 'POST', body: formData })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            document.getElementById('display-alias').innerText = data.new_name;
+                            document.getElementById('dossier-title').innerText = `[★ PRO] STATUS // ${data.new_name}`;
+                        } else {
+                            alert("Errore durante il salvataggio.");
+                        }
+                    })
+                    .catch(() => alert("Errore di rete durante il salvataggio."));
+            }
+        }
+
+        function editAsd() {
+            const currentAsd = document.getElementById('display-asd').innerText;
+            const newAsd = prompt("Inserisci il nome della tua SQUADRA o ASD (lascia vuoto per 'NESSUNA'):", currentAsd === 'NESSUNA' ? '' : currentAsd);
+            if (newAsd !== null) {
+                const formData = new FormData();
+                formData.append('new_asd', newAsd.trim());
+                fetch("{{ url_for('edit_asd_portal') }}", { method: 'POST', body: formData })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            document.getElementById('display-asd').innerText = data.new_asd;
+                        } else {
+                            alert("Errore durante il salvataggio.");
+                        }
+                    })
+                    .catch(() => alert("Errore di rete durante il salvataggio."));
+            }
+        }
+
+        document.getElementById('photo-upload').addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                const statusLabel = document.getElementById('upload-status');
+                statusLabel.style.color = '#888';
+                statusLabel.textContent = "CARICAMENTO IN CORSO...";
+
+                const formData = new FormData();
+                formData.append('photo', this.files[0]);
+
+                fetch("{{ url_for('upload_photo_player') }}", { method: 'POST', body: formData })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            document.getElementById('my-photo').src = `/static/uploads/${data.filename}?t=${new Date().getTime()}`;
+                            statusLabel.style.color = 'var(--sop-success)';
+                            statusLabel.textContent = "FOTO AGGIORNATA";
+                        } else {
+                            statusLabel.style.color = 'var(--sop-alert)';
+                            statusLabel.textContent = "ERRORE NEL CARICAMENTO";
+                        }
+                    })
+                    .catch(() => {
+                        statusLabel.style.color = 'var(--sop-alert)';
+                        statusLabel.textContent = "ERRORE DI RETE";
+                    });
+                this.value = '';
+            }
+        });
+    </script>
+</body>
+</html>
