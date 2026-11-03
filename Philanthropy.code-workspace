@@ -13,14 +13,12 @@
             "path": "firmware/rat-v1"
         },
         {
+            "name": "🎛️ Firmware Kiosk-V1 (RFID)",
+            "path": "firmware/kiosk-v1"
+        },
+        {
             "name": "📦 Root & Deploy Scripts",
-            "path": ".",
-            "settings": {
-                "files.exclude": {
-                    "firmware": true,
-                    "server": true
-                }
-            }
+            "path": "."
         }
     ],
     "settings": {
