@@ -21,7 +21,7 @@
 // CONFIGURAZIONE NODO E VARIABILI GLOBALI
 // ============================================================================
 
-const char* MQTT_SERVER = "192.168.1.4";
+const char* MQTT_SERVER = "zuluserver.ddns.net";
 const char* DEVICE_ID   = "RAT-V2";
 
 HardwareManager hardware;
