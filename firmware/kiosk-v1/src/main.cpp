@@ -9,7 +9,7 @@
 #include <ArduinoOTA.h>
 
 // --- CONFIGURAZIONE RETE ---
-const char* server_ip = "192.168.1.4"; 
+const char* server_ip = "zuluserver.ddns.net"; 
 const int mqtt_port = 1883;            
 
 WiFiClient espClient;
