@@ -25,9 +25,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-
+from werkzeug.middleware.proxy_fix import ProxyFix
 import db_manager
 import game_engine
 
@@ -39,6 +37,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config['SECRET_KEY'] = 'philanthropy_secret_key_change_in_prod'
 
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
@@ -607,7 +606,6 @@ def handle_request_mission_start(data):
 
 
 @socketio.on('set_all_players_in')
-@login_required
 def handle_set_all_players_in():
     db_manager.set_all_players_in()
     socketio.emit('roster_update', db_manager.get_full_roster())
@@ -677,6 +675,11 @@ def handle_socket_command(data):
                     "type": "SETTINGS_UPDATE",
                     "payload": rules_payload
                 }})
+                return
+
+            elif c == "SET_SD_SETTINGS":
+                game_engine.mission_control.sd_settings = cmd_obj
+                game_engine.publish_sd_settings_to_target(target_id, cmd_obj)
                 return
 
             elif c == "SET_DOM_SETTINGS":

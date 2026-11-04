@@ -283,7 +283,7 @@ def set_all_players_in():
     """Imposta lo stato di tutti gli operatori presenti nel roster attivo su 'IN'."""
     with get_db_connection() as conn:
         c = conn.cursor()
-        c.execute("UPDATE roster SET status = 'IN'")
+        c.execute("UPDATE active_roster SET status = 'IN'")
         conn.commit()
 
 
