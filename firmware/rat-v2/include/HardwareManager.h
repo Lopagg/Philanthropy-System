@@ -35,7 +35,7 @@
 // VERSIONE FIRMWARE E FUSO ORARIO
 // ============================================================================
 
-#define FIRMWARE_VERSION "v0.0.2"
+#define FIRMWARE_VERSION "v0.0.3"
 #define TIMEZONE_ITALY   "CET-1CEST,M3.5.0,M10.5.0/3"
 #define NTP_SERVER_1     "pool.ntp.org"
 #define NTP_SERVER_2     "time.nist.gov"
