@@ -669,6 +669,56 @@ def handle_socket_command(data):
     except Exception as e:
         logger.error(f"[ERROR SOCKET CMD] {e}")
 
+import hmac
+import hashlib
+import subprocess
+
+# Imposta una tua chiave segreta (la stessa che inserirai su GitHub)
+GITHUB_WEBHOOK_SECRET = os.environ.get('ZULU_WEBHOOK_SECRET', 'philanthropy_webhook_secret_2026')
+
+@app.route('/api/github-webhook', methods=['POST'])
+def github_webhook():
+    signature = request.headers.get('X-Hub-Signature-256', '')
+    if not signature.startswith('sha256='):
+        return jsonify({"status": "unauthorized"}), 403
+
+    mac = hmac.new(GITHUB_WEBHOOK_SECRET.encode('utf-8'), msg=request.data, digestmod=hashlib.sha256)
+    if not hmac.compare_digest(mac.hexdigest(), signature.split('=')[1]):
+        return jsonify({"status": "invalid signature"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    # Esegue il deploy solo sui push verso il branch main
+    if payload.get('ref') and payload.get('ref') != 'refs/heads/main':
+        return jsonify({"status": "ignored branch"}), 200
+
+    repo_root = os.path.abspath(os.path.join(app.root_path, '..'))
+    subprocess.run(['git', 'pull', 'origin', 'main'], cwd=repo_root)
+
+    # Controlla se sono stati modificati file del server o solo firmware/asset
+    changed_files = []
+    for commit in payload.get('commits', []):
+        changed_files.extend(commit.get('added', []) + commit.get('modified', []) + commit.get('removed', []))
+
+    server_code_changed = any(
+        f.startswith('server/') and not f.startswith('server/static/firmware/')
+        for f in changed_files
+    )
+
+    # Aggiorna subito il manifesto OTA su tutti i browser connessi
+    socketio.emit('ota_manifest_update', get_ota_manifest())
+
+    if server_code_changed or not changed_files:
+        logger.info("[WEBHOOK] Modifiche al codice server rilevate: riavvio automatico in corso...")
+        def restart_after_response():
+            time.sleep(1)
+            socketio.emit('server_restarting')
+            time.sleep(0.5)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        socketio.start_background_task(restart_after_response)
+        return jsonify({"status": "updated_and_restarting"}), 200
+
+    logger.info("[WEBHOOK] Aggiornato solo il pacchetto Firmware OTA (nessun riavvio server necessario).")
+    return jsonify({"status": "ota_updated_live"}), 200
 
 @socketio.on('server_reset_request')
 @login_required
