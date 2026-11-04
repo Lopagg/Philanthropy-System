@@ -223,10 +223,12 @@ function updateInspectorData(device) {
     // Stato pulsante OTA Update
     const otaBtn = document.getElementById('ota-update-btn');
     if (otaBtn) {
-        const isVirtual = (device.id === 'SERVER-TDM' || device.mode === 'KIOSK');
+        const isVirtual = (device.id === 'SERVER-TDM');
         otaBtn.style.display = isVirtual ? 'none' : 'block';
+        const isKiosk = (device.mode === 'KIOSK' || (device.id && device.id.includes('KIOSK')));
         const manifest = window.__zuluOtaManifest || {};
-        const latestVer = isV2 ? (manifest['rat-v2']?.version) : (manifest['rat-v1']?.version);
+        const fwKey = isV2 ? 'rat-v2' : (isKiosk ? 'kiosk-v1' : 'rat-v1');
+        const latestVer = manifest[fwKey]?.version;
 
         if (latestVer && device.version && device.version !== latestVer) {
             otaBtn.textContent = `[ UPDATE OTA AVAILABLE: ${latestVer} ]`;

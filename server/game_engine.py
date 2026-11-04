@@ -652,7 +652,10 @@ def on_mqtt_message(client, userdata, msg):
                             mission_control.start_mission(mode, target, duration=dur)
                             socketio.emit('mission_start_success')
                 elif cmd_str == "FORCE_END_GAME":
-                    mission_control.force_stop_mission()
+                     mission_control.force_stop_mission()
+                elif cmd_str == "CLOSE_MISSION":
+                     mission_control.close_and_dismiss_mission()
+                
 
                 socketio.emit('kiosk_hardware_cmd', {'cmd': cmd_str})
             return

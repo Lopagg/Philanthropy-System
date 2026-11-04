@@ -638,15 +638,21 @@ def handle_socket_command(data):
                 return
             elif c == "TRIGGER_OTA":
                 manifest = get_ota_manifest()
-                fw_key = "rat-v2" if "V2" in str(target_id).upper() else "rat-v1"
-                fw_file = manifest.get(fw_key, {}).get("file", f"{fw_key}.bin")
-                host_ip = request.host.split(':')[0]
-                ota_url = f"http://{host_ip}:5000/static/firmware/{fw_file}"
-                game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps({
-                    "cmd": "OTA_HTTP",
-                    "url": ota_url
-                }), qos=1)
-                return
+                tid_upper = str(target_id).upper()
+                if "V2" in tid_upper:
+                    fw_key = "rat-v2"
+                elif "KIOSK" in tid_upper:
+                    fw_key = "kiosk-v1"
+                else:
+                    fw_key = "rat-v1"
+            fw_file = manifest.get(fw_key, {}).get("file", f"{fw_key}.bin")
+            host_ip = request.host.split(':')[0]
+            ota_url = f"http://{host_ip}:5000/static/firmware/{fw_file}"
+            game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps({
+                "cmd": "OTA_HTTP",
+                "url": ota_url
+            }), qos=1)
+            return
 
         if target_id == "BROADCAST_ENV":
             game_engine.mqtt_client.publish("zulu/cmd/broadcast", cmd_str)
