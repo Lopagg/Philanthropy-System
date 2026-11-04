@@ -582,7 +582,7 @@ def handle_request_mission_start(data):
     force = data.get('force', False)
     settings = data.get('settings')
 
-    if mode == 'sd' and isinstance(settings, dict):
+    if mode in ['sd', 'dom'] and isinstance(settings, dict):
         game_engine.mission_control.sd_settings = settings
     
     players = db_manager.get_active_roster_status()
@@ -684,8 +684,7 @@ def handle_socket_command(data):
 
             elif c == "SET_DOM_SETTINGS":
                 game_engine.mission_control.sd_settings = cmd_obj
-                if target_id:
-                    game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", cmd_str)
+                game_engine.publish_dom_settings_to_target(target_id, cmd_obj)
                 return
 
             elif c == "SET_TDM_SETTINGS":

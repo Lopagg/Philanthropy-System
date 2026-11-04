@@ -45,14 +45,29 @@ def build_force_win_payload(mc, winner_team_id, reason_str):
     """
     Costruisce il comando FORCE_WIN contenente sia i campi estesi per RAT-V2
     (nome custom fazione, colore RGB custom, motivo vittoria) sia il campo legacy per RAT-V1.
+    Supporta anche il verdetto DRAW (pareggio).
     """
+    if winner_team_id == "DRAW":
+        return {
+            "cmd": "FORCE_WIN",
+            "winner": "DRAW",
+            "winner_team_id": "DRAW",
+            "winner_name": "PAREGGIO",
+            "winner_color": [255, 153, 0],
+            "reason": reason_str
+        }
+
     config = db_manager.get_factions_config()
     team_cfg = config.get(winner_team_id, {})
     winner_custom_name = team_cfg.get('name', winner_team_id)
     default_hex = '#ff3333' if winner_team_id == 'ALPHA' else '#55ff55'
     winner_rgb = get_pure_rgb(team_cfg.get('color', default_hex))
     
-    rat_legacy_winner = "ALPHA" if winner_team_id == mc.sd_attacker_team else "BRAVO"
+    if mc.mode == 'sd':
+        rat_legacy_winner = "ALPHA" if winner_team_id == mc.sd_attacker_team else "BRAVO"
+    else:
+        rat_legacy_winner = winner_team_id
+
     return {
         "cmd": "FORCE_WIN",
         "winner": rat_legacy_winner,
@@ -152,6 +167,31 @@ def publish_sd_settings_to_target(target_id, cmd_obj):
             "defuse_pin": str(cmd_obj.get("defuse_pin", "4321")),
             "use_arm_pin": use_arm,
             "use_defuse_pin": use_defuse
+        }
+        mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps(flat_payload), qos=1)
+
+def publish_dom_settings_to_target(target_id, cmd_obj):
+    """Invia il pacchetto SET_DOM_SETTINGS formattato per RAT-V2 (sequenze modulari) o RAT-V1 (legacy)."""
+    if not target_id or target_id in ["SERVER-ROUTER", "SERVER-TDM"]:
+        return
+    if "alpha_seq" in cmd_obj or "bravo_seq" in cmd_obj:
+        a_seq = cmd_obj.get("alpha_seq", [{"type": "HOLD", "val_num": 10}])
+        b_seq = cmd_obj.get("bravo_seq", a_seq)
+        v2_payload = {
+            "cmd": "SET_DOM_SETTINGS",
+            "duration": int(cmd_obj.get("duration", cmd_obj.get("game_duration", 15))),
+            "fx_smoke": bool(cmd_obj.get("fx_smoke", False)),
+            "fx_relay": bool(cmd_obj.get("fx_relay", False)),
+            "alpha_seq": resolve_rfid_sequence_for_rat(a_seq, "ALPHA"),
+            "bravo_seq": resolve_rfid_sequence_for_rat(b_seq, "BRAVO")
+        }
+        mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps(v2_payload), qos=1)
+    else:
+        flat_payload = {
+            "cmd": "SET_DOM_SETTINGS",
+            "duration": int(cmd_obj.get("duration", cmd_obj.get("game_duration", 15))),
+            "capture_time": int(cmd_obj.get("capture_time", 10)),
+            "countdown": int(cmd_obj.get("countdown", 10))
         }
         mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps(flat_payload), qos=1)
 
@@ -328,6 +368,177 @@ class SDEngine(BaseGameMode):
         elif event_name == 'BOMB_DEFUSED':
             self._conclude_match(mc.sd_defender_team, "BOMBA DISINNESCATA!", bomb_time_override=None)
 
+class DominationEngine(BaseGameMode):
+    """
+    Motore autoritativo per la modalità Dominio (Domination).
+    - Conta a 1 Hz il tempo di possesso di ciascuna fazione (score_a, score_b).
+    - Riceve dal RAT lo stato di cattura/possesso (NEUTRAL, CAPTURING A/B, ALPHA/BRAVO OWNED).
+    - Decreta la vittoria per scadenza tempo (maggior possesso) o per eliminazione squadra.
+    """
+    def __init__(self, mission_ctrl):
+        super().__init__(mission_ctrl)
+        self.alpha_zero_ticks = 0
+        self.bravo_zero_ticks = 0
+        self.grace_period = 5
+        self.owner = "NEUTRAL"       # "NEUTRAL", "ALPHA", "BRAVO"
+        self.display_state = "NEUTRAL"
+        self.capture_prog = 0
+        self.score_a = 0
+        self.score_b = 0
+        self.last_win_cmd = None
+
+    def set_zone_owner(self, team_id):
+        """Imposta la fazione proprietaria della zona ('ALPHA' o 'BRAVO')."""
+        if team_id in ["ALPHA", "BRAVO"]:
+            self.owner = team_id
+            self.display_state = f"{team_id} OWNED"
+            self.capture_prog = 0
+            logger.info(f"[DOMINATION] Zona conquistata da {team_id}! (A:{self.score_a}s B:{self.score_b}s)")
+
+    def sync_from_rat_telemetry(self, payload):
+        """Sincronizza lo stato di cattura e il proprietario a partire da DOM_UPDATE del RAT."""
+        raw_state = str(payload.get("state", "")).upper()
+        if "CAPTURE_PROG" in payload or "capture_prog" in payload:
+            self.capture_prog = int(payload.get("capture_prog") or 0)
+
+        if "ALPHA OWNED" in raw_state:
+            self.owner = "ALPHA"
+            self.display_state = "ALPHA OWNED"
+            self.capture_prog = 0
+        elif "BRAVO OWNED" in raw_state:
+            self.owner = "BRAVO"
+            self.display_state = "BRAVO OWNED"
+            self.capture_prog = 0
+        elif "CAPTURING A" in raw_state:
+            self.display_state = "CAPTURING A"
+        elif "CAPTURING B" in raw_state:
+            self.display_state = "CAPTURING B"
+        elif raw_state == "NEUTRAL":
+            self.owner = "NEUTRAL"
+            self.display_state = "NEUTRAL"
+            self.capture_prog = 0
+
+        # Per nodi RAT-V1 legacy che calcolavano i punti solo localmente, allinea se maggiori
+        if not self.mc.target_v2:
+            if isinstance(payload.get("score_a"), int) and payload["score_a"] > self.score_a:
+                self.score_a = payload["score_a"]
+            if isinstance(payload.get("score_b"), int) and payload["score_b"] > self.score_b:
+                self.score_b = payload["score_b"]
+
+    def _conclude_match(self, winner_team_id, reason_str):
+        """Chiude la partita di Dominio, invia FORCE_WIN al RAT, suona la sirena e salva le statistiche."""
+        mc = self.mc
+        end_state_str = "DRAW" if winner_team_id == "DRAW" else f"{winner_team_id} WINS"
+        mc.state = end_state_str
+        cmd_to_send = build_force_win_payload(mc, winner_team_id, reason_str)
+        cmd_to_send["score_a"] = self.score_a
+        cmd_to_send["score_b"] = self.score_b
+        self.last_win_cmd = cmd_to_send
+
+        try:
+            mqtt_client.publish(f"zulu/cmd/{mc.target_id}", json.dumps(cmd_to_send), qos=1)
+        except Exception as e:
+            logger.error(f"[MQTT ERROR] Impossibile inviare FORCE_WIN Domination: {e}")
+
+        registry.update_telemetry(mc.target_id, {
+            "state": end_state_str,
+            "score_a": self.score_a,
+            "score_b": self.score_b,
+            "capture_prog": 0
+        }, end_state_str)
+
+        trigger_end_match_sequence(end_state_str)
+
+        doc = {
+            "id": mc.target_id,
+            "type": "DOM_UPDATE",
+            "payload": {
+                "mode": "DOMINATION",
+                "state": end_state_str,
+                "game_time": mc.global_time_left,
+                "score_a": self.score_a,
+                "score_b": self.score_b,
+                "capture_prog": 0
+            }
+        }
+        if socketio:
+            socketio.emit('esp_event', {"parsed_data": doc})
+
+    def tick(self, alpha_in, bravo_in):
+        mc = self.mc
+        if mc.global_time_left > 0:
+            mc.global_time_left -= 1
+
+        # Incrementa il tempo di possesso della squadra che detiene attualmente la zona
+        if self.owner == "ALPHA":
+            self.score_a += 1
+        elif self.owner == "BRAVO":
+            self.score_b += 1
+
+        self.alpha_zero_ticks = (self.alpha_zero_ticks + 1) if alpha_in == 0 else 0
+        self.bravo_zero_ticks = (self.bravo_zero_ticks + 1) if bravo_in == 0 else 0
+
+        winner_team_id = None
+        reason_str = ""
+
+        if mc.global_time_left <= 0:
+            if self.score_a > self.score_b:
+                winner_team_id = "ALPHA"
+                reason_str = "TEMPO SCADUTO!"
+            elif self.score_b > self.score_a:
+                winner_team_id = "BRAVO"
+                reason_str = "TEMPO SCADUTO!"
+            else:
+                winner_team_id = "DRAW"
+                reason_str = "PAREGGIO!"
+        elif self.alpha_zero_ticks >= self.grace_period and self.bravo_zero_ticks >= self.grace_period:
+            winner_team_id = "DRAW"
+            reason_str = "SQUADRE ELIMINATE!"
+        elif self.alpha_zero_ticks >= self.grace_period and bravo_in > 0:
+            winner_team_id = "BRAVO"
+            reason_str = "SQUADRA ELIMINATA!"
+        elif self.bravo_zero_ticks >= self.grace_period and alpha_in > 0:
+            winner_team_id = "ALPHA"
+            reason_str = "SQUADRA ELIMINATA!"
+
+        if winner_team_id:
+            self._conclude_match(winner_team_id, reason_str)
+        else:
+            doc = {
+                "id": mc.target_id,
+                "type": "DOM_UPDATE",
+                "payload": {
+                    "mode": "DOMINATION",
+                    "state": self.display_state,
+                    "game_time": mc.global_time_left,
+                    "score_a": self.score_a,
+                    "score_b": self.score_b,
+                    "capture_prog": self.capture_prog
+                }
+            }
+            if socketio:
+                socketio.emit('esp_event', {"parsed_data": doc})
+
+    def handle_event(self, device_id, payload):
+        mc = self.mc
+        if mc.state != "ACTIVE":
+            if self.last_win_cmd:
+                try:
+                    mqtt_client.publish(f"zulu/cmd/{mc.target_id}", json.dumps(self.last_win_cmd), qos=1)
+                except Exception:
+                    pass
+            return
+
+        event_name = payload.get('event')
+        if event_name == 'ZONE_CAPTURED_ALPHA':
+            self.set_zone_owner("ALPHA")
+        elif event_name == 'ZONE_CAPTURED_BRAVO':
+            self.set_zone_owner("BRAVO")
+        elif event_name == 'ZONE_NEUTRAL':
+            self.owner = "NEUTRAL"
+            self.display_state = "NEUTRAL"
+            self.capture_prog = 0
+
 
 # =============================================================================
 # CONTROLLER CENTRALE DI MISSIONE E REGISTRO DISPOSITIVI
@@ -367,6 +578,8 @@ class MissionController:
                 self.sd_attacker_team = self.sd_settings.get('attacker', "ALPHA")
                 self.sd_defender_team = "BRAVO" if self.sd_attacker_team == "ALPHA" else "ALPHA"
                 self.active_engine = SDEngine(self)
+            elif mode == 'dom':
+                self.active_engine = DominationEngine(self)
             elif mode == 'tdm':
                 self.active_engine = TDMEngine(self)
             else:
@@ -398,6 +611,8 @@ class MissionController:
 
                 if mode == 'sd' and self.sd_settings and not self.target_v2:
                     publish_sd_settings_to_target(target_id, self.sd_settings)
+                elif mode == 'dom' and self.sd_settings and not self.target_v2:
+                    publish_dom_settings_to_target(target_id, self.sd_settings)
                 
                 start_payload = {"cmd": "START_SD_GAME" if mode == 'sd' else "START_DOM_GAME"}
                 if mode == 'sd' and self.sd_settings:
@@ -408,14 +623,25 @@ class MissionController:
                         start_payload["arm_seq"] = resolve_rfid_sequence_for_rat(self.sd_settings.get("arm_seq", []), self.sd_attacker_team)
                     if "defuse_seq" in self.sd_settings:
                         start_payload["defuse_seq"] = resolve_rfid_sequence_for_rat(self.sd_settings.get("defuse_seq", []), self.sd_defender_team)
+                elif mode == 'dom' and self.sd_settings:
+                    start_payload["duration"] = int(duration)
+                    start_payload["fx_smoke"] = bool(self.sd_settings.get("fx_smoke", False))
+                    start_payload["fx_relay"] = bool(self.sd_settings.get("fx_relay", False))
+                    if "alpha_seq" in self.sd_settings:
+                        a_seq = self.sd_settings.get("alpha_seq", [{"type": "HOLD", "val_num": 10}])
+                        b_seq = self.sd_settings.get("bravo_seq", a_seq)
+                        start_payload["alpha_seq"] = resolve_rfid_sequence_for_rat(a_seq, "ALPHA")
+                        start_payload["bravo_seq"] = resolve_rfid_sequence_for_rat(b_seq, "BRAVO")
+
                 mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps(start_payload), qos=1)
                 
-                registry.update_telemetry(target_id, {"state": "SAFE"}, "SAFE")
+                initial_state = "SAFE" if mode == 'sd' else "NEUTRAL"
+                registry.update_telemetry(target_id, {"state": initial_state}, initial_state)
                 trigger_siren("SIREN_LONG")
 
                 if socketio:
                     mode_name = "SEARCH_AND_DESTROY" if mode == 'sd' else "DOMINATION"
-                    rules_payload = dict(self.sd_settings) if mode == 'sd' else {}
+                    rules_payload = dict(self.sd_settings) if isinstance(self.sd_settings, dict) else {}
                     rules_payload["mode"] = mode_name
                     rules_payload["game_duration"] = duration
                     
@@ -426,9 +652,12 @@ class MissionController:
                         "type": "SD_UPDATE" if mode == 'sd' else "DOM_UPDATE",
                         "payload": {
                             "mode": mode_name,
-                            "state": "SAFE" if mode == 'sd' else "NEUTRAL",
+                            "state": initial_state,
                             "game_time": self.global_time_left,
                             "bomb_time": None,
+                            "score_a": 0,
+                            "score_b": 0,
+                            "capture_prog": 0,
                             "arm_prog": 0,
                             "def_prog": 0
                         }
@@ -817,6 +1046,13 @@ def on_mqtt_message(client, userdata, msg):
                     elif raw_state == 'CT WINS':
                         raw_state = f"{mission_control.sd_defender_team} WINS"
                     payload['state'] = raw_state
+
+                elif mission_control.mode == 'dom' and isinstance(mission_control.active_engine, DominationEngine):
+                    mission_control.active_engine.sync_from_rat_telemetry(payload)
+                    payload['score_a'] = mission_control.active_engine.score_a
+                    payload['score_b'] = mission_control.active_engine.score_b
+                    payload['state'] = mission_control.active_engine.display_state
+                    raw_state = payload['state']
 
                 payload['game_time'] = mission_control.global_time_left
                 old_state = registry.devices[device_id].get("game_state", "STANDBY")
