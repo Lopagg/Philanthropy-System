@@ -814,6 +814,9 @@ if (!window.__zuluMainInitialized) {
         const btn = document.getElementById('btn-force-end');
         const action = btn ? (btn.dataset.action || "FORCE_END_GAME") : "FORCE_END_GAME";
         socket.emit('send_command', { target_id: "SERVER-ROUTER", command: { cmd: action } });
+        if (action === "CLOSE_MISSION") {
+            resetMonitorLayout();
+        }
     };
 
     window.saveOperatorNotes = function() {

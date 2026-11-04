@@ -404,6 +404,22 @@ def handle_connect():
     emit('database_update', db_manager.get_all_players())
     emit('ota_manifest_update', get_ota_manifest())
 
+    # Se c'è una missione attiva o già configurata (SET_READY), sincronizza subito /tv e /monitor
+    mc = game_engine.mission_control
+    if mc.active_mission or game_engine.mission_ready_flag:
+        mode_map = {'sd': 'SEARCH_AND_DESTROY', 'dom': 'DOMINATION', 'tdm': 'TEAM_DEATHMATCH'}
+        mode_name = mode_map.get(mc.mode, 'SEARCH_AND_DESTROY')
+        rules_payload = dict(mc.sd_settings) if isinstance(mc.sd_settings, dict) else {}
+        rules_payload['mode'] = mode_name
+        if mc.global_duration > 0:
+            rules_payload['game_duration'] = int(mc.global_duration / 60)
+
+        emit('esp_event', {"parsed_data": {
+            "id": mc.target_id or "SERVER",
+            "type": "SETTINGS_UPDATE",
+            "payload": rules_payload
+        }})
+
 
 @socketio.on('update_factions')
 @login_required
@@ -628,14 +644,31 @@ def handle_socket_command(data):
                 game_engine.mission_ready_flag = True
                 game_engine.mission_control.mode = cmd_obj.get("mode")
                 game_engine.mission_control.target_id = cmd_obj.get("target_id")
-                game_engine.mission_control.global_duration = int(cmd_obj.get("duration", 15)) * 60
+                dur_min = int(cmd_obj.get("duration", 15))
+                game_engine.mission_control.global_duration = dur_min * 60
+
+                # Invia subito le regole alla TV e al Monitor appena viene premuto [1. TRANSMIT CONFIG]
+                mode_map = {'sd': 'SEARCH_AND_DESTROY', 'dom': 'DOMINATION', 'tdm': 'TEAM_DEATHMATCH'}
+                mode_name = mode_map.get(cmd_obj.get("mode"), 'SEARCH_AND_DESTROY')
+                rules_payload = dict(game_engine.mission_control.sd_settings) if isinstance(game_engine.mission_control.sd_settings, dict) else {}
+                rules_payload["mode"] = mode_name
+                rules_payload["game_duration"] = dur_min
+                socketio.emit('esp_event', {"parsed_data": {
+                    "id": cmd_obj.get("target_id") or "SERVER",
+                    "type": "SETTINGS_UPDATE",
+                    "payload": rules_payload
+                }})
                 return
+
             elif c == "SET_SD_SETTINGS":
                 game_engine.mission_control.sd_settings = cmd_obj
                 game_engine.publish_sd_settings_to_target(target_id, cmd_obj)
                 return
-            elif c == "SET_TDM_SETTINGS":
+
+            elif c in ["SET_DOM_SETTINGS", "SET_TDM_SETTINGS"]:
+                game_engine.mission_control.sd_settings = cmd_obj
                 return
+
             elif c == "TRIGGER_OTA":
                 manifest = get_ota_manifest()
                 tid_upper = str(target_id).upper()
@@ -645,32 +678,32 @@ def handle_socket_command(data):
                     fw_key = "kiosk-v1"
                 else:
                     fw_key = "rat-v1"
-            fw_file = manifest.get(fw_key, {}).get("file", f"{fw_key}.bin")
-            host_ip = request.host.split(':')[0]
-            ota_url = f"http://{host_ip}:5000/static/firmware/{fw_file}"
-            game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps({
-                "cmd": "OTA_HTTP",
-                "url": ota_url
-            }), qos=1)
-            return
+                fw_file = manifest.get(fw_key, {}).get("file", f"{fw_key}.bin")
+                host_ip = request.host.split(':')[0]
+                ota_url = f"http://{host_ip}:5000/static/firmware/{fw_file}"
+                game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps({
+                    "cmd": "OTA_HTTP",
+                    "url": ota_url
+                }), qos=1)
+                return
 
         if target_id == "BROADCAST_ENV":
             game_engine.mqtt_client.publish("zulu/cmd/broadcast", cmd_str)
             return
 
         if target_id == "SERVER-ROUTER":
-            rt = game_engine.mission_control.target_id
-            if not game_engine.mission_control.active_mission or not rt:
-                return
             if "FORCE_END_GAME" in cmd_str:
                 game_engine.mission_control.force_stop_mission()
             elif "CLOSE_MISSION" in cmd_str:
                 game_engine.mission_control.close_and_dismiss_mission()
             else:
-                game_engine.mqtt_client.publish(f"zulu/cmd/{rt}", cmd_str)
+                rt = game_engine.mission_control.target_id
+                if rt and rt != "SERVER-TDM":
+                    game_engine.mqtt_client.publish(f"zulu/cmd/{rt}", cmd_str)
             return
 
-        game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", cmd_str)
+        if target_id:
+            game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", cmd_str)
              
     except Exception as e:
         logger.error(f"[ERROR SOCKET CMD] {e}")

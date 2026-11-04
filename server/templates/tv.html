@@ -220,7 +220,7 @@
             </div>
             <h1 class="tv-title" id="tv-mode-title">STANDBY</h1>
             <div class="hud-center-group" style="margin: 0;">
-                <div id="tv-clock" class="hud-text" style="font-size: 2rem;">00:00:00</div>
+                <div id="tv-clock" class="hud-text" style="font-size: 3.2rem; font-weight: bold; color: var(--sop-primary); text-shadow: 0 0 15px rgba(0, 255, 204, 0.4); letter-spacing: 3px; line-height: 1;">00:00:00</div>
             </div>
         </header>
 
@@ -579,6 +579,7 @@
                 document.getElementById('tv-tac-status').textContent = "WAITING FOR DATA";
                 document.getElementById('tv-tac-status').style.color = "var(--sop-primary)";
                 document.getElementById('tv-bomb-timer').textContent = "--:--";
+                document.getElementById('tv-rules-list').innerHTML = '<div style="color: var(--sop-dim); text-align: center; margin-top: 10px; font-size: 1.4rem;">Nessun parametro caricato...</div>';
                 
                 document.getElementById('tv-bomb-container').style.display = 'none';
                 document.getElementById('tv-dom-container').style.display = 'none';
@@ -685,7 +686,7 @@
                 document.getElementById('tv-progress-container').style.display = 'none';
             }
 
-            if (type === 'SETTINGS_UPDATE' || (type === 'MODE_ENTER' && payload.bomb_time)) {
+            if (type === 'SETTINGS_UPDATE' || type === 'MODE_ENTER') {
                 log("MISSION INTEL CARICATA.");
                 renderTvRules(payload);
             }

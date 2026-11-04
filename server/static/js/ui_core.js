@@ -166,10 +166,19 @@ function updateInspectorData(device) {
         }
     }
 
-    // Stato Batteria LiPo 2S (Tensione + Percentuale)
+    const isV2 = (device.version && device.version.toUpperCase().includes('V2')) || (device.id && device.id.toUpperCase().includes('V2'));
+    const isKiosk = (device.mode === 'KIOSK' || (device.id && device.id.toUpperCase().includes('KIOSK')));
+
+    setElText('insp-hw-ver', isV2 ? 'HW_VER: 2.0' : 'HW_VER: 1.0');
+    setElText('insp-fw-ver', `FW_VER: ${device.version || '--'}`);
+
+    // Stato Alimentazione / Batteria
     const battEl = document.getElementById('insp-batt');
     if (battEl) {
-        if (typeof device.batt_pct === 'number' && device.batt_pct >= 0 && typeof device.batt_v === 'number' && device.batt_v > 1.0) {
+        if (isKiosk) {
+            battEl.textContent = 'AC MAINS (EXT)';
+            battEl.style.color = 'var(--sop-primary)';
+        } else if (typeof device.batt_pct === 'number' && device.batt_pct >= 0 && typeof device.batt_v === 'number' && device.batt_v >= 5.5) {
             battEl.textContent = `${device.batt_pct}% (${device.batt_v.toFixed(2)}V)`;
             battEl.style.color = device.batt_pct > 40 ? 'var(--sop-success)' : (device.batt_pct > 15 ? 'var(--sop-secondary)' : 'var(--sop-alert)');
         } else {
@@ -204,8 +213,6 @@ function updateInspectorData(device) {
     }
 
     setElText('insp-heap', tel.heap_kb !== undefined ? `${tel.heap_kb} KB` : '-- KB');
-
-    const isV2 = (device.version && device.version.includes('V2')) || (device.id && device.id.includes('V2'));
 
     // Stato pulsante Hardware Test (Launch vs Exit)
     const hwTestBtn = document.getElementById('hw-test-btn');

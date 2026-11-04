@@ -14,7 +14,11 @@ KioskNetwork::KioskNetwork(KioskHardware& hw)
       _mqtt(_espClient),
       _cmdCallback(nullptr),
       _lastReconnectAttemptMs(0),
-      _lastHeartbeatMs(0) {
+      _lastHeartbeatMs(0),
+      _pendingPingReq(false),
+      _pendingPongReport(false),
+      _pongClientTs(0),
+      _pendingOtaUrl("") {
     _instance = this;
     _telemetryTopic = "zulu/telemetry/" + String(KIOSK_DEVICE_ID);
     _cmdTopic       = "zulu/cmd/" + String(KIOSK_DEVICE_ID);
@@ -52,8 +56,6 @@ void KioskNetwork::setupOTA() {
 
 void KioskNetwork::begin(ServerCommandCallback callback) {
     _cmdCallback = callback;
-
-    // Segnale viola tenue durante la connessione Wi-Fi
     _hw.showSolidColorAll(40, 0, 60);
 
     WiFiManager wm;
@@ -64,7 +66,6 @@ void KioskNetwork::begin(ServerCommandCallback callback) {
         ESP.restart();
     }
 
-    // Disabilita il risparmio energetico Wi-Fi per garantire risposta istantanea ai check-in RFID
     WiFi.setSleep(false);
     Serial.println("[NET] Wi-Fi Connesso! IP: " + WiFi.localIP().toString());
 
@@ -83,10 +84,8 @@ void KioskNetwork::reconnectMQTT() {
 
     if (_mqtt.connect(KIOSK_DEVICE_ID, "admin", "admin", _telemetryTopic.c_str(), 1, true, willPayload.c_str())) {
         Serial.println("CONNESSO!");
-        // Sottoscrive SOLO i topic di comando (NON zulu/telemetry/# per evitare traffico inutile!)
         _mqtt.subscribe(_cmdTopic.c_str());
         _mqtt.subscribe("zulu/cmd/broadcast");
-
         sendHeartbeat();
     } else {
         Serial.printf("Fallita (rc=%d)\n", _mqtt.state());
@@ -102,6 +101,8 @@ void KioskNetwork::sendHeartbeat() {
     doc["mode"]    = "KIOSK";
     doc["version"] = FIRMWARE_VERSION;
     doc["ip"]      = WiFi.localIP().toString();
+    doc["rssi"]    = WiFi.RSSI();
+    doc["heap_kb"] = ESP.getFreeHeap() / 1024;
 
     String out;
     serializeJson(doc, out);
@@ -191,6 +192,26 @@ void KioskNetwork::handleInternalDiagnostics(const JsonDocument& doc) {
     const char* cmd = doc["cmd"] | "";
 
     if (strcmp(cmd, "NET_PING_REQ") == 0) {
+        _pendingPingReq = true;
+    } else if (strcmp(cmd, "NET_PONG") == 0) {
+        _pongClientTs = doc["client_ts"] | millis();
+        _pendingPongReport = true;
+    } else if (strcmp(cmd, "OTA_HTTP") == 0) {
+        const char* url = doc["url"] | "";
+        if (strlen(url) > 0) {
+            _pendingOtaUrl = String(url);
+        }
+    } else if (strcmp(cmd, "RESET") == 0) {
+        Serial.println("[SYS] Comando RESET ricevuto dal server.");
+        _hw.showSolidColorAll(255, 0, 0);
+        delay(600);
+        ESP.restart();
+    }
+}
+
+void KioskNetwork::processPendingDiagnostics() {
+    if (_pendingPingReq && _mqtt.connected()) {
+        _pendingPingReq = false;
         uint32_t nowMs = millis();
         String payload = "{\"id\":\"" + String(KIOSK_DEVICE_ID) + "\",\"type\":\"NET_PING\",\"payload\":{";
         payload += "\"client_ts\":" + String(nowMs) + ",";
@@ -198,26 +219,27 @@ void KioskNetwork::handleInternalDiagnostics(const JsonDocument& doc) {
         payload += "\"heap_kb\":" + String(ESP.getFreeHeap() / 1024) + ",";
         payload += "\"ip\":\"" + WiFi.localIP().toString() + "\"}}";
         _mqtt.publish(_telemetryTopic.c_str(), payload.c_str());
-    } else if (strcmp(cmd, "NET_PONG") == 0) {
-        uint32_t sentTs = doc["client_ts"] | millis();
-        int32_t rtt = (int32_t)(millis() - sentTs);
+        Serial.println("[DIAG] NET_PING inviato al server.");
+    }
+
+    if (_pendingPongReport && _mqtt.connected()) {
+        _pendingPongReport = false;
+        int32_t rtt = (int32_t)(millis() - _pongClientTs);
         if (rtt < 1) rtt = 1;
         _hw.beepAsync(40);
+
         String rep = "{\"id\":\"" + String(KIOSK_DEVICE_ID) + "\",\"type\":\"NET_DIAG_REPORT\",\"payload\":{";
         rep += "\"rtt_ms\":" + String(rtt) + ",";
         rep += "\"rssi\":" + String(WiFi.RSSI()) + ",";
         rep += "\"heap_kb\":" + String(ESP.getFreeHeap() / 1024) + "}}";
         _mqtt.publish(_telemetryTopic.c_str(), rep.c_str());
-    } else if (strcmp(cmd, "OTA_HTTP") == 0) {
-        const char* url = doc["url"] | "";
-        if (strlen(url) > 0) {
-            performHttpOTA(String(url));
-        }
-    } else if (strcmp(cmd, "RESET") == 0) {
-        Serial.println("[SYS] Comando RESET ricevuto dal server.");
-        _hw.showSolidColorAll(255, 0, 0);
-        delay(600);
-        ESP.restart();
+        Serial.printf("[DIAG] RTT misurato: %ld ms\n", (long)rtt);
+    }
+
+    if (_pendingOtaUrl.length() > 0) {
+        String url = _pendingOtaUrl;
+        _pendingOtaUrl = "";
+        performHttpOTA(url);
     }
 }
 
@@ -248,6 +270,8 @@ void KioskNetwork::loop() {
             }
         } else {
             _mqtt.loop();
+            processPendingDiagnostics();
+
             if (millis() - _lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
                 _lastHeartbeatMs = millis();
                 sendHeartbeat();

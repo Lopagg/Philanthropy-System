@@ -41,9 +41,16 @@ private:
     unsigned long _lastReconnectAttemptMs;
     unsigned long _lastHeartbeatMs;
 
+    // Flag per gestione asincrona di Ping/Pong e OTA fuori dalla callback MQTT
+    volatile bool _pendingPingReq;
+    volatile bool _pendingPongReport;
+    volatile uint32_t _pongClientTs;
+    String _pendingOtaUrl;
+
     void setupOTA();
     void reconnectMQTT();
     void handleInternalDiagnostics(const JsonDocument& doc);
+    void processPendingDiagnostics();
     static void mqttCallback(char* topic, byte* payload, unsigned int length);
     static KioskNetwork* _instance;
 };

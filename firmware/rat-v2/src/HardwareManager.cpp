@@ -106,7 +106,7 @@ void HardwareManager::initialize() {
 
     // 2. Inizializzazione GPIO diretti (non bloccanti anche se scollegati)
     pinMode(PIN_MCP_INT, INPUT_PULLUP);
-    pinMode(PIN_BATT_SENSE, INPUT);
+    pinMode(PIN_BATT_SENSE, INPUT_PULLDOWN);
 
     pinMode(PIN_EXP_CTRL_1, OUTPUT);
     digitalWrite(PIN_EXP_CTRL_1, LOW);
@@ -854,20 +854,23 @@ float HardwareManager::readBatteryVoltage() {
     }
     float rawMv = sumMv / 8.0f;
 
-    // Se il pin è flottante o sotto 300mV sul pin ADC, la batteria non è collegata
     if (rawMv < 300.0f) {
         _filteredBattMv = 0.0f;
         return 0.0f;
     }
 
-    // Filtro passa-basso EMA (80% storico, 20% nuova lettura) contro cali di tensione istantanei
     if (_filteredBattMv < 300.0f) {
         _filteredBattMv = rawMv;
     } else {
         _filteredBattMv = (_filteredBattMv * 0.80f) + (rawMv * 0.20f);
     }
 
-    return (_filteredBattMv * BATT_DIVIDER_RATIO * BATT_CALIBRATION_TRIM) / 1000.0f;
+    float voltage = (_filteredBattMv * BATT_DIVIDER_RATIO * BATT_CALIBRATION_TRIM) / 1000.0f;
+    // Una LiPo 2S non può trovarsi sotto 5.5V: valori inferiori indicano pin non cablato
+    if (voltage < 5.50f) {
+        return 0.0f;
+    }
+    return voltage;
 }
 
 /**
@@ -876,9 +879,8 @@ float HardwareManager::readBatteryVoltage() {
  */
 int8_t HardwareManager::readBatteryPercentage() {
     float v = readBatteryVoltage();
-    if (v < 1.0f) return -1; // Batteria non collegata
+    if (v < 5.50f) return -1; // Batteria non collegata (EXT / USB)
 
-    // Tabella tensione/percentuale reale per LiPo 2S a riposo/carico leggero
     const float vTable[6] = { 6.60f, 7.00f, 7.40f, 7.60f, 8.00f, 8.40f };
     const float pTable[6] = { 0.0f,  10.0f, 35.0f, 60.0f, 85.0f, 100.0f };
 

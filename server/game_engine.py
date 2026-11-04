@@ -458,7 +458,7 @@ class MissionController:
             msg_type = "TDM_UPDATE" if mode == 'tdm' else ("SD_UPDATE" if mode == 'sd' else "DOM_UPDATE")
             mode_str = "TEAM_DEATHMATCH" if mode == 'tdm' else ("SEARCH_AND_DESTROY" if mode == 'sd' else "DOMINATION")
             doc = {
-                "id": rt,
+                "id": rt or "SERVER",
                 "type": msg_type,
                 "payload": {
                     "mode": mode_str,
@@ -486,8 +486,8 @@ class MissionController:
                 pass
             registry.update_device(rt, "MODE_EXIT")
 
-        if socketio and rt:
-            socketio.emit('esp_event', {"parsed_data": {"id": rt, "type": "MODE_EXIT"}})
+        if socketio:
+            socketio.emit('esp_event', {"parsed_data": {"id": rt or "SERVER", "type": "MODE_EXIT"}})
             active_devs, _ = registry.get_active_devices()
             socketio.emit('devices_update', active_devs)
 
@@ -693,6 +693,15 @@ def on_mqtt_message(client, userdata, msg):
         batt_v = payload.get('batt_v') if 'batt_v' in payload else parsed.get('batt_v')
         batt_pct = payload.get('batt_pct') if 'batt_pct' in payload else parsed.get('batt_pct')
         has_changed = registry.update_device(device_id, msg_type, mode, version, ip, batt_v, batt_pct)
+
+        # Aggiorna RSSI e Heap se presenti nell'HEARTBEAT
+        hb_rssi = payload.get('rssi') if 'rssi' in payload else parsed.get('rssi')
+        hb_heap = payload.get('heap_kb') if 'heap_kb' in payload else parsed.get('heap_kb')
+        if hb_rssi is not None or hb_heap is not None:
+            tel_patch = {}
+            if hb_rssi is not None: tel_patch["rssi"] = hb_rssi
+            if hb_heap is not None: tel_patch["heap_kb"] = hb_heap
+            registry.update_telemetry(device_id, tel_patch)
 
         # 3B. Diagnostica di Rete (Ping/Pong RTT e stato RSSI/Heap)
         if msg_type == 'NET_PING':
