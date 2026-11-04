@@ -469,6 +469,7 @@ def handle_register_operator(data):
     if uid and team:
         db_manager.register_player(uid, team)
         socketio.emit('roster_update', db_manager.get_full_roster())
+        game_engine.notify_kiosk_checkin(team, 'IN')
 
 
 @socketio.on('update_operator')
@@ -478,6 +479,9 @@ def handle_update_operator(data):
         db_manager.rename_player(uid, value)
     elif action == 'swap':
         db_manager.swap_player_team(uid)
+        row = db_manager.get_player_status(uid)
+        if row:
+            game_engine.notify_kiosk_checkin(row[1], row[0])
     elif action == 'status_toggle':
         row = db_manager.get_player_status(uid)
         if row:
@@ -487,6 +491,7 @@ def handle_update_operator(data):
                     is_active = (game_engine.mission_control.active_mission and game_engine.mission_control.state == "ACTIVE")
                 if is_active:
                     db_manager.increment_death(uid)
+            game_engine.notify_kiosk_checkin(row[1], new_status)
     elif action == 'delete':
         db_manager.remove_from_roster(uid)
     socketio.emit('roster_update', db_manager.get_full_roster())
@@ -601,6 +606,14 @@ def handle_request_mission_start(data):
     socketio.emit('mission_start_success')
 
 
+@socketio.on('set_all_players_in')
+@login_required
+def handle_set_all_players_in():
+    db_manager.set_all_players_in()
+    socketio.emit('roster_update', db_manager.get_full_roster())
+    game_engine.notify_kiosk_checkin('ALL', 'IN')
+
+
 @socketio.on('mobile_tag_scanned')
 def handle_mobile_scan(data):
     uid = data.get('uid')
@@ -616,6 +629,7 @@ def handle_mobile_scan(data):
                     db_manager.increment_death(uid)
                     
             socketio.emit('roster_update', db_manager.get_full_roster())
+            game_engine.notify_kiosk_checkin(row[1], new_status)
             emit('mobile_scan_reply', {'success': True, 'uid': uid, 'status': new_status, 'team': row[1]})
         else:
             emit('mobile_scan_reply', {'success': False, 'uid': uid, 'msg': 'Tag non assegnato al roster.'})

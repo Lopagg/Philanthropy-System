@@ -31,10 +31,13 @@ void enterCooldown() {
 
 void handleKioskReply(const char* action) {
     if (strcmp(action, "WAIT_ASSIGN") == 0) {
-        currentState = STATE_WAIT_ASSIGNMENT;
-        stateTimerMs = millis();
-        const int seq[] = {50, 50, 50};
-        hardware.startBeepSequence(seq, 3);
+        // La richiesta di assegnazione vale solo se la tessera è stata letta fisicamente sul Kiosk
+        if (currentState == STATE_WAIT_SERVER) {
+            currentState = STATE_WAIT_ASSIGNMENT;
+            stateTimerMs = millis();
+            const int seq[] = {50, 50, 50};
+            hardware.startBeepSequence(seq, 3);
+        }
         return;
     }
 
@@ -51,18 +54,25 @@ void handleKioskReply(const char* action) {
     } else if (strstr(action, "FUORI_BRAVO") != nullptr) {
         hardware.startSwipeAnimation("BRAVO", "OUT");
         hardware.startBeepSequence(confirmSeq, 3);
+    } else if (strstr(action, "IN_ALL") != nullptr) {
+        hardware.startSwipeAnimation("NEUTRAL", "IN");
+        hardware.startBeepSequence(confirmSeq, 3);
     } else {
         hardware.beepAsync(500);
     }
 
-    currentState = STATE_SHOW_RESULT;
-    stateTimerMs = millis();
+    // Se il Kiosk non è impegnato nell'assegnazione di una tessera locale, mostra il risultato
+    if (currentState != STATE_WAIT_ASSIGNMENT) {
+        currentState = STATE_SHOW_RESULT;
+        stateTimerMs = millis();
+    }
 }
 
 void onServerCommand(const JsonDocument& doc) {
     const char* cmd = doc["cmd"] | "";
 
-    if (strcmp(cmd, "KIOSK_REPLY") == 0 && currentState == STATE_WAIT_SERVER) {
+    // Accetta KIOSK_REPLY sia da scansione locale che da cambio stato remoto (Web / Mobile NFC)
+    if (strcmp(cmd, "KIOSK_REPLY") == 0) {
         handleKioskReply(doc["action"] | "");
     }
     else if (strcmp(cmd, "SIREN_LONG") == 0) {

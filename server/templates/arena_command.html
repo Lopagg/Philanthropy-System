@@ -65,7 +65,10 @@
 <!-- 3. Vista Tracking Operatori IN CAMPO / FUORI -->
 <div id="view-arena-tracking" class="view-panel hidden">
     <div class="monitor-controls">
-        <button type="button" class="back-btn deck-btn" onclick="showView('arena-menu')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; BACK ]</button>
+        <div>
+            <button type="button" class="back-btn deck-btn" onclick="showView('arena-menu')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; BACK ]</button>
+            <button type="button" class="deck-btn" onclick="setAllPlayersInField()" style="margin-bottom: 10px; margin-left: 10px; color: var(--sop-success); border-color: var(--sop-success);">[ TUTTI IN CAMPO ]</button>
+        </div>
         <span class="monitor-label">STATUS: <span style="color: var(--sop-success);">TRACKING LIVE</span> | IN CAMPO: <span id="track-in-count" style="color: var(--sop-primary); font-weight: bold; font-size: 16px;">0</span></span>
     </div>
     <div class="arena-grid">

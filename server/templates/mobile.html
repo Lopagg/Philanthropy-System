@@ -663,6 +663,10 @@
              TAB 3: ROSTER & TRACKING OPERATORI IN CAMPO
              ================================================================== -->
         <div id="tab-roster" class="tab-view">
+            <button type="button" class="btn btn-sm" style="border-color: var(--sop-success); color: var(--sop-success); flex-shrink: 0;" onclick="setAllPlayersInField()">
+                [ PORTA TUTTI IN CAMPO ]
+            </button>
+
             <div class="mob-card">
                 <div class="mob-card-title">
                     <span id="roster-title-a" style="color: var(--team-a-color);">TEAM ALPHA</span>
@@ -1167,6 +1171,11 @@
         function swapOpTeam(uid) {
             socket.emit('update_operator', { uid: uid, action: 'swap' });
             if (navigator.vibrate) navigator.vibrate(40);
+        }
+
+        function setAllPlayersInField() {
+            socket.emit('set_all_players_in');
+            if (navigator.vibrate) navigator.vibrate([50, 40, 80]);
         }
 
         // ====================================================================

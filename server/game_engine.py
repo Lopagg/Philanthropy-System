@@ -619,6 +619,40 @@ def on_mqtt_connect(client, userdata, flags, rc):
     logger.info(f"[MQTT] Connesso al Broker con codice: {rc}")
     client.subscribe("zulu/telemetry/#")
 
+def notify_kiosk_checkin(team, status):
+    """Invia al Kiosk il comando per riprodurre suono e animazione LED anche per azioni da Web/Mobile."""
+    try:
+        action_str = "IN_ALL" if team == "ALL" else f"{status}_{team}"
+        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({
+            "cmd": "KIOSK_REPLY",
+            "action": action_str
+        }))
+
+        # Sincronizza subito lo stato dei LED del Kiosk (es. tutti IN CAMPO -> luce azzurra)
+        players = db_manager.get_active_roster_status()
+        total_players = len(players)
+        players_out = sum(1 for p in players if p[2] != 'IN')
+        all_in = (total_players > 0 and players_out == 0)
+
+        with mission_control.lock:
+            is_running = (mission_control.active_mission and mission_control.state in ["PREPARING", "ACTIVE"])
+            m_state = mission_control.state if mission_control.active_mission else "STANDBY"
+
+        factions = db_manager.get_factions_config()
+        a_rgb = get_pure_rgb(factions['ALPHA']['color'])
+        b_rgb = get_pure_rgb(factions['BRAVO']['color'])
+
+        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({
+            "cmd": "KIOSK_LED_SYNC",
+            "all_players_in": all_in,
+            "game_running": is_running,
+            "game_ready": mission_ready_flag,
+            "mission_state": m_state,
+            "t1_c": a_rgb,
+            "t2_c": b_rgb
+        }))
+    except Exception as e:
+        logger.error(f"[KIOSK NOTIFY ERROR] {e}")
 
 def on_mqtt_message(client, userdata, msg):
     global mission_ready_flag
