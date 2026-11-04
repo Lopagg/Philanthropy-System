@@ -13,7 +13,7 @@
 #define KIOSK_OTA_HOSTNAME   "PHIL-KIOSK"
 #define FIRMWARE_VERSION     "v0.0.1"
 
-#define DEFAULT_MQTT_SERVER  "zuluserver.ddns.net"
+#define DEFAULT_MQTT_SERVER  "philanthropy-dev.duckdns.org"
 #define DEFAULT_MQTT_PORT    1883
 
 // --- Pinout Pulsanti Operatore e Controllo Partita ---

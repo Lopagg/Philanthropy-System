@@ -665,12 +665,13 @@ def handle_socket_command(data):
                 }})
                 return
 
-            elif c == "SET_SD_SETTINGS":
+            elif c == "SET_DOM_SETTINGS":
                 game_engine.mission_control.sd_settings = cmd_obj
-                game_engine.publish_sd_settings_to_target(target_id, cmd_obj)
+                if target_id:
+                    game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", cmd_str)
                 return
 
-            elif c in ["SET_DOM_SETTINGS", "SET_TDM_SETTINGS"]:
+            elif c == "SET_TDM_SETTINGS":
                 game_engine.mission_control.sd_settings = cmd_obj
                 return
 
