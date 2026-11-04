@@ -1,7 +1,10 @@
 <!-- ==========================================================================
      mobile.html
-     Interfaccia Web Mobile per Arbitri da campo (Controllo Partita, Avvio Rapido
-     TDM e Lettore Kiosk Web-NFC tramite Chrome per Android).
+     Terminale Web Mobile completo per Arbitri da campo:
+     - TAB 1 (LIVE)  : Telemetria universale (S&D, DOM, TDM), Sirene e Close Mission.
+     - TAB 2 (SETUP) : Configurazione e avvio per S&D (V1 e V2 modulare), DOM e TDM.
+     - TAB 3 (ROSTER): Gestione rapida operatori IN CAMPO / FUORI e cambio squadra.
+     - TAB 4 (NFC)   : Scanner Web-NFC con assegnazione rapida nuove tessere.
      ========================================================================== -->
 <!DOCTYPE html>
 <html lang="it">
@@ -15,78 +18,265 @@
     <style>
         :root {
             --sop-bg: #050505;
-            --sop-panel: #111111;
+            --sop-panel: #0e0e0e;
             --sop-primary: #00ffcc;
             --sop-secondary: #ff9900;
             --sop-alert: #ff3333;
             --sop-success: #55ff55;
             --sop-dim: #333333;
+            --team-a-color: #ff3333;
+            --team-b-color: #55ff55;
         }
-        
-        * { 
-            box-sizing: border-box; 
+
+        * {
+            box-sizing: border-box;
             margin: 0;
-            padding: 0; 
-            font-family: 'Share Tech Mono', monospace; 
+            padding: 0;
+            font-family: 'Share Tech Mono', monospace;
             user-select: none;
-            -webkit-tap-highlight-color: transparent; 
+            -webkit-tap-highlight-color: transparent;
         }
-        
+
         html, body {
             background: var(--sop-bg);
-            color: #eee; 
+            color: #eee;
             height: 100vh;
             height: 100dvh;
             width: 100vw;
             max-width: 100%;
             display: flex;
-            flex-direction: column; 
+            flex-direction: column;
             overflow: hidden;
         }
-        
-        .header { 
+
+        .hidden { display: none !important; }
+
+        /* --- HEADER SUPERIORE --- */
+        .header {
             background: #000;
-            border-bottom: 2px solid var(--sop-primary); 
-            padding: 15px 20px;
+            border-bottom: 2px solid var(--sop-primary);
+            padding: 12px 16px;
             display: flex;
             justify-content: space-between;
-            align-items: center; 
+            align-items: center;
             flex-shrink: 0;
         }
-        .header h1 { font-size: 20px; margin: 0; color: var(--sop-primary); letter-spacing: 2px; }
-        .logout    { color: var(--sop-alert); text-decoration: none; font-size: 14px; font-weight: bold; border: 1px solid var(--sop-alert); padding: 6px 12px; border-radius: 4px; }
-        
-        .content { 
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .conn-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--sop-alert);
+            box-shadow: 0 0 8px var(--sop-alert);
+        }
+        .conn-dot.online {
+            background: var(--sop-primary);
+            box-shadow: 0 0 8px var(--sop-primary);
+        }
+        .header h1 {
+            font-size: 18px;
+            margin: 0;
+            color: var(--sop-primary);
+            letter-spacing: 2px;
+        }
+        .logout {
+            color: var(--sop-alert);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: bold;
+            border: 1px solid var(--sop-alert);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        /* --- CONTENITORE TAB --- */
+        .content {
             flex: 1;
-            position: relative; 
-            width: 100%; 
+            position: relative;
+            width: 100%;
             overflow: hidden;
         }
-        
-        .tab-view { 
+        .tab-view {
             display: none;
-            flex-direction: column; 
+            flex-direction: column;
             width: 100%;
             height: 100%;
-            padding: 20px; 
+            padding: 15px;
             overflow-y: auto;
             overflow-x: hidden;
+            gap: 14px;
         }
         .tab-view.active { display: flex; }
-        
-        .top-zone    { display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 20px; flex: 1; }
-        .bottom-zone { margin-top: auto; display: flex; flex-direction: column; gap: 15px; flex-shrink: 0; padding-bottom: 5px; }
-        
-        .status-display { text-align: center; font-size: 24px; letter-spacing: 2px; font-weight: bold; margin-bottom: 15px; }
-        .timer-display  { font-size: 75px; text-align: center; color: var(--sop-primary); text-shadow: 0 0 15px rgba(0, 255, 204, 0.3); line-height: 1; }
-        
-        .btn { 
+
+        /* --- CARD E WIDGET --- */
+        .mob-card {
+            background: var(--sop-panel);
+            border: 1px solid var(--sop-dim);
+            border-radius: 4px;
+            padding: 12px;
+        }
+        .mob-card-title {
+            font-size: 12px;
+            color: #888;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #222;
+            padding-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* --- TAB 1: LIVE TELEMETRY --- */
+        .factions-bar {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            text-align: center;
+            background: var(--sop-panel);
+            border: 1px solid var(--sop-dim);
+            border-radius: 4px;
+            padding: 10px 8px;
+        }
+        .f-team-name {
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .f-team-stats {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+        .f-team-sub {
+            font-size: 11px;
+            color: #888;
+        }
+
+        .live-center-box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--sop-dim);
+            border-radius: 4px;
+            padding: 15px 10px;
+            min-height: 170px;
+        }
+        .mode-badge {
+            font-size: 13px;
+            color: #aaa;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+        }
+        .status-display {
+            text-align: center;
+            font-size: 24px;
+            letter-spacing: 2px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--sop-primary);
+        }
+        .timer-display {
+            font-size: 68px;
+            text-align: center;
+            color: var(--sop-primary);
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.3);
+            line-height: 1;
+            font-weight: bold;
+        }
+
+        /* Box Bomba S&D e Punteggi Domination */
+        .bomb-box {
+            margin-top: 12px;
+            padding: 8px 20px;
+            border: 2px solid var(--sop-alert);
+            border-radius: 6px;
+            background: rgba(255, 51, 51, 0.08);
+            text-align: center;
+        }
+        .bomb-lbl {
+            font-size: 11px;
+            color: var(--sop-alert);
+            letter-spacing: 2px;
+        }
+        .bomb-val {
+            font-size: 38px;
+            color: var(--sop-alert);
+            font-weight: bold;
+            line-height: 1.1;
+            text-shadow: 0 0 10px rgba(255, 51, 51, 0.6);
+        }
+
+        .dom-box {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
             width: 100%;
-            padding: 20px;
-            font-size: 18px;
-            font-weight: bold; 
-            background: rgba(0, 0, 0, 0.5);
-            color: var(--sop-primary); 
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px dashed var(--sop-dim);
+        }
+        .dom-score-val {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .prog-container {
+            width: 100%;
+            margin-top: 12px;
+        }
+        .prog-row {
+            margin-bottom: 8px;
+        }
+        .prog-row:last-child { margin-bottom: 0; }
+        .prog-lbl {
+            font-size: 11px;
+            color: #aaa;
+            margin-bottom: 3px;
+            display: block;
+            letter-spacing: 1px;
+        }
+        .prog-track {
+            width: 100%;
+            height: 14px;
+            background: #080808;
+            border: 1px solid var(--sop-dim);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .prog-fill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.2s linear;
+        }
+        .fill-red   { background: var(--sop-alert); box-shadow: 0 0 8px var(--sop-alert); }
+        .fill-green { background: var(--sop-success); box-shadow: 0 0 8px var(--sop-success); }
+
+        /* --- PULSANTI --- */
+        .bottom-zone {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+        .btn-row {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            width: 100%;
+            padding: 16px 12px;
+            font-size: 16px;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.6);
+            color: var(--sop-primary);
             border: 2px solid var(--sop-primary);
             border-radius: 4px;
             letter-spacing: 1px;
@@ -94,56 +284,137 @@
             display: block;
             cursor: pointer;
         }
-        .btn:active        { background: var(--sop-primary); color: #000; }
-        .btn.danger        { color: var(--sop-alert); border-color: var(--sop-alert); }
-        .btn.danger:active { background: var(--sop-alert); color: #fff; }
-        
-        .input-group       { margin-bottom: 25px; width: 100%; }
-        .input-group label { display: block; color: #888; margin-bottom: 8px; font-size: 14px; font-weight: bold; }
-        .input-group select,
-        .input-group input { 
+        .btn:active          { background: var(--sop-primary); color: #000; }
+        .btn.danger          { color: var(--sop-alert); border-color: var(--sop-alert); }
+        .btn.danger:active   { background: var(--sop-alert); color: #fff; }
+        .btn.warning         { color: var(--sop-secondary); border-color: var(--sop-secondary); }
+        .btn.warning:active  { background: var(--sop-secondary); color: #000; }
+        .btn.disabled        { opacity: 0.35; pointer-events: none; }
+        .btn-sm              { padding: 10px; font-size: 13px; border-width: 1px; }
+
+        /* --- FORM DI SETUP --- */
+        .input-group {
+            margin-bottom: 12px;
             width: 100%;
-            padding: 15px;
-            background: rgba(0, 0, 0, 0.8); 
+        }
+        .input-group label {
+            display: block;
+            color: #999;
+            margin-bottom: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .input-group select,
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.85);
             border: 1px solid var(--sop-dim);
             color: #fff;
-            font-size: 18px;
+            font-size: 16px;
             border-radius: 4px;
             outline: none;
         }
-        
-        .nfc-log { 
+        .input-group select:focus,
+        .input-group input:focus {
+            border-color: var(--sop-primary);
+        }
+        .grid-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        /* Step Sequenze Modulari V2 Mobile */
+        .v2-mob-step {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #2a2a2a;
+            border-left: 3px solid var(--sop-primary);
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 8px;
+        }
+        .v2-mob-step-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .v2-mob-actions span {
+            padding: 3px 7px;
+            border: 1px solid var(--sop-dim);
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 4px;
+            cursor: pointer;
+        }
+
+        /* --- TAB 3: ROSTER --- */
+        .roster-op-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--sop-dim);
+            border-left: 4px solid var(--sop-dim);
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .roster-op-item.is-in {
+            border-left-color: var(--sop-success);
+            background: rgba(85, 255, 85, 0.05);
+        }
+        .roster-op-item.is-out {
+            opacity: 0.6;
+        }
+        .op-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .op-btn {
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: bold;
+            background: #000;
+            border: 1px solid var(--sop-dim);
+            color: #eee;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        /* --- TAB 4: NFC LOG --- */
+        .nfc-log {
             flex: 1;
-            min-height: 150px;
+            min-height: 140px;
             background: rgba(0, 0, 0, 0.5);
             border: 1px solid var(--sop-dim);
-            padding: 15px; 
+            padding: 12px;
             overflow-y: auto;
             overflow-x: hidden;
-            margin-top: 20px; 
             font-family: 'Courier New', monospace;
-            font-size: 14px;
-            color: #aaa; 
+            font-size: 13px;
+            color: #aaa;
             word-wrap: break-word;
-            word-break: break-all;
             white-space: pre-wrap;
         }
-        .nfc-scan-indicator { text-align: center; margin-top: 20px; font-size: 16px; color: #888; }
-        
-        .bottom-nav { 
+
+        /* --- BARRA NAVIGAZIONE INFERIORE --- */
+        .bottom-nav {
             display: flex;
             background: #000;
-            border-top: 1px solid var(--sop-dim); 
+            border-top: 1px solid var(--sop-dim);
             flex-shrink: 0;
             padding-bottom: env(safe-area-inset-bottom);
         }
-        .nav-btn { 
+        .nav-btn {
             flex: 1;
-            padding: 22px 0;
+            padding: 18px 0;
             text-align: center;
             color: #666;
-            font-size: 14px;
-            font-weight: bold; 
+            font-size: 13px;
+            font-weight: bold;
             background: transparent;
             border: none;
             outline: none;
@@ -151,83 +422,339 @@
             letter-spacing: 1px;
             cursor: pointer;
         }
-        .nav-btn.active { color: var(--sop-primary); border-bottom-color: var(--sop-primary); background: rgba(0, 255, 204, 0.05); }
+        .nav-btn.active {
+            color: var(--sop-primary);
+            border-bottom-color: var(--sop-primary);
+            background: rgba(0, 255, 204, 0.05);
+        }
     </style>
 </head>
 <body>
 
+    <!-- HEADER -->
     <div class="header">
-        <h1>SOP // MOBILE</h1>
+        <div class="header-left">
+            <div id="conn-indicator" class="conn-dot" title="Stato Connessione"></div>
+            <h1>SOP // MOBILE</h1>
+        </div>
         <a href="{{ url_for('logout') }}" class="logout">LOGOUT</a>
     </div>
 
+    <!-- CONTENUTO PRINCIPALE -->
     <div class="content">
-        <!-- TAB 1: CONTROLLO PARTITA -->
+
+        <!-- ==================================================================
+             TAB 1: CONTROLLO PARTITA E TELEMETRIA LIVE
+             ================================================================== -->
         <div id="tab-control" class="tab-view active">
-            <div class="top-zone">
+            
+            <!-- Riepilogo Squadre (In campo e Vittorie) -->
+            <div class="factions-bar">
+                <div>
+                    <div class="f-team-name" id="live-name-a" style="color: var(--team-a-color);">ALPHA</div>
+                    <div class="f-team-stats" id="live-in-a" style="color: var(--team-a-color);">0 IN</div>
+                    <div class="f-team-sub">WINS: <span id="live-wins-a">0</span></div>
+                </div>
+                <div style="color: #555; font-weight: bold; font-size: 16px;">VS</div>
+                <div>
+                    <div class="f-team-name" id="live-name-b" style="color: var(--team-b-color);">BRAVO</div>
+                    <div class="f-team-stats" id="live-in-b" style="color: var(--team-b-color);">0 IN</div>
+                    <div class="f-team-sub">WINS: <span id="live-wins-b">0</span></div>
+                </div>
+            </div>
+
+            <!-- Quadrante Centrale Timer e Stato -->
+            <div class="live-center-box">
+                <div class="mode-badge" id="mob-mode-title">NESSUNA MISSIONE ATTIVA</div>
                 <div class="status-display" id="mob-status">STANDBY</div>
                 <div class="timer-display" id="mob-timer">--:--</div>
+
+                <!-- S&D: Conto alla rovescia Bomba -->
+                <div id="mob-bomb-box" class="bomb-box hidden">
+                    <div class="bomb-lbl">DETONATION TIMER</div>
+                    <div class="bomb-val" id="mob-bomb-timer">--:--</div>
+                </div>
+
+                <!-- DOMINATION: Punteggi di Possesso -->
+                <div id="mob-dom-box" class="dom-box hidden">
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; color: #888;" id="mob-dom-lbl-a">ALPHA</div>
+                        <div class="dom-score-val" id="mob-dom-a" style="color: var(--team-a-color);">00:00</div>
+                    </div>
+                    <div style="color: #555; font-weight: bold;">:</div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 11px; color: #888;" id="mob-dom-lbl-b">BRAVO</div>
+                        <div class="dom-score-val" id="mob-dom-b" style="color: var(--team-b-color);">00:00</div>
+                    </div>
+                </div>
+
+                <!-- Barre di Progresso Azione (Innesco/Disinnesco/Cattura) -->
+                <div id="mob-prog-box" class="prog-container hidden">
+                    <div class="prog-row">
+                        <span class="prog-lbl" id="mob-prog-lbl-1">ARMING PROGRESS</span>
+                        <div class="prog-track"><div id="mob-prog-1" class="prog-fill fill-red"></div></div>
+                    </div>
+                    <div class="prog-row">
+                        <span class="prog-lbl" id="mob-prog-lbl-2">DEFUSING PROGRESS</span>
+                        <div class="prog-track"><div id="mob-prog-2" class="prog-fill fill-green"></div></div>
+                    </div>
+                </div>
             </div>
-            
+
+            <!-- Azioni Rapide Arbitro -->
             <div class="bottom-zone">
-                <button type="button" class="btn danger" onclick="forceEndMatch()">[ TERMINA PARTITA ]</button>
-                <button type="button" class="btn" style="color: var(--sop-secondary); border-color: var(--sop-secondary);" onclick="socket.emit('send_command', { target_id: 'BROADCAST_ENV', command: { cmd: 'SIREN_LONG' } })">[ SUONA SIRENA ]</button>
+                <div class="btn-row">
+                    <button type="button" class="btn warning btn-sm" onclick="sendSiren('SIREN_SHORT')">[ SIRENA BREVE ]</button>
+                    <button type="button" class="btn warning btn-sm" onclick="sendSiren('SIREN_LONG')">[ SIRENA LUNGA ]</button>
+                </div>
+                <button type="button" id="btn-mob-end" class="btn danger" data-action="FORCE_END_GAME" onclick="handleMatchEndButton()">
+                    [ TERMINA PARTITA ]
+                </button>
             </div>
         </div>
 
-        <!-- TAB 2: AVVIO RAPIDO TDM -->
+        <!-- ==================================================================
+             TAB 2: SETUP COMPLETO MISSIONE (S&D V1/V2, DOM, TDM)
+             ================================================================== -->
         <div id="tab-setup" class="tab-view">
-            <h2 style="color: #fff; font-size: 18px; margin-bottom: 25px; text-align: center;">AVVIO RAPIDO MISSIONE</h2>
-            <div class="input-group">
-                <label for="mob-mode">MODALITÀ DI GIOCO</label>
-                <select id="mob-mode">
-                    <option value="tdm">TEAM DEATHMATCH (SERVER)</option>
-                </select>
+            <div class="mob-card">
+                <div class="mob-card-title">
+                    <span>SELEZIONE MODALITÀ &amp; NODO</span>
+                    <span id="mob-target-ver-badge" style="color: var(--sop-primary);">--</span>
+                </div>
+
+                <div class="input-group">
+                    <label for="mob-mode-select">MODALITÀ OPERATIVA</label>
+                    <select id="mob-mode-select" onchange="onMobModeChange()">
+                        <option value="sd">SEARCH &amp; DESTROY</option>
+                        <option value="dom">DOMINATION</option>
+                        <option value="tdm">TEAM DEATHMATCH (SERVER)</option>
+                    </select>
+                </div>
+
+                <div id="mob-target-group" class="input-group" style="margin-bottom: 0;">
+                    <label for="mob-target-select">TERMINALE HARDWARE TARGET</label>
+                    <select id="mob-target-select" onchange="onMobTargetChange()">
+                        <option value="">-- Seleziona nodo disponibile --</option>
+                    </select>
+                </div>
             </div>
-            <div class="input-group">
-                <label for="mob-dur">DURATA (Minuti)</label>
-                <input type="number" id="mob-dur" value="15" min="1">
+
+            <!-- PARAMETRI SEARCH & DESTROY -->
+            <div id="mob-params-sd" class="mob-card">
+                <div class="mob-card-title"><span>PARAMETRI SEARCH &amp; DESTROY</span></div>
+
+                <div class="input-group">
+                    <label for="mob-sd-attacker" style="color: var(--sop-alert);">SQUADRA ATTACCANTE (INNESCO)</label>
+                    <select id="mob-sd-attacker">
+                        <option value="ALPHA">ALPHA</option>
+                        <option value="BRAVO">BRAVO</option>
+                    </select>
+                </div>
+
+                <div class="grid-2col">
+                    <div class="input-group">
+                        <label for="mob-sd-dur">DURATA (MIN)</label>
+                        <input type="number" id="mob-sd-dur" value="20" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label for="mob-sd-bomb">BOMBA (MIN)</label>
+                        <input type="number" id="mob-sd-bomb" value="10" min="1">
+                    </div>
+                </div>
+
+                <!-- Sottopannello Legacy RAT-V1 -->
+                <div id="mob-sd-v1-block">
+                    <div class="grid-2col">
+                        <div class="input-group">
+                            <label for="mob-v1-arm-time">INNESCO (SEC)</label>
+                            <input type="number" id="mob-v1-arm-time" value="5" min="1">
+                        </div>
+                        <div class="input-group">
+                            <label for="mob-v1-def-time">DISINNESCO (SEC)</label>
+                            <input type="number" id="mob-v1-def-time" value="10" min="1">
+                        </div>
+                    </div>
+                    <div class="grid-2col">
+                        <div class="input-group">
+                            <label for="mob-v1-use-arm-pin">USA PIN INNESCO</label>
+                            <select id="mob-v1-use-arm-pin"><option value="true">SÌ</option><option value="false">NO</option></select>
+                        </div>
+                        <div class="input-group">
+                            <label for="mob-v1-use-def-pin">USA PIN DISINN.</label>
+                            <select id="mob-v1-use-def-pin"><option value="true">SÌ</option><option value="false">NO</option></select>
+                        </div>
+                    </div>
+                    <div class="grid-2col">
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-v1-arm-pin">PIN INNESCO</label>
+                            <input type="number" id="mob-v1-arm-pin" value="1234">
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-v1-def-pin">PIN DISINNESCO</label>
+                            <input type="number" id="mob-v1-def-pin" value="4321">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sottopannello Modulare RAT-V2 -->
+                <div id="mob-sd-v2-block" class="hidden">
+                    <div class="mob-card-title" style="margin-top: 6px;">
+                        <span>SEQUENZA INNESCO (V2)</span>
+                        <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('arm')">[+ STEP]</span>
+                    </div>
+                    <div id="mob-v2-arm-list"></div>
+
+                    <div class="mob-card-title" style="margin-top: 12px;">
+                        <span>SEQUENZA DISINNESCO (V2)</span>
+                        <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('defuse')">[+ STEP]</span>
+                    </div>
+                    <div id="mob-v2-defuse-list"></div>
+
+                    <div class="grid-2col" style="margin-top: 10px;">
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-v2-smoke">EFFETTO FUMO</label>
+                            <select id="mob-v2-smoke"><option value="false">NO</option><option value="true">SÌ</option></select>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-v2-relay">RELÈ 12V (C4)</label>
+                            <select id="mob-v2-relay"><option value="false">NO</option><option value="true">SÌ</option></select>
+                        </div>
+                    </div>
+                </div>
             </div>
-            
+
+            <!-- PARAMETRI DOMINATION -->
+            <div id="mob-params-dom" class="mob-card hidden">
+                <div class="mob-card-title"><span>PARAMETRI DOMINATION</span></div>
+                <div class="input-group">
+                    <label for="mob-dom-dur">DURATA PARTITA (MIN)</label>
+                    <input type="number" id="mob-dom-dur" value="15" min="1">
+                </div>
+                <div class="grid-2col">
+                    <div class="input-group" style="margin-bottom: 0;">
+                        <label for="mob-dom-cap">CATTURA (SEC)</label>
+                        <input type="number" id="mob-dom-cap" value="10" min="1">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 0;">
+                        <label for="mob-dom-cd">COUNTDOWN (SEC)</label>
+                        <input type="number" id="mob-dom-cd" value="10" min="1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- PARAMETRI TEAM DEATHMATCH -->
+            <div id="mob-params-tdm" class="mob-card hidden">
+                <div class="mob-card-title"><span>PARAMETRI TEAM DEATHMATCH</span></div>
+                <div class="input-group" style="margin-bottom: 6px;">
+                    <label for="mob-tdm-dur">DURATA PARTITA (MIN)</label>
+                    <input type="number" id="mob-tdm-dur" value="15" min="1">
+                </div>
+                <p style="font-size: 11px; color: #888;">* TDM gira interamente sul server senza richiedere un nodo RAT acceso.</p>
+            </div>
+
             <div class="bottom-zone">
-                <button type="button" class="btn" onclick="startQuickMatch()">[ LANCIA PARTITA ]</button>
+                <button type="button" class="btn warning" onclick="transmitMobSetup()">[ 1. TRASMETTI CONFIG ]</button>
+                <button type="button" id="btn-mob-start" class="btn disabled" onclick="launchMobMission()">[ 2. AVVIA MISSIONE ]</button>
             </div>
         </div>
 
-        <!-- TAB 3: SCANNER WEB-NFC -->
-        <div id="tab-nfc" class="tab-view">
-            <h2 style="color: #fff; font-size: 18px; margin-bottom: 10px; text-align: center;">KIOSK NFC TATTICO</h2>
-            <p style="color: #888; font-size: 13px; text-align: center; margin-bottom: 25px; line-height: 1.4;">Richiede Chrome su Android. Appoggia le tessere sul retro del telefono.</p>
-            
-            <button type="button" class="btn" id="btn-nfc" onclick="startNfcScanner()" style="border-width: 3px; font-size: 20px; padding: 25px;">[ ACCENDI SENSORE ]</button>
-            <div class="nfc-scan-indicator" id="nfc-status">Sensore Inattivo</div>
-            
-            <div class="nfc-log" id="nfc-log">
-                <div>&gt; Sistema pronto...</div>
+        <!-- ==================================================================
+             TAB 3: ROSTER & TRACKING OPERATORI IN CAMPO
+             ================================================================== -->
+        <div id="tab-roster" class="tab-view">
+            <div class="mob-card">
+                <div class="mob-card-title">
+                    <span id="roster-title-a" style="color: var(--team-a-color);">TEAM ALPHA</span>
+                    <span id="roster-count-a">0/0 IN</span>
+                </div>
+                <div id="mob-roster-alpha"></div>
+            </div>
+
+            <div class="mob-card">
+                <div class="mob-card-title">
+                    <span id="roster-title-b" style="color: var(--team-b-color);">TEAM BRAVO</span>
+                    <span id="roster-count-b">0/0 IN</span>
+                </div>
+                <div id="mob-roster-bravo"></div>
             </div>
         </div>
+
+        <!-- ==================================================================
+             TAB 4: SCANNER WEB-NFC & KIOSK PORTATILE
+             ================================================================== -->
+        <div id="tab-nfc" class="tab-view">
+            <div class="mob-card" style="text-align: center;">
+                <div class="mob-card-title"><span>KIOSK NFC PORTATILE</span><span id="nfc-status">INATTIVO</span></div>
+                <p style="color: #888; font-size: 12px; margin-bottom: 12px;">Richiede Chrome su Android. Appoggia la tessera sul retro dello smartphone.</p>
+                <button type="button" class="btn" id="btn-nfc" onclick="startNfcScanner()">[ ATTIVA SENSORE NFC ]</button>
+            </div>
+
+            <!-- Box Assegnazione Rapida se la tessera non è ancora in una squadra -->
+            <div id="nfc-assign-box" class="mob-card hidden" style="border-color: var(--sop-secondary);">
+                <div class="mob-card-title">
+                    <span style="color: var(--sop-secondary);">ASSEGNA SQUADRA AL TAG</span>
+                    <span id="nfc-pending-uid" style="color: #fff;">--</span>
+                </div>
+                <div class="btn-row" style="margin-top: 8px;">
+                    <button type="button" class="btn btn-sm" id="btn-assign-a" style="border-color: var(--team-a-color); color: var(--team-a-color);" onclick="assignPendingTag('ALPHA')">ALPHA</button>
+                    <button type="button" class="btn btn-sm" id="btn-assign-b" style="border-color: var(--team-b-color); color: var(--team-b-color);" onclick="assignPendingTag('BRAVO')">BRAVO</button>
+                </div>
+            </div>
+
+            <div class="nfc-log" id="nfc-log">
+                <div>&gt; Terminale NFC pronto...</div>
+            </div>
+        </div>
+
     </div>
 
+    <!-- MENU NAVIGAZIONE INFERIORE A 4 SCHEDE -->
     <div class="bottom-nav">
-        <button type="button" class="nav-btn active" onclick="switchTab('control', this)">CONTROL</button>
+        <button type="button" class="nav-btn active" onclick="switchTab('control', this)">LIVE</button>
         <button type="button" class="nav-btn" onclick="switchTab('setup', this)">SETUP</button>
-        <button type="button" class="nav-btn" onclick="switchTab('nfc', this)">NFC SCAN</button>
+        <button type="button" class="nav-btn" onclick="switchTab('roster', this)">ROSTER</button>
+        <button type="button" class="nav-btn" onclick="switchTab('nfc', this)">NFC</button>
     </div>
 
     <script>
         const socket = io();
         let nfcActive = false;
         let ndef = null;
+        let pendingAssignUid = null;
+
+        let currentDevices = [];
+        let arenaRoster = {};
+        let currentLiveMode = null;
         let currentFactions = {
-            ALPHA: { name: 'ALPHA', color: '#ff3333' },
-            BRAVO: { name: 'BRAVO', color: '#55ff55' }
+            ALPHA: { name: 'ALPHA', color: '#ff3333', daily_wins: 0 },
+            BRAVO: { name: 'BRAVO', color: '#55ff55', daily_wins: 0 }
         };
+
+        // Sequenze modulari RAT-V2 per la vista mobile
+        let mobArmSeq    = [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidCustomUid: '' }];
+        let mobDefuseSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
+
+        const KEY_MODES_META = [
+            { value: 'K1_ON',         label: 'K1 -> ON (Gira K1)',        k1Req: 'OFF', k1Next: 'ON',  k2Req: null,  k2Next: null },
+            { value: 'K1_OFF',        label: 'K1 -> OFF (Estrai K1)',     k1Req: 'ON',  k1Next: 'OFF', k2Req: null,  k2Next: null },
+            { value: 'K2_ON',         label: 'K2 -> ON (Gira K2)',        k1Req: null,  k1Next: null,  k2Req: 'OFF', k2Next: 'ON' },
+            { value: 'K2_OFF',        label: 'K2 -> OFF (Estrai K2)',     k1Req: null,  k1Next: null,  k2Req: 'ON',  k2Next: 'OFF' },
+            { value: 'BOTH_ON',       label: 'K1+K2 -> ON (Entrambe)',    k1Req: 'OFF', k1Next: 'ON',  k2Req: 'OFF', k2Next: 'ON' },
+            { value: 'BOTH_OFF',      label: 'K1+K2 -> OFF (Entrambe)',   k1Req: 'ON',  k1Next: 'OFF', k2Req: 'ON',  k2Next: 'OFF' },
+            { value: 'BOTH_SYNC_ON',  label: 'K1+K2 SYNC -> ON (<1.5s)',  k1Req: 'OFF', k1Next: 'ON',  k2Req: 'OFF', k2Next: 'ON' },
+            { value: 'BOTH_SYNC_OFF', label: 'K1+K2 SYNC -> OFF (<1.5s)', k1Req: 'ON',  k1Next: 'OFF', k2Req: 'ON',  k2Next: 'OFF' }
+        ];
+
+        // ====================================================================
+        // NAVIGAZIONE E UTILITÀ
+        // ====================================================================
 
         function switchTab(tabId, btnElement) {
             document.querySelectorAll('.tab-view').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('tab-' + tabId).classList.add('active');
-            btnElement.classList.add('active');
+            if (btnElement) btnElement.classList.add('active');
         }
 
         const formatTime = (seconds) => {
@@ -237,8 +764,474 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         };
 
+        function sendSiren(cmdName) {
+            socket.emit('send_command', { target_id: 'BROADCAST_ENV', command: { cmd: cmdName } });
+        }
+
+        function setEndButtonMode(mode) {
+            const btn = document.getElementById('btn-mob-end');
+            if (!btn) return;
+            if (mode === 'CLOSE_MISSION') {
+                btn.dataset.action = 'CLOSE_MISSION';
+                btn.textContent = '[ CHIUDI E ARCHIVIA ]';
+                btn.className = 'btn warning';
+            } else {
+                btn.dataset.action = 'FORCE_END_GAME';
+                btn.textContent = '[ TERMINA PARTITA ]';
+                btn.className = 'btn danger';
+            }
+        }
+
+        function resetLiveTelemetryUI() {
+            currentLiveMode = null;
+            document.getElementById('mob-mode-title').textContent = 'NESSUNA MISSIONE ATTIVA';
+            const statusEl = document.getElementById('mob-status');
+            statusEl.textContent = 'STANDBY';
+            statusEl.style.color = 'var(--sop-primary)';
+            document.getElementById('mob-timer').textContent = '--:--';
+            document.getElementById('mob-bomb-box').classList.add('hidden');
+            document.getElementById('mob-dom-box').classList.add('hidden');
+            document.getElementById('mob-prog-box').classList.add('hidden');
+            document.getElementById('mob-prog-1').style.width = '0%';
+            document.getElementById('mob-prog-2').style.width = '0%';
+            setEndButtonMode('FORCE_END_GAME');
+        }
+
+        function handleMatchEndButton() {
+            const btn = document.getElementById('btn-mob-end');
+            const action = btn ? (btn.dataset.action || 'FORCE_END_GAME') : 'FORCE_END_GAME';
+            if (action === 'CLOSE_MISSION') {
+                socket.emit('send_command', { target_id: 'SERVER-ROUTER', command: { cmd: 'CLOSE_MISSION' } });
+                resetLiveTelemetryUI();
+            } else if (confirm('ATTENZIONE: Terminare immediatamente la partita in corso?')) {
+                socket.emit('send_command', { target_id: 'SERVER-ROUTER', command: { cmd: 'FORCE_END_GAME' } });
+            }
+        }
+
+        // ====================================================================
+        // LOGICA DI SETUP E COSTRUTTORE SEQUENZE V2 MOBILE
+        // ====================================================================
+
+        function isTargetV2(targetId) {
+            if (!targetId) return false;
+            const dev = currentDevices.find(d => d.id === targetId);
+            return Boolean(
+                (dev && dev.version && dev.version.toUpperCase().includes('V2')) ||
+                targetId.toUpperCase().includes('V2')
+            );
+        }
+
+        function updateTargetSelectDropdown() {
+            const sel = document.getElementById('mob-target-select');
+            if (!sel) return;
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">-- Seleziona nodo disponibile --</option>';
+
+            const available = currentDevices.filter(d => {
+                const idUp = (d.id || '').toUpperCase();
+                const modeUp = (d.mode || '').toUpperCase();
+                if (idUp.includes('KIOSK') || modeUp === 'KIOSK' || idUp === 'SERVER-TDM') return false;
+                return (d.game_state === 'STANDBY' || modeUp === 'MAIN MENU' || modeUp === 'TERMINAL' || modeUp === 'STANDBY');
+            });
+
+            available.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = `${d.name || d.id} (${d.version || 'N/A'})`;
+                sel.appendChild(opt);
+            });
+
+            if (prev && available.some(d => d.id === prev)) {
+                sel.value = prev;
+            } else if (available.length > 0) {
+                sel.value = available[0].id;
+            }
+            onMobTargetChange();
+        }
+
+        function onMobModeChange() {
+            const mode = document.getElementById('mob-mode-select').value;
+            document.getElementById('mob-params-sd').classList.toggle('hidden', mode !== 'sd');
+            document.getElementById('mob-params-dom').classList.toggle('hidden', mode !== 'dom');
+            document.getElementById('mob-params-tdm').classList.toggle('hidden', mode !== 'tdm');
+            document.getElementById('mob-target-group').classList.toggle('hidden', mode === 'tdm');
+            onMobTargetChange();
+        }
+
+        function onMobTargetChange() {
+            const mode = document.getElementById('mob-mode-select').value;
+            const targetId = document.getElementById('mob-target-select').value;
+            const badge = document.getElementById('mob-target-ver-badge');
+
+            if (mode === 'tdm') {
+                badge.textContent = 'SERVER VIRTUAL';
+                return;
+            }
+
+            const v2 = isTargetV2(targetId);
+            badge.textContent = targetId ? (v2 ? 'ARCH: RAT-V2' : 'ARCH: RAT-V1') : 'NO TARGET';
+
+            if (mode === 'sd') {
+                document.getElementById('mob-sd-v1-block').classList.toggle('hidden', v2);
+                document.getElementById('mob-sd-v2-block').classList.toggle('hidden', !v2);
+                if (v2) renderMobV2Sequences();
+            }
+        }
+
+        function sanitizeMobKeySequences() {
+            const state = { k1: 'FREE', k2: 'FREE' };
+            const allSteps = [...mobArmSeq, ...mobDefuseSeq];
+
+            allSteps.forEach(step => {
+                if (step.type !== 'KEY') return;
+                step.allowedKeyModes = KEY_MODES_META.filter(m => {
+                    if (m.value === 'BOTH_ON')  return !(state.k1 === 'ON' && state.k2 === 'ON');
+                    if (m.value === 'BOTH_OFF') return !(state.k1 === 'OFF' && state.k2 === 'OFF');
+                    if (m.k1Req && state.k1 !== 'FREE' && state.k1 !== m.k1Req) return false;
+                    if (m.k2Req && state.k2 !== 'FREE' && state.k2 !== m.k2Req) return false;
+                    return true;
+                }).map(m => m.value);
+
+                if (!step.val || !step.allowedKeyModes.includes(step.val)) {
+                    step.val = step.allowedKeyModes[0] || 'K1_ON';
+                }
+                const meta = KEY_MODES_META.find(m => m.value === step.val);
+                if (meta) {
+                    if (meta.k1Next) state.k1 = meta.k1Next;
+                    if (meta.k2Next) state.k2 = meta.k2Next;
+                }
+            });
+        }
+
+        window.addMobSeqStep = function(seqType) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            if (arr.length >= 5) {
+                alert('Massimo 5 step per sequenza.');
+                return;
+            }
+            arr.push({ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidCustomUid: '' });
+            renderMobV2Sequences();
+        };
+
+        window.removeMobSeqStep = function(seqType, idx) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            arr.splice(idx, 1);
+            if (arr.length === 0) {
+                arr.push({ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidCustomUid: '' });
+            }
+            renderMobV2Sequences();
+        };
+
+        window.moveMobSeqStep = function(seqType, idx, dir) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const target = idx + dir;
+            if (target < 0 || target >= arr.length) return;
+            const tmp = arr[idx];
+            arr[idx] = arr[target];
+            arr[target] = tmp;
+            renderMobV2Sequences();
+        };
+
+        window.onMobStepTypeChange = function(seqType, idx, sel) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            arr[idx].type = sel.value;
+            if (sel.value === 'HOLD') arr[idx].val = 5;
+            else if (sel.value === 'PIN') arr[idx].val = '1234';
+            else if (sel.value === 'KEY') arr[idx].val = 'K1_ON';
+            else if (sel.value === 'RFID') arr[idx].rfidMode = 'TEAM';
+            renderMobV2Sequences();
+        };
+
+        window.onMobStepValChange = function(seqType, idx, el) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            arr[idx].val = el.value;
+            if (arr[idx].type === 'KEY') renderMobV2Sequences();
+        };
+
+        window.onMobRfidModeChange = function(seqType, idx, sel) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            arr[idx].rfidMode = sel.value;
+            renderMobV2Sequences();
+        };
+
+        window.onMobRfidUidChange = function(seqType, idx, el) {
+            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            arr[idx].rfidCustomUid = el.value.trim().toUpperCase();
+        };
+
+        function renderMobV2Sequences() {
+            sanitizeMobKeySequences();
+
+            const buildList = (arr, seqType) => arr.map((step, i) => {
+                let paramHtml = '';
+                if (step.type === 'HOLD') {
+                    paramHtml = `<input type="number" value="${step.val}" min="1" style="padding:8px; font-size:14px;" oninput="onMobStepValChange('${seqType}', ${i}, this)" placeholder="Secondi">`;
+                } else if (step.type === 'PIN') {
+                    paramHtml = `<input type="text" value="${step.val}" style="padding:8px; font-size:14px;" oninput="onMobStepValChange('${seqType}', ${i}, this)" placeholder="PIN">`;
+                } else if (step.type === 'KEY') {
+                    const allowed = step.allowedKeyModes || KEY_MODES_META.map(m => m.value);
+                    const opts = KEY_MODES_META.map(m => {
+                        const ok = allowed.includes(m.value);
+                        return `<option value="${m.value}" ${step.val === m.value ? 'selected' : ''} ${ok ? '' : 'disabled'}>${m.label}${ok ? '' : ' [Conflitto]'}</option>`;
+                    }).join('');
+                    paramHtml = `<select style="padding:8px; font-size:14px;" onchange="onMobStepValChange('${seqType}', ${i}, this)">${opts}</select>`;
+                } else if (step.type === 'RFID') {
+                    const rm = step.rfidMode || 'TEAM';
+                    const roleLbl = seqType === 'arm' ? 'SQUADRA ATTACCANTE' : 'SQUADRA DIFENSORE';
+                    paramHtml = `
+                        <select style="padding:8px; font-size:14px; margin-bottom:${rm === 'CUSTOM' ? '6px' : '0'};" onchange="onMobRfidModeChange('${seqType}', ${i}, this)">
+                            <option value="TEAM" ${rm === 'TEAM' ? 'selected' : ''}>${roleLbl}</option>
+                            <option value="ANY" ${rm === 'ANY' ? 'selected' : ''}>QUALSIASI TESSERA</option>
+                            <option value="CUSTOM" ${rm === 'CUSTOM' ? 'selected' : ''}>UID SPECIFICO</option>
+                        </select>
+                        ${rm === 'CUSTOM' ? `<input type="text" value="${step.rfidCustomUid || ''}" style="padding:8px; font-size:14px;" placeholder="UID Tessera..." oninput="onMobRfidUidChange('${seqType}', ${i}, this)">` : ''}
+                    `;
+                }
+
+                return `
+                    <div class="v2-mob-step">
+                        <div class="v2-mob-step-head">
+                            <span style="color:var(--sop-primary); font-weight:bold; font-size:13px;">STEP #${i + 1}</span>
+                            <div class="v2-mob-actions">
+                                <span onclick="moveMobSeqStep('${seqType}', ${i}, -1)">▲</span>
+                                <span onclick="moveMobSeqStep('${seqType}', ${i}, 1)">▼</span>
+                                <span style="color:var(--sop-alert); border-color:var(--sop-alert);" onclick="removeMobSeqStep('${seqType}', ${i})">✕</span>
+                            </div>
+                        </div>
+                        <div class="grid-2col" style="grid-template-columns: 1.1fr 1.4fr; gap: 6px;">
+                            <select style="padding:8px; font-size:14px;" onchange="onMobStepTypeChange('${seqType}', ${i}, this)">
+                                <option value="HOLD" ${step.type === 'HOLD' ? 'selected' : ''}>HOLD</option>
+                                <option value="PIN" ${step.type === 'PIN' ? 'selected' : ''}>PIN</option>
+                                <option value="KEY" ${step.type === 'KEY' ? 'selected' : ''}>CHIAVE</option>
+                                <option value="RFID" ${step.type === 'RFID' ? 'selected' : ''}>RFID</option>
+                            </select>
+                            <div class="input-group" style="margin-bottom:0;">${paramHtml}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            document.getElementById('mob-v2-arm-list').innerHTML = buildList(mobArmSeq, 'arm');
+            document.getElementById('mob-v2-defuse-list').innerHTML = buildList(mobDefuseSeq, 'defuse');
+        }
+
+        function serializeMobSeq(arr) {
+            return arr.map(s => {
+                if (s.type === 'HOLD') return { type: 'HOLD', val_num: parseInt(s.val) || 5 };
+                if (s.type === 'PIN')  return { type: 'PIN',  val_str: String(s.val || '1234').trim() };
+                if (s.type === 'KEY')  return { type: 'KEY',  val_str: String(s.val || 'K1_ON').trim() };
+                if (s.type === 'RFID') {
+                    const rm = s.rfidMode || 'TEAM';
+                    if (rm === 'TEAM')   return { type: 'RFID', rfid_mode: 'TEAM',   val_str: 'TEAM' };
+                    if (rm === 'CUSTOM') return { type: 'RFID', rfid_mode: 'CUSTOM', val_str: String(s.rfidCustomUid || '').trim().toUpperCase() };
+                    return { type: 'RFID', rfid_mode: 'ANY', val_str: '*' };
+                }
+                return { type: s.type };
+            });
+        }
+
+        function buildMobMissionConfig() {
+            const mode = document.getElementById('mob-mode-select').value;
+            let targetId = document.getElementById('mob-target-select').value;
+            let dur = 15;
+            let commandData = {};
+
+            if (mode === 'sd') {
+                dur = parseInt(document.getElementById('mob-sd-dur').value) || 20;
+                const bomb = parseInt(document.getElementById('mob-sd-bomb').value) || 10;
+                const attacker = document.getElementById('mob-sd-attacker').value;
+
+                if (isTargetV2(targetId)) {
+                    commandData = {
+                        cmd: 'SET_SD_SETTINGS',
+                        attacker: attacker,
+                        game_duration: dur,
+                        bomb_time: bomb,
+                        fx_smoke: document.getElementById('mob-v2-smoke').value === 'true',
+                        fx_relay: document.getElementById('mob-v2-relay').value === 'true',
+                        arm_seq: serializeMobSeq(mobArmSeq),
+                        defuse_seq: serializeMobSeq(mobDefuseSeq)
+                    };
+                } else {
+                    commandData = {
+                        cmd: 'SET_SD_SETTINGS',
+                        attacker: attacker,
+                        game_duration: dur,
+                        bomb_time: bomb,
+                        arm_time: parseInt(document.getElementById('mob-v1-arm-time').value) || 5,
+                        defuse_time: parseInt(document.getElementById('mob-v1-def-time').value) || 10,
+                        use_arm_pin: document.getElementById('mob-v1-use-arm-pin').value === 'true',
+                        use_defuse_pin: document.getElementById('mob-v1-use-def-pin').value === 'true',
+                        arm_pin: document.getElementById('mob-v1-arm-pin').value,
+                        defuse_pin: document.getElementById('mob-v1-def-pin').value
+                    };
+                }
+            } else if (mode === 'dom') {
+                dur = parseInt(document.getElementById('mob-dom-dur').value) || 15;
+                commandData = {
+                    cmd: 'SET_DOM_SETTINGS',
+                    duration: dur,
+                    capture_time: parseInt(document.getElementById('mob-dom-cap').value) || 10,
+                    countdown: parseInt(document.getElementById('mob-dom-cd').value) || 10
+                };
+            } else {
+                dur = parseInt(document.getElementById('mob-tdm-dur').value) || 15;
+                targetId = 'SERVER-TDM';
+                commandData = { cmd: 'SET_TDM_SETTINGS', duration: dur };
+            }
+
+            return { mode, targetId, dur, commandData };
+        }
+
+        function transmitMobSetup() {
+            const { mode, targetId, dur, commandData } = buildMobMissionConfig();
+            if (mode !== 'tdm' && !targetId) {
+                alert('Seleziona un terminale hardware target prima di trasmettere.');
+                return;
+            }
+            socket.emit('send_command', { target_id: targetId, command: commandData });
+            socket.emit('send_command', { target_id: 'broadcast', command: { cmd: 'SET_READY', mode: mode, target_id: targetId, duration: dur } });
+
+            const startBtn = document.getElementById('btn-mob-start');
+            startBtn.classList.remove('disabled');
+            if (navigator.vibrate) navigator.vibrate(60);
+        }
+
+        function launchMobMission() {
+            const { mode, targetId, dur, commandData } = buildMobMissionConfig();
+            if (mode !== 'tdm' && !targetId) {
+                alert('Nessun terminale target selezionato.');
+                return;
+            }
+            socket.emit('request_mission_start', {
+                mode: mode,
+                target_id: targetId,
+                duration: dur,
+                settings: commandData,
+                force: false
+            });
+            document.getElementById('btn-mob-start').classList.add('disabled');
+        }
+
+        // ====================================================================
+        // RENDERING ROSTER MOBILE (TAB 3)
+        // ====================================================================
+
+        function renderMobileRoster() {
+            const boxA = document.getElementById('mob-roster-alpha');
+            const boxB = document.getElementById('mob-roster-bravo');
+            if (!boxA || !boxB) return;
+
+            boxA.innerHTML = '';
+            boxB.innerHTML = '';
+
+            let totalA = 0, inA = 0, totalB = 0, inB = 0;
+
+            Object.entries(arenaRoster).forEach(([uid, op]) => {
+                const isIn = op.status === 'IN';
+                if (op.team === 'ALPHA') { totalA++; if (isIn) inA++; }
+                if (op.team === 'BRAVO') { totalB++; if (isIn) inB++; }
+
+                const row = document.createElement('div');
+                row.className = `roster-op-item ${isIn ? 'is-in' : 'is-out'}`;
+                row.innerHTML = `
+                    <div>
+                        <div style="font-size:15px; font-weight:bold; color:#fff;">${op.name}</div>
+                        <div style="font-size:11px; color:${isIn ? 'var(--sop-success)' : '#888'};">${isIn ? '● IN CAMPO' : '○ FUORI CAMPO'}</div>
+                    </div>
+                    <div class="op-actions">
+                        <button type="button" class="op-btn" style="border-color:${isIn ? 'var(--sop-alert)' : 'var(--sop-success)'}; color:${isIn ? 'var(--sop-alert)' : 'var(--sop-success)'};" onclick="toggleOpStatus('${uid}')">
+                            ${isIn ? 'SEGNA FUORI' : 'METTI IN'}
+                        </button>
+                        <button type="button" class="op-btn" onclick="swapOpTeam('${uid}')" title="Cambia Squadra">⇄</button>
+                    </div>
+                `;
+
+                if (op.team === 'ALPHA') boxA.appendChild(row);
+                else boxB.appendChild(row);
+            });
+
+            if (totalA === 0) boxA.innerHTML = '<div style="color:#555; font-size:12px; text-align:center; padding:8px;">Nessun operatore assegnato</div>';
+            if (totalB === 0) boxB.innerHTML = '<div style="color:#555; font-size:12px; text-align:center; padding:8px;">Nessun operatore assegnato</div>';
+
+            document.getElementById('roster-count-a').textContent = `${inA}/${totalA} IN`;
+            document.getElementById('roster-count-b').textContent = `${inB}/${totalB} IN`;
+            document.getElementById('live-in-a').textContent = `${inA} IN`;
+            document.getElementById('live-in-b').textContent = `${inB} IN`;
+        }
+
+        function toggleOpStatus(uid) {
+            socket.emit('update_operator', { uid: uid, action: 'status_toggle' });
+            if (navigator.vibrate) navigator.vibrate(40);
+        }
+
+        function swapOpTeam(uid) {
+            socket.emit('update_operator', { uid: uid, action: 'swap' });
+            if (navigator.vibrate) navigator.vibrate(40);
+        }
+
+        // ====================================================================
+        // EVENTI SOCKET.IO DAL SERVER
+        // ====================================================================
+
+        socket.on('connect', () => {
+            document.getElementById('conn-indicator').classList.add('online');
+            socket.emit('request_roster');
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('conn-indicator').classList.remove('online');
+        });
+
+        socket.on('devices_update', (devices) => {
+            currentDevices = devices || [];
+            updateTargetSelectDropdown();
+        });
+
+        socket.on('roster_update', (roster) => {
+            arenaRoster = roster || {};
+            renderMobileRoster();
+        });
+
         socket.on('factions_update', (factions) => {
             currentFactions = factions;
+            document.documentElement.style.setProperty('--team-a-color', factions.ALPHA.color);
+            document.documentElement.style.setProperty('--team-b-color', factions.BRAVO.color);
+
+            const setTxt = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+            setTxt('live-name-a', factions.ALPHA.name);
+            setTxt('live-name-b', factions.BRAVO.name);
+            setTxt('live-wins-a', factions.ALPHA.daily_wins || 0);
+            setTxt('live-wins-b', factions.BRAVO.daily_wins || 0);
+            setTxt('mob-dom-lbl-a', factions.ALPHA.name);
+            setTxt('mob-dom-lbl-b', factions.BRAVO.name);
+            setTxt('roster-title-a', `TEAM ${factions.ALPHA.name}`);
+            setTxt('roster-title-b', `TEAM ${factions.BRAVO.name}`);
+            setTxt('btn-assign-a', factions.ALPHA.name);
+            setTxt('btn-assign-b', factions.BRAVO.name);
+
+            const attSelect = document.getElementById('mob-sd-attacker');
+            if (attSelect) {
+                attSelect.options[0].textContent = factions.ALPHA.name;
+                attSelect.options[1].textContent = factions.BRAVO.name;
+            }
+        });
+
+        socket.on('mission_start_warning', (data) => {
+            if (confirm(data.msg)) {
+                data.original_request.force = true;
+                socket.emit('request_mission_start', data.original_request);
+            } else {
+                document.getElementById('btn-mob-start').classList.remove('disabled');
+            }
+        });
+
+        socket.on('mission_start_error', (data) => {
+            alert(data.msg);
+            document.getElementById('btn-mob-start').classList.remove('disabled');
+        });
+
+        socket.on('mission_start_success', () => {
+            switchTab('control', document.querySelectorAll('.nav-btn')[0]);
         });
 
         socket.on('esp_event', (msg) => {
@@ -247,46 +1240,87 @@
             const payload = raw.payload || {};
 
             if (type === 'RFID_SCAN') return;
-            
+
             if (type === 'MODE_EXIT') {
-                document.getElementById('mob-status').textContent = "STANDBY";
-                document.getElementById('mob-status').style.color = "#eee";
-                document.getElementById('mob-timer').textContent = "--:--";
+                resetLiveTelemetryUI();
                 return;
             }
-            
-            if (payload.state) {
-                let s = payload.state
-                    .replace('ALPHA', currentFactions.ALPHA.name)
-                    .replace('BRAVO', currentFactions.BRAVO.name);
-                const statusEl = document.getElementById('mob-status');
-                statusEl.textContent = s;
-                if (s.includes('WINS') || s.includes('OWNED')) statusEl.style.color = "var(--sop-alert)";
-                else statusEl.style.color = "var(--sop-primary)";
+
+            let incMode = payload.mode || raw.mode;
+            if (!incMode) {
+                if (type === 'SD_UPDATE')  incMode = 'SEARCH_AND_DESTROY';
+                else if (type === 'DOM_UPDATE') incMode = 'DOMINATION';
+                else if (type === 'TDM_UPDATE') incMode = 'TEAM_DEATHMATCH';
             }
+            if (incMode) {
+                currentLiveMode = incMode;
+                document.getElementById('mob-mode-title').textContent = incMode.replace(/_/g, ' ').toUpperCase();
+            }
+
+            const isSd  = (currentLiveMode === 'SEARCH_AND_DESTROY' || currentLiveMode === 'sd');
+            const isDom = (currentLiveMode === 'DOMINATION' || currentLiveMode === 'dom');
+
+            document.getElementById('mob-bomb-box').classList.toggle('hidden', !isSd);
+            document.getElementById('mob-dom-box').classList.toggle('hidden', !isDom);
+            document.getElementById('mob-prog-box').classList.toggle('hidden', !(isSd || isDom));
 
             if (payload.game_time !== undefined) {
                 document.getElementById('mob-timer').textContent = formatTime(payload.game_time);
             } else if (type === 'COUNTDOWN_UPDATE' && payload.time !== undefined) {
                 document.getElementById('mob-timer').textContent = `T-${payload.time}`;
             }
+
+            if (payload.state) {
+                const rawState = payload.state;
+                const displayState = rawState
+                    .replace('ALPHA', currentFactions.ALPHA.name)
+                    .replace('BRAVO', currentFactions.BRAVO.name);
+
+                const statusEl = document.getElementById('mob-status');
+                statusEl.textContent = displayState;
+
+                const isMatchEnded = (
+                    rawState.includes('WINS') ||
+                    rawState === 'DRAW' ||
+                    rawState === 'EXPLODED' ||
+                    rawState === 'DEFUSED' ||
+                    rawState === 'STOPPED'
+                );
+
+                setEndButtonMode(isMatchEnded ? 'CLOSE_MISSION' : 'FORCE_END_GAME');
+
+                if (rawState.includes('BRAVO')) statusEl.style.color = currentFactions.BRAVO.color;
+                else if (rawState.includes('ALPHA') || rawState.includes('ARM') || rawState === 'EXPLODED') statusEl.style.color = currentFactions.ALPHA.color;
+                else statusEl.style.color = 'var(--sop-primary)';
+            }
+
+            if (isSd) {
+                document.getElementById('mob-prog-lbl-1').textContent = 'INNESCO';
+                document.getElementById('mob-prog-lbl-2').textContent = 'DISINNESCO';
+                if (payload.arm_prog !== undefined) document.getElementById('mob-prog-1').style.width = payload.arm_prog + '%';
+                if (payload.def_prog !== undefined) document.getElementById('mob-prog-2').style.width = payload.def_prog + '%';
+
+                if (payload.state === 'SAFE' || payload.state === 'ARMING...' || payload.bomb_time === null || payload.bomb_time < 0) {
+                    document.getElementById('mob-bomb-timer').textContent = '--:--';
+                } else if (payload.bomb_time !== undefined) {
+                    document.getElementById('mob-bomb-timer').textContent = formatTime(payload.bomb_time);
+                }
+            } else if (isDom) {
+                document.getElementById('mob-prog-lbl-1').textContent = `CATTURA ${currentFactions.ALPHA.name}`;
+                document.getElementById('mob-prog-lbl-2').textContent = `CATTURA ${currentFactions.BRAVO.name}`;
+                if (payload.score_a !== undefined) document.getElementById('mob-dom-a').textContent = formatTime(payload.score_a);
+                if (payload.score_b !== undefined) document.getElementById('mob-dom-b').textContent = formatTime(payload.score_b);
+
+                const prog = payload.capture_prog || 0;
+                const st = payload.state || '';
+                document.getElementById('mob-prog-1').style.width = st.includes('CAPTURING A') ? (prog + '%') : '0%';
+                document.getElementById('mob-prog-2').style.width = st.includes('CAPTURING B') ? (prog + '%') : '0%';
+            }
         });
 
-        function forceEndMatch() {
-            if (confirm("ATTENZIONE: Terminare immediatamente la partita in corso?")) {
-                socket.emit('send_command', { target_id: "SERVER-ROUTER", command: { cmd: "FORCE_END_GAME" } });
-            }
-        }
-
-        function startQuickMatch() {
-            const dur = parseInt(document.getElementById('mob-dur').value) || 15;
-            if (confirm(`Avviare TEAM DEATHMATCH globale da ${dur} minuti?`)) {
-                socket.emit('send_command', { target_id: 'SERVER-TDM', command: { cmd: "SET_TDM_SETTINGS", duration: dur } });
-                socket.emit('send_command', { target_id: 'broadcast', command: { cmd: "SET_READY", mode: 'tdm', target_id: 'SERVER-TDM', duration: dur } });
-                socket.emit('request_mission_start', { mode: 'tdm', target_id: 'SERVER-TDM', duration: dur, force: true });
-                switchTab('control', document.querySelectorAll('.nav-btn')[0]);
-            }
-        }
+        // ====================================================================
+        // SCANNER WEB-NFC E ASSEGNAZIONE RAPIDA TESSERE
+        // ====================================================================
 
         function logNFC(msg) {
             const logBox = document.getElementById('nfc-log');
@@ -302,50 +1336,71 @@
         async function startNfcScanner() {
             if (nfcActive) return;
 
-            if (!("NDEFReader" in window)) {
-                alert("Web NFC non supportato! Assicurati di usare Chrome su Android e di aver abilitato le flag per connessioni non-HTTPS se in locale.");
+            if (!('NDEFReader' in window)) {
+                alert('Web NFC richiede Chrome su Android con connessione HTTPS attiva.');
                 return;
             }
-            
+
             try {
                 ndef = new NDEFReader();
                 await ndef.scan();
                 nfcActive = true;
-                
-                document.getElementById('btn-nfc').style.borderColor = "var(--sop-success)";
-                document.getElementById('btn-nfc').style.color = "var(--sop-success)";
-                document.getElementById('btn-nfc').textContent = "[ SENSORE ATTIVO ]";
-                document.getElementById('nfc-status').textContent = "In attesa del TAG...";
-                document.getElementById('nfc-status').style.color = "var(--sop-success)";
-                
-                logNFC("Sensore NFC inizializzato con successo.");
+
+                const btn = document.getElementById('btn-nfc');
+                btn.style.borderColor = 'var(--sop-success)';
+                btn.style.color = 'var(--sop-success)';
+                btn.textContent = '[ SENSORE NFC ATTIVO ]';
+
+                const st = document.getElementById('nfc-status');
+                st.textContent = 'IN ASCOLTO...';
+                st.style.color = 'var(--sop-success)';
+
+                logNFC('Sensore NFC inizializzato.');
 
                 ndef.onreading = event => {
                     const serial = event.serialNumber;
                     if (serial) {
                         const rawUid = serial.replace(/:/g, '').toUpperCase();
-                        logNFC(`> SCANSIONE: ${rawUid}`);
+                        logNFC(`> LETTURA: ${rawUid}`);
                         socket.emit('mobile_tag_scanned', { uid: rawUid });
-                        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
                     }
                 };
-                
+
                 ndef.onreadingerror = () => {
-                    logNFC("! Errore di lettura. Appoggia bene la tessera.");
-                    if (navigator.vibrate) navigator.vibrate(300);
+                    logNFC('! Errore di lettura. Riappoggia la tessera.');
+                    if (navigator.vibrate) navigator.vibrate(250);
                 };
             } catch (error) {
                 logNFC(`Errore attivazione: ${error}`);
             }
         }
 
+        function assignPendingTag(team) {
+            if (!pendingAssignUid) return;
+            socket.emit('register_operator', { uid: pendingAssignUid, team: team });
+            logNFC(`➕ [${pendingAssignUid}] assegnato a ${currentFactions[team].name} (IN CAMPO)`);
+            pendingAssignUid = null;
+            document.getElementById('nfc-assign-box').classList.add('hidden');
+            if (navigator.vibrate) navigator.vibrate(100);
+        }
+
         socket.on('mobile_scan_reply', (data) => {
             if (data.success) {
-                logNFC(`✅ [${data.team}] Cambio stato: ${data.status}`);
+                pendingAssignUid = null;
+                document.getElementById('nfc-assign-box').classList.add('hidden');
+                const tName = currentFactions[data.team]?.name || data.team;
+                logNFC(`✅ [${tName}] Stato aggiornato: ${data.status}`);
             } else {
-                logNFC(`❌ SCONOSCIUTO. Usa 'Registra' su PC.`);
+                pendingAssignUid = data.uid;
+                document.getElementById('nfc-pending-uid').textContent = data.uid;
+                document.getElementById('nfc-assign-box').classList.remove('hidden');
+                logNFC(`⚠️ Tag ${data.uid} fuori roster: scegli la squadra qui sopra.`);
             }
         });
+
+        // Inizializzazione stato form all'avvio
+        onMobModeChange();
     </script>
 </body>
 </html>
