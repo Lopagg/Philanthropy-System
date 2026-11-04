@@ -4,5 +4,11 @@
         "file": "rat-v2.bin",
         "size_bytes": 1330768,
         "updated_at": "2026-11-04 10:30:53"
+    },
+    "kiosk-v1": {
+        "version": "v0.0.2",
+        "file": "kiosk-v1.bin",
+        "size_bytes": 970640,
+        "updated_at": "2026-11-04 19:12:59"
     }
 }
