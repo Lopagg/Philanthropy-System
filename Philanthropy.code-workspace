@@ -9,12 +9,12 @@
             "path": "firmware/rat-v2"
         },
         {
-            "name": "📠 Firmware RAT-V1 (Legacy)",
-            "path": "firmware/rat-v1"
-        },
-        {
             "name": "🎛️ Firmware Kiosk-V1 (RFID)",
             "path": "firmware/kiosk-v1"
+        },
+        {
+            "name": "📠 Firmware RAT-V1 (Legacy)",
+            "path": "firmware/rat-v1"
         },
         {
             "name": "📦 Root & Deploy Scripts",
@@ -26,5 +26,37 @@
             "**/.git": true,
             "**/__pycache__": true
         }
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "🚀 Pubblica OTA: RAT-V2 (Bump Versione + Build + Push)",
+                "type": "shell",
+                "command": "python publish_ota.py",
+                "options": {
+                    "cwd": "${workspaceFolder:💣 Firmware RAT-V2 (ESP32-S3)}"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "🚀 Pubblica OTA: Kiosk-V1 (Bump Versione + Build + Push)",
+                "type": "shell",
+                "command": "python publish_ota.py",
+                "options": {
+                    "cwd": "${workspaceFolder:🎛️ Firmware Kiosk-V1 (RFID)}"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "🖥️ Avvia Server SOP in Locale (Porta 5000)",
+                "type": "shell",
+                "command": "python server.py",
+                "options": {
+                    "cwd": "${workspaceFolder:🖥️ SOP Server (Python/Web)}"
+                },
+                "problemMatcher": []
+            }
+        ]
     }
 }
