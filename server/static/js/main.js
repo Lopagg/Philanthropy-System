@@ -4,8 +4,8 @@
  *
  * Gestisce:
  * - Connessione singleton Socket.IO e sincronizzazione real-time con il server Flask.
- * - Costruttore visuale delle sequenze modulari V2 (HOLD, PIN, KEY a 8 modalità, RFID a 4 modalità).
- * - Validazione automatica di coerenza per lo stato delle chiavi K1/K2 tra innesco e disinnesco.
+ * - Costruttore visuale delle sequenze modulari V2 (HOLD, PIN, KEY a 8 modalità, RFID a 4 modalità) per S&D e Dominio.
+ * - Validazione automatica di coerenza per lo stato delle chiavi K1/K2.
  * - Gestione fazioni, meteo tattico, ritaglio foto profilo/prop (Cropper.js), OTA e registrazione tessere.
  */
 
@@ -23,8 +23,23 @@ let arenaRoster = {};
 let monitoredDeviceId = null;
 let currentCropper = null;
 
-window.v2ArmSequence = window.v2ArmSequence || [{ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
-window.v2DefuseSequence = window.v2DefuseSequence || [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+window.v2ArmSequence      = window.v2ArmSequence      || [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+window.v2DefuseSequence   = window.v2DefuseSequence   || [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+window.v2DomAlphaSequence = window.v2DomAlphaSequence || [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+window.v2DomBravoSequence = window.v2DomBravoSequence || [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+
+function getSeqArrayByType(type) {
+    if (type === 'arm')       return window.v2ArmSequence;
+    if (type === 'defuse')    return window.v2DefuseSequence;
+    if (type === 'dom_alpha') return window.v2DomAlphaSequence;
+    if (type === 'dom_bravo') return window.v2DomBravoSequence;
+    return window.v2ArmSequence;
+}
+
+window.copyDomAlphaToBravo = function() {
+    window.v2DomBravoSequence = JSON.parse(JSON.stringify(window.v2DomAlphaSequence));
+    renderV2Sequences();
+};
 
 export let currentFactions = window.__zuluFactions || (window.__zuluFactions = {
     ALPHA: { name: 'ALPHA', color: '#ff3333', daily_wins: 0 },
@@ -99,13 +114,10 @@ export function updateSetupDropdown() {
 
 window.updateUIForTargetVersion = function() {
     const targetSelect = document.getElementById('setup-target-select');
-    const v1Block = document.getElementById('sd-v1-legacy-params');
-    const v2Block = document.getElementById('sd-v2-modular-params');
     const modeSelect = document.getElementById('setup-mode-select');
+    if (!targetSelect || !modeSelect) return;
 
-    if (!targetSelect || !modeSelect || modeSelect.value !== 'sd' || !v1Block || !v2Block) return;
     const targetId = targetSelect.value;
-
     let isV2 = false;
     if (targetId) {
         const device = currentDevices.find(d => d.id === targetId);
@@ -114,17 +126,22 @@ window.updateUIForTargetVersion = function() {
         }
     }
 
+    const sdV1  = document.getElementById('sd-v1-legacy-params');
+    const sdV2  = document.getElementById('sd-v2-modular-params');
+    const domV1 = document.getElementById('dom-v1-legacy-params');
+    const domV2 = document.getElementById('dom-v2-modular-params');
+
+    if (sdV1 && sdV2) {
+        sdV1.classList.toggle('hidden', isV2);
+        sdV2.classList.toggle('hidden', !isV2);
+    }
+    if (domV1 && domV2) {
+        domV1.classList.toggle('hidden', isV2);
+        domV2.classList.toggle('hidden', !isV2);
+    }
+
     if (isV2) {
-        const wasHidden = v2Block.classList.contains('hidden');
-        v1Block.classList.add('hidden');
-        v2Block.classList.remove('hidden');
-        const armContainer = document.getElementById('v2-arm-sequence-container');
-        if (wasHidden || (armContainer && armContainer.children.length === 0)) {
-            renderV2Sequences();
-        }
-    } else {
-        v2Block.classList.add('hidden');
-        v1Block.classList.remove('hidden');
+        renderV2Sequences();
     }
 };
 
@@ -158,11 +175,9 @@ function applyKeyModeState(modeVal, state) {
     if (meta.k2Next) state.k2 = meta.k2Next;
 }
 
-function sanitizeKeySequences() {
+function sanitizeChain(stepsArray) {
     const state = { k1: 'FREE', k2: 'FREE' };
-    const allSteps = [...window.v2ArmSequence, ...window.v2DefuseSequence];
-
-    allSteps.forEach(step => {
+    stepsArray.forEach(step => {
         if (step.type !== 'KEY') return;
         step.allowedKeyModes = KEY_MODES_META.filter(m => isKeyModeAllowed(m, state)).map(m => m.value);
         if (!step.val || !step.allowedKeyModes.includes(step.val)) {
@@ -172,27 +187,37 @@ function sanitizeKeySequences() {
     });
 }
 
+function sanitizeKeySequences() {
+    // 1. In Search & Destroy l'innesco precede sempre il disinnesco
+    sanitizeChain([...window.v2ArmSequence, ...window.v2DefuseSequence]);
+    // 2. In Dominio ciascuna squadra esegue la propria sequenza di conquista
+    sanitizeChain(window.v2DomAlphaSequence);
+    sanitizeChain(window.v2DomBravoSequence);
+}
+
 window.addSequenceStep = function(type) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     if (arr.length >= 5) {
         alert("Massimo 5 step consentiti per sequenza.");
         return;
     }
-    arr.push({ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' });
+    const defaultHold = (type === 'arm') ? 5 : 10;
+    arr.push({ type: 'HOLD', val: defaultHold, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' });
     renderV2Sequences();
 };
 
 window.removeSequenceStep = function(type, index) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     arr.splice(index, 1);
     if (arr.length === 0) {
-        arr.push({ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' });
+        const defaultHold = (type === 'arm') ? 5 : 10;
+        arr.push({ type: 'HOLD', val: defaultHold, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' });
     }
     renderV2Sequences();
 };
 
 window.moveSequenceStep = function(type, index, direction) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= arr.length) return;
     const temp = arr[index];
@@ -202,9 +227,9 @@ window.moveSequenceStep = function(type, index, direction) {
 };
 
 window.updateSequenceStepType = function(type, index, selectElement) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     arr[index].type = selectElement.value;
-    if (arr[index].type === 'HOLD') arr[index].val = 5;
+    if (arr[index].type === 'HOLD') arr[index].val = (type === 'arm') ? 5 : 10;
     else if (arr[index].type === 'PIN') arr[index].val = "1234";
     else if (arr[index].type === 'KEY') arr[index].val = "K1_ON";
     else if (arr[index].type === 'RFID') {
@@ -216,7 +241,7 @@ window.updateSequenceStepType = function(type, index, selectElement) {
 };
 
 window.updateSequenceStepVal = function(type, index, inputElement) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     arr[index].val = inputElement.value;
     if (arr[index].type === 'KEY') {
         renderV2Sequences();
@@ -224,7 +249,7 @@ window.updateSequenceStepVal = function(type, index, inputElement) {
 };
 
 window.updateRfidStepMode = function(type, index, selectElement) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     arr[index].rfidMode = selectElement.value;
     renderV2Sequences();
 };
@@ -232,7 +257,7 @@ window.updateRfidStepMode = function(type, index, selectElement) {
 window.addRfidPlayer = function(type, index, selectElement) {
     const uid = selectElement.value;
     if (!uid) return;
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     if (!Array.isArray(arr[index].rfidPlayers)) arr[index].rfidPlayers = [];
     if (!arr[index].rfidPlayers.includes(uid)) {
         arr[index].rfidPlayers.push(uid);
@@ -241,14 +266,14 @@ window.addRfidPlayer = function(type, index, selectElement) {
 };
 
 window.removeRfidPlayer = function(type, index, uid) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     if (!Array.isArray(arr[index].rfidPlayers)) return;
     arr[index].rfidPlayers = arr[index].rfidPlayers.filter(u => u !== uid);
     renderV2Sequences();
 };
 
 window.updateRfidCustomUid = function(type, index, inputElement) {
-    const arr = type === 'arm' ? window.v2ArmSequence : window.v2DefuseSequence;
+    const arr = getSeqArrayByType(type);
     arr[index].rfidCustomUid = inputElement.value.trim().toUpperCase();
 };
 
@@ -265,9 +290,10 @@ function getPlayerDisplayName(uid) {
 }
 
 function renderV2Sequences() {
-    const armContainer = document.getElementById('v2-arm-sequence-container');
-    const defuseContainer = document.getElementById('v2-defuse-sequence-container');
-    if (!armContainer || !defuseContainer) return;
+    const armContainer      = document.getElementById('v2-arm-sequence-container');
+    const defuseContainer   = document.getElementById('v2-defuse-sequence-container');
+    const domAlphaContainer = document.getElementById('v2-dom-alpha-sequence-container');
+    const domBravoContainer = document.getElementById('v2-dom-bravo-sequence-container');
 
     sanitizeKeySequences();
 
@@ -292,7 +318,9 @@ function renderV2Sequences() {
             } else if (step.type === 'RFID') {
                 const rfidMode = step.rfidMode || 'TEAM';
                 const selectedPlayers = Array.isArray(step.rfidPlayers) ? step.rfidPlayers : [];
-                const roleLabel = typeName === 'arm' ? 'SQUADRA ATTACCANTE' : 'SQUADRA DIFENSORE';
+                const roleLabel = typeName === 'arm' ? 'SQUADRA ATTACCANTE'
+                                : (typeName === 'defuse' ? 'SQUADRA DIFENSORE'
+                                : (typeName === 'dom_alpha' ? `SQUADRA ${currentFactions.ALPHA.name}` : `SQUADRA ${currentFactions.BRAVO.name}`));
 
                 let subControlHtml = '';
                 if (rfidMode === 'TEAM') {
@@ -364,8 +392,10 @@ function renderV2Sequences() {
         return html;
     };
 
-    armContainer.innerHTML = generateHtml(window.v2ArmSequence, 'arm');
-    defuseContainer.innerHTML = generateHtml(window.v2DefuseSequence, 'defuse');
+    if (armContainer)      armContainer.innerHTML      = generateHtml(window.v2ArmSequence, 'arm');
+    if (defuseContainer)   defuseContainer.innerHTML   = generateHtml(window.v2DefuseSequence, 'defuse');
+    if (domAlphaContainer) domAlphaContainer.innerHTML = generateHtml(window.v2DomAlphaSequence, 'dom_alpha');
+    if (domBravoContainer) domBravoContainer.innerHTML = generateHtml(window.v2DomBravoSequence, 'dom_bravo');
 }
 
 window.renderV2Sequences = renderV2Sequences;
@@ -410,16 +440,16 @@ function buildMissionConfig() {
     let commandData = {};
     let dur = 15;
 
+    let isV2 = false;
+    if (targetId) {
+        const device = currentDevices.find(d => d.id === targetId);
+        if ((device && device.version && device.version.includes("V2")) || targetId.includes("V2")) {
+            isV2 = true;
+        }
+    }
+
     if (mode === 'sd') {
         dur = parseInt(document.getElementById('sd-game-dur').value) || 20;
-        let isV2 = false;
-
-        if (targetId) {
-            const device = currentDevices.find(d => d.id === targetId);
-            if ((device && device.version && device.version.includes("V2")) || targetId.includes("V2")) {
-                isV2 = true;
-            }
-        }
 
         if (isV2) {
             const armSeqPayload = readSequenceFromState(window.v2ArmSequence, [{ type: 'HOLD', val_num: 5 }]);
@@ -451,15 +481,32 @@ function buildMissionConfig() {
         }
     } else if (mode === 'dom') {
         dur = parseInt(document.getElementById('dom-game-dur').value) || 15;
-        commandData = {
-            cmd: "SET_DOM_SETTINGS",
-            duration: dur,
-            capture_time: parseInt(document.getElementById('dom-capture-time').value),
-            countdown: parseInt(document.getElementById('dom-countdown').value)
-        };
+
+        if (isV2) {
+            const alphaSeqPayload = readSequenceFromState(window.v2DomAlphaSequence, [{ type: 'HOLD', val_num: 10 }]);
+            const bravoSeqPayload = readSequenceFromState(window.v2DomBravoSequence, [{ type: 'HOLD', val_num: 10 }]);
+
+            commandData = {
+                cmd: "SET_DOM_SETTINGS",
+                duration: dur,
+                game_duration: dur,
+                fx_smoke: document.getElementById('dom-v2-fx-smoke')?.value === 'true',
+                fx_relay: document.getElementById('dom-v2-fx-relay')?.value === 'true',
+                alpha_seq: alphaSeqPayload,
+                bravo_seq: bravoSeqPayload
+            };
+        } else {
+            commandData = {
+                cmd: "SET_DOM_SETTINGS",
+                duration: dur,
+                game_duration: dur,
+                capture_time: parseInt(document.getElementById('dom-capture-time')?.value) || 10,
+                countdown: parseInt(document.getElementById('dom-countdown')?.value) || 10
+            };
+        }
     } else if (mode === 'tdm') {
         dur = parseInt(document.getElementById('tdm-game-dur').value) || 15;
-        commandData = { cmd: "SET_TDM_SETTINGS", duration: dur };
+        commandData = { cmd: "SET_TDM_SETTINGS", duration: dur, game_duration: dur };
         targetId = "SERVER-TDM";
     }
 
@@ -713,6 +760,7 @@ if (!window.__zuluMainInitialized) {
         }
 
         updateMonitorDailyWins(currentFactions);
+        renderV2Sequences();
 
         const attackerSelect = document.getElementById('sd-attacker-team');
         if (attackerSelect) {
@@ -804,7 +852,7 @@ if (!window.__zuluMainInitialized) {
 
         if (type === 'MODE_EXIT') { resetMonitorLayout(); return; }
         if (type === 'MODE_ENTER') { resetMonitorLayout(); }
-        if (type === 'SETTINGS_UPDATE' || (type === 'MODE_ENTER' && payload.bomb_time)) {
+        if (type === 'SETTINGS_UPDATE' || type === 'MODE_ENTER') {
             renderRules(payload);
         }
 

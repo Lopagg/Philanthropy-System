@@ -2,7 +2,7 @@
      mobile.html
      Terminale Web Mobile completo per Arbitri da campo:
      - TAB 1 (LIVE)  : Telemetria universale (S&D, DOM, TDM), Sirene e Close Mission.
-     - TAB 2 (SETUP) : Configurazione e avvio per S&D (V1 e V2 modulare), DOM e TDM.
+     - TAB 2 (SETUP) : Configurazione e avvio per S&D (V1 e V2 modulare), DOM (V1 e V2 modulare) e TDM.
      - TAB 3 (ROSTER): Gestione rapida operatori IN CAMPO / FUORI e cambio squadra.
      - TAB 4 (NFC)   : Scanner Web-NFC con assegnazione rapida nuove tessere.
      ========================================================================== -->
@@ -128,6 +128,7 @@
             padding-bottom: 4px;
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }
 
         /* --- TAB 1: LIVE TELEMETRY --- */
@@ -514,7 +515,7 @@
         </div>
 
         <!-- ==================================================================
-             TAB 2: SETUP COMPLETO MISSIONE (S&D V1/V2, DOM, TDM)
+             TAB 2: SETUP COMPLETO MISSIONE (S&D V1/V2, DOM V1/V2, TDM)
              ================================================================== -->
         <div id="tab-setup" class="tab-view">
             <div class="mob-card">
@@ -563,7 +564,7 @@
                     </div>
                 </div>
 
-                <!-- Sottopannello Legacy RAT-V1 -->
+                <!-- Sottopannello Legacy RAT-V1 (S&D) -->
                 <div id="mob-sd-v1-block">
                     <div class="grid-2col">
                         <div class="input-group">
@@ -597,7 +598,7 @@
                     </div>
                 </div>
 
-                <!-- Sottopannello Modulare RAT-V2 -->
+                <!-- Sottopannello Modulare RAT-V2 (S&D) -->
                 <div id="mob-sd-v2-block" class="hidden">
                     <div class="mob-card-title" style="margin-top: 6px;">
                         <span>SEQUENZA INNESCO (V2)</span>
@@ -631,14 +632,47 @@
                     <label for="mob-dom-dur">DURATA PARTITA (MIN)</label>
                     <input type="number" id="mob-dom-dur" value="15" min="1">
                 </div>
-                <div class="grid-2col">
-                    <div class="input-group" style="margin-bottom: 0;">
-                        <label for="mob-dom-cap">CATTURA (SEC)</label>
-                        <input type="number" id="mob-dom-cap" value="10" min="1">
+
+                <!-- Sottopannello Legacy RAT-V1 (DOM) -->
+                <div id="mob-dom-v1-block">
+                    <div class="grid-2col">
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-dom-cap">CATTURA (SEC)</label>
+                            <input type="number" id="mob-dom-cap" value="10" min="1">
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-dom-cd">COUNTDOWN (SEC)</label>
+                            <input type="number" id="mob-dom-cd" value="10" min="1">
+                        </div>
                     </div>
-                    <div class="input-group" style="margin-bottom: 0;">
-                        <label for="mob-dom-cd">COUNTDOWN (SEC)</label>
-                        <input type="number" id="mob-dom-cd" value="10" min="1">
+                </div>
+
+                <!-- Sottopannello Modulare RAT-V2 (DOM) -->
+                <div id="mob-dom-v2-block" class="hidden">
+                    <div class="mob-card-title" style="margin-top: 6px;">
+                        <span id="mob-dom-seq-lbl-a" style="color: var(--team-a-color);">CONQUISTA ALPHA (P1)</span>
+                        <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('dom_alpha')">[+ STEP]</span>
+                    </div>
+                    <div id="mob-v2-dom-alpha-list"></div>
+
+                    <div class="mob-card-title" style="margin-top: 12px;">
+                        <span id="mob-dom-seq-lbl-b" style="color: var(--team-b-color);">CONQUISTA BRAVO (P2)</span>
+                        <div>
+                            <span style="color: var(--sop-secondary); cursor: pointer; margin-right: 8px;" onclick="copyMobDomAlphaToBravo()">[COPIA A→B]</span>
+                            <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('dom_bravo')">[+ STEP]</span>
+                        </div>
+                    </div>
+                    <div id="mob-v2-dom-bravo-list"></div>
+
+                    <div class="grid-2col" style="margin-top: 10px;">
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-dom-v2-smoke">EFFETTO FUMO</label>
+                            <select id="mob-dom-v2-smoke"><option value="false">NO</option><option value="true">SÌ</option></select>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <label for="mob-dom-v2-relay">RELÈ 12V</label>
+                            <select id="mob-dom-v2-relay"><option value="false">NO</option><option value="true">SÌ</option></select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -735,9 +769,25 @@
             BRAVO: { name: 'BRAVO', color: '#55ff55', daily_wins: 0 }
         };
 
-        // Sequenze modulari RAT-V2 per la vista mobile
-        let mobArmSeq    = [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidCustomUid: '' }];
-        let mobDefuseSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
+        // Sequenze modulari RAT-V2 per la vista mobile (S&D e Dominio)
+        let mobArmSeq      = [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidCustomUid: '' }];
+        let mobDefuseSeq   = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
+        let mobDomAlphaSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
+        let mobDomBravoSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
+
+        function getMobSeqArray(seqType) {
+            if (seqType === 'arm')       return mobArmSeq;
+            if (seqType === 'defuse')    return mobDefuseSeq;
+            if (seqType === 'dom_alpha') return mobDomAlphaSeq;
+            if (seqType === 'dom_bravo') return mobDomBravoSeq;
+            return mobArmSeq;
+        }
+
+        window.copyMobDomAlphaToBravo = function() {
+            mobDomBravoSeq = JSON.parse(JSON.stringify(mobDomAlphaSeq));
+            renderMobV2Sequences();
+            if (navigator.vibrate) navigator.vibrate(40);
+        };
 
         const KEY_MODES_META = [
             { value: 'K1_ON',         label: 'K1 -> ON (Gira K1)',        k1Req: 'OFF', k1Next: 'ON',  k2Req: null,  k2Next: null },
@@ -813,7 +863,7 @@
         }
 
         // ====================================================================
-        // LOGICA DI SETUP E COSTRUTTORE SEQUENZE V2 MOBILE
+        // LOGICA DI SETUP E COSTRUTTORE SEQUENZE V2 MOBILE (S&D e DOM)
         // ====================================================================
 
         function isTargetV2(targetId) {
@@ -875,18 +925,17 @@
             const v2 = isTargetV2(targetId);
             badge.textContent = targetId ? (v2 ? 'ARCH: RAT-V2' : 'ARCH: RAT-V1') : 'NO TARGET';
 
-            if (mode === 'sd') {
-                document.getElementById('mob-sd-v1-block').classList.toggle('hidden', v2);
-                document.getElementById('mob-sd-v2-block').classList.toggle('hidden', !v2);
-                if (v2) renderMobV2Sequences();
-            }
+            document.getElementById('mob-sd-v1-block').classList.toggle('hidden', v2);
+            document.getElementById('mob-sd-v2-block').classList.toggle('hidden', !v2);
+            document.getElementById('mob-dom-v1-block').classList.toggle('hidden', v2);
+            document.getElementById('mob-dom-v2-block').classList.toggle('hidden', !v2);
+
+            if (v2) renderMobV2Sequences();
         }
 
-        function sanitizeMobKeySequences() {
+        function sanitizeMobChain(stepsArray) {
             const state = { k1: 'FREE', k2: 'FREE' };
-            const allSteps = [...mobArmSeq, ...mobDefuseSeq];
-
-            allSteps.forEach(step => {
+            stepsArray.forEach(step => {
                 if (step.type !== 'KEY') return;
                 step.allowedKeyModes = KEY_MODES_META.filter(m => {
                     if (m.value === 'BOTH_ON')  return !(state.k1 === 'ON' && state.k2 === 'ON');
@@ -907,27 +956,35 @@
             });
         }
 
+        function sanitizeMobKeySequences() {
+            sanitizeMobChain([...mobArmSeq, ...mobDefuseSeq]);
+            sanitizeMobChain(mobDomAlphaSeq);
+            sanitizeMobChain(mobDomBravoSeq);
+        }
+
         window.addMobSeqStep = function(seqType) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             if (arr.length >= 5) {
                 alert('Massimo 5 step per sequenza.');
                 return;
             }
-            arr.push({ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidCustomUid: '' });
+            const defHold = (seqType === 'arm') ? 5 : 10;
+            arr.push({ type: 'HOLD', val: defHold, rfidMode: 'TEAM', rfidCustomUid: '' });
             renderMobV2Sequences();
         };
 
         window.removeMobSeqStep = function(seqType, idx) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             arr.splice(idx, 1);
             if (arr.length === 0) {
-                arr.push({ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidCustomUid: '' });
+                const defHold = (seqType === 'arm') ? 5 : 10;
+                arr.push({ type: 'HOLD', val: defHold, rfidMode: 'TEAM', rfidCustomUid: '' });
             }
             renderMobV2Sequences();
         };
 
         window.moveMobSeqStep = function(seqType, idx, dir) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             const target = idx + dir;
             if (target < 0 || target >= arr.length) return;
             const tmp = arr[idx];
@@ -937,9 +994,9 @@
         };
 
         window.onMobStepTypeChange = function(seqType, idx, sel) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             arr[idx].type = sel.value;
-            if (sel.value === 'HOLD') arr[idx].val = 5;
+            if (sel.value === 'HOLD') arr[idx].val = (seqType === 'arm') ? 5 : 10;
             else if (sel.value === 'PIN') arr[idx].val = '1234';
             else if (sel.value === 'KEY') arr[idx].val = 'K1_ON';
             else if (sel.value === 'RFID') arr[idx].rfidMode = 'TEAM';
@@ -947,19 +1004,19 @@
         };
 
         window.onMobStepValChange = function(seqType, idx, el) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             arr[idx].val = el.value;
             if (arr[idx].type === 'KEY') renderMobV2Sequences();
         };
 
         window.onMobRfidModeChange = function(seqType, idx, sel) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             arr[idx].rfidMode = sel.value;
             renderMobV2Sequences();
         };
 
         window.onMobRfidUidChange = function(seqType, idx, el) {
-            const arr = seqType === 'arm' ? mobArmSeq : mobDefuseSeq;
+            const arr = getMobSeqArray(seqType);
             arr[idx].rfidCustomUid = el.value.trim().toUpperCase();
         };
 
@@ -981,7 +1038,9 @@
                     paramHtml = `<select style="padding:8px; font-size:14px;" onchange="onMobStepValChange('${seqType}', ${i}, this)">${opts}</select>`;
                 } else if (step.type === 'RFID') {
                     const rm = step.rfidMode || 'TEAM';
-                    const roleLbl = seqType === 'arm' ? 'SQUADRA ATTACCANTE' : 'SQUADRA DIFENSORE';
+                    const roleLbl = seqType === 'arm' ? 'SQUADRA ATTACCANTE'
+                                  : (seqType === 'defuse' ? 'SQUADRA DIFENSORE'
+                                  : (seqType === 'dom_alpha' ? `SQUADRA ${currentFactions.ALPHA.name}` : `SQUADRA ${currentFactions.BRAVO.name}`));
                     paramHtml = `
                         <select style="padding:8px; font-size:14px; margin-bottom:${rm === 'CUSTOM' ? '6px' : '0'};" onchange="onMobRfidModeChange('${seqType}', ${i}, this)">
                             <option value="TEAM" ${rm === 'TEAM' ? 'selected' : ''}>${roleLbl}</option>
@@ -1014,8 +1073,10 @@
                     </div>`;
             }).join('');
 
-            document.getElementById('mob-v2-arm-list').innerHTML = buildList(mobArmSeq, 'arm');
-            document.getElementById('mob-v2-defuse-list').innerHTML = buildList(mobDefuseSeq, 'defuse');
+            document.getElementById('mob-v2-arm-list').innerHTML       = buildList(mobArmSeq, 'arm');
+            document.getElementById('mob-v2-defuse-list').innerHTML    = buildList(mobDefuseSeq, 'defuse');
+            document.getElementById('mob-v2-dom-alpha-list').innerHTML = buildList(mobDomAlphaSeq, 'dom_alpha');
+            document.getElementById('mob-v2-dom-bravo-list').innerHTML = buildList(mobDomBravoSeq, 'dom_bravo');
         }
 
         function serializeMobSeq(arr) {
@@ -1071,16 +1132,29 @@
                 }
             } else if (mode === 'dom') {
                 dur = parseInt(document.getElementById('mob-dom-dur').value) || 15;
-                commandData = {
-                    cmd: 'SET_DOM_SETTINGS',
-                    duration: dur,
-                    capture_time: parseInt(document.getElementById('mob-dom-cap').value) || 10,
-                    countdown: parseInt(document.getElementById('mob-dom-cd').value) || 10
-                };
+                if (isTargetV2(targetId)) {
+                    commandData = {
+                        cmd: 'SET_DOM_SETTINGS',
+                        duration: dur,
+                        game_duration: dur,
+                        fx_smoke: document.getElementById('mob-dom-v2-smoke').value === 'true',
+                        fx_relay: document.getElementById('mob-dom-v2-relay').value === 'true',
+                        alpha_seq: serializeMobSeq(mobDomAlphaSeq),
+                        bravo_seq: serializeMobSeq(mobDomBravoSeq)
+                    };
+                } else {
+                    commandData = {
+                        cmd: 'SET_DOM_SETTINGS',
+                        duration: dur,
+                        game_duration: dur,
+                        capture_time: parseInt(document.getElementById('mob-dom-cap').value) || 10,
+                        countdown: parseInt(document.getElementById('mob-dom-cd').value) || 10
+                    };
+                }
             } else {
                 dur = parseInt(document.getElementById('mob-tdm-dur').value) || 15;
                 targetId = 'SERVER-TDM';
-                commandData = { cmd: 'SET_TDM_SETTINGS', duration: dur };
+                commandData = { cmd: 'SET_TDM_SETTINGS', duration: dur, game_duration: dur };
             }
 
             return { mode, targetId, dur, commandData };
@@ -1213,6 +1287,8 @@
             setTxt('live-wins-b', factions.BRAVO.daily_wins || 0);
             setTxt('mob-dom-lbl-a', factions.ALPHA.name);
             setTxt('mob-dom-lbl-b', factions.BRAVO.name);
+            setTxt('mob-dom-seq-lbl-a', `CONQUISTA ${factions.ALPHA.name} (P1)`);
+            setTxt('mob-dom-seq-lbl-b', `CONQUISTA ${factions.BRAVO.name} (P2)`);
             setTxt('roster-title-a', `TEAM ${factions.ALPHA.name}`);
             setTxt('roster-title-b', `TEAM ${factions.BRAVO.name}`);
             setTxt('btn-assign-a', factions.ALPHA.name);
@@ -1223,6 +1299,7 @@
                 attSelect.options[0].textContent = factions.ALPHA.name;
                 attSelect.options[1].textContent = factions.BRAVO.name;
             }
+            renderMobV2Sequences();
         });
 
         socket.on('mission_start_warning', (data) => {
@@ -1298,8 +1375,8 @@
 
                 setEndButtonMode(isMatchEnded ? 'CLOSE_MISSION' : 'FORCE_END_GAME');
 
-                if (rawState.includes('BRAVO')) statusEl.style.color = currentFactions.BRAVO.color;
-                else if (rawState.includes('ALPHA') || rawState.includes('ARM') || rawState === 'EXPLODED') statusEl.style.color = currentFactions.ALPHA.color;
+                if (rawState.includes('BRAVO') || rawState.includes('CAPTURING B')) statusEl.style.color = currentFactions.BRAVO.color;
+                else if (rawState.includes('ALPHA') || rawState.includes('CAPTURING A') || rawState.includes('ARM') || rawState === 'EXPLODED') statusEl.style.color = currentFactions.ALPHA.color;
                 else statusEl.style.color = 'var(--sop-primary)';
             }
 

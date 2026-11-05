@@ -462,6 +462,13 @@
             if (Array.isArray(payload.defuse_seq)) {
                 list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">SEQ. DISINNESCO</span><span class="tv-rule-val">${formatSeq(payload.defuse_seq)}</span></div>`;
             }
+
+            if (Array.isArray(payload.alpha_seq)) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">SEQ. ${currentFactions.ALPHA.name}</span><span class="tv-rule-val">${formatSeq(payload.alpha_seq)}</span></div>`;
+            }
+            if (Array.isArray(payload.bravo_seq)) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">SEQ. ${currentFactions.BRAVO.name}</span><span class="tv-rule-val">${formatSeq(payload.bravo_seq)}</span></div>`;
+            }
         }
 
         const socket = io();

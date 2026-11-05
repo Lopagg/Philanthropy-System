@@ -262,7 +262,11 @@ function updateForceEndButton(state) {
     if (!btnForceEnd || !btnForceEnd.parentElement) return;
 
     const footer = btnForceEnd.parentElement;
-    const activeStates = ['SAFE', 'ARMING...', 'ARMED', 'DEFUSING...', 'NEUTRAL', 'OWNED ALPHA', 'OWNED BRAVO', 'CAPTURING A...', 'CAPTURING B...', 'ACTIVE'];
+    const activeStates = [
+        'SAFE', 'ARMING...', 'ARMED', 'DEFUSING...',
+        'NEUTRAL', 'OWNED ALPHA', 'OWNED BRAVO', 'ALPHA OWNED', 'BRAVO OWNED',
+        'CAPTURING A', 'CAPTURING B', 'CAPTURING A...', 'CAPTURING B...', 'ACTIVE'
+    ];
     const endStates = ['T WINS', 'CT WINS', 'ALPHA WINS', 'BRAVO WINS', 'DRAW', 'STOPPED'];
 
     if (activeStates.includes(state)) {
@@ -346,6 +350,17 @@ export function renderRules(payload) {
     if (Array.isArray(payload.defuse_seq)) {
         const li = document.createElement('li');
         li.innerHTML = `<span class="rule-key">SEQ. DISINNESCO</span> <span class="rule-val">${formatSeq(payload.defuse_seq)}</span>`;
+        elSdRulesList.appendChild(li);
+    }
+
+    if (Array.isArray(payload.alpha_seq)) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="rule-key">CONQUISTA ${currentFactions.ALPHA.name}</span> <span class="rule-val">${formatSeq(payload.alpha_seq)}</span>`;
+        elSdRulesList.appendChild(li);
+    }
+    if (Array.isArray(payload.bravo_seq)) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="rule-key">CONQUISTA ${currentFactions.BRAVO.name}</span> <span class="rule-val">${formatSeq(payload.bravo_seq)}</span>`;
         elSdRulesList.appendChild(li);
     }
 }

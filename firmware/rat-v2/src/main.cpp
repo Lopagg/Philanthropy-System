@@ -15,6 +15,7 @@
 #include "NetworkManager.h"
 #include "events.h"
 #include "GameModes/SearchDestroyMode.h"
+#include "GameModes/DominationMode.h"
 #include "GameModes/HardwareTestMode.h"
 
 // ============================================================================
@@ -30,6 +31,7 @@ NetworkManager network;
 GameMode* currentGameMode = nullptr;
 bool gameIsRunning = false;
 bool inHardwareTest = false;
+String activeModeType = "";
 bool showingNetInfoOverlay = false;
 unsigned long netInfoOverlayStartMs = 0;
 
@@ -159,6 +161,7 @@ void startHardwareTestMode() {
     }
     gameIsRunning = true;
     inHardwareTest = true;
+    activeModeType = "HW_TEST";
     showingNetInfoOverlay = false;
 
     currentGameMode = new HardwareTestMode();
@@ -203,7 +206,7 @@ void loop() {
                 const char* cmd = doc["cmd"];
                 if (cmd) {
                     if (strcmp(cmd, "SET_SD_SETTINGS") == 0) {
-                        if (inHardwareTest && currentGameMode) {
+                        if (currentGameMode != nullptr && activeModeType != "SD") {
                             delete currentGameMode;
                             currentGameMode = nullptr;
                             inHardwareTest = false;
@@ -211,23 +214,24 @@ void loop() {
                         }
                         if (currentGameMode == nullptr) {
                             currentGameMode = new SearchDestroyMode();
+                            activeModeType = "SD";
                         }
                         currentGameMode->handleEvent(ev);
                         if (!gameIsRunning) {
                             hardware.playTone(1200, 80);
-                            hardware.printLcdLine(3, "CONFIG. RICEVUTA!", true);
+                            hardware.printLcdLine(3, "CONFIG. S&D OK!", true);
                         }
                         return;
                     }
                     else if (strcmp(cmd, "START_SD_GAME") == 0) {
                         Serial.println("[SYS] Avvio motore Search And Destroy");
-                        if (inHardwareTest && currentGameMode) {
+                        if (currentGameMode != nullptr && activeModeType != "SD") {
                             delete currentGameMode;
                             currentGameMode = nullptr;
-                            inHardwareTest = false;
                         }
                         if (currentGameMode == nullptr) {
                             currentGameMode = new SearchDestroyMode();
+                            activeModeType = "SD";
                         }
                         currentGameMode->handleEvent(ev);
                         gameIsRunning = true;
@@ -235,6 +239,48 @@ void loop() {
                         showingNetInfoOverlay = false;
                         network.setCurrentModeName("SEARCH_AND_DESTROY");
                         currentGameMode->begin();
+                        return;
+                    }
+                    else if (strcmp(cmd, "SET_DOM_SETTINGS") == 0) {
+                        if (currentGameMode != nullptr && activeModeType != "DOM") {
+                            delete currentGameMode;
+                            currentGameMode = nullptr;
+                            inHardwareTest = false;
+                            gameIsRunning = false;
+                        }
+                        if (currentGameMode == nullptr) {
+                            currentGameMode = new DominationMode();
+                            activeModeType = "DOM";
+                        }
+                        currentGameMode->handleEvent(ev);
+                        if (!gameIsRunning) {
+                            hardware.playTone(1200, 80);
+                            hardware.printLcdLine(3, "CONFIG. DOM OK!", true);
+                        }
+                        return;
+                    }
+                    else if (strcmp(cmd, "START_DOM_GAME") == 0) {
+                        Serial.println("[SYS] Avvio motore Domination");
+                        if (currentGameMode != nullptr && activeModeType != "DOM") {
+                            delete currentGameMode;
+                            currentGameMode = nullptr;
+                        }
+                        if (currentGameMode == nullptr) {
+                            currentGameMode = new DominationMode();
+                            activeModeType = "DOM";
+                        }
+                        currentGameMode->handleEvent(ev);
+                        gameIsRunning = true;
+                        inHardwareTest = false;
+                        showingNetInfoOverlay = false;
+                        network.setCurrentModeName("DOMINATION");
+                        currentGameMode->begin();
+                        return;
+                    }
+                    else if (strcmp(cmd, "SET_FACTIONS") == 0) {
+                        if (currentGameMode != nullptr && !inHardwareTest) {
+                            currentGameMode->handleEvent(ev);
+                        }
                         return;
                     }
                     else if (strcmp(cmd, "START_HW_TEST") == 0) {
@@ -245,6 +291,7 @@ void loop() {
                     else if (strcmp(cmd, "RETURN_TO_MENU") == 0) {
                         gameIsRunning = false;
                         inHardwareTest = false;
+                        activeModeType = "";
                         if (currentGameMode) {
                             delete currentGameMode;
                             currentGameMode = nullptr;
@@ -276,12 +323,12 @@ void loop() {
                         return;
                     }
                     else if (strcmp(cmd, "OTA_HTTP") == 0) {
-                     const char* url = doc["url"] | "";
-                     if (strlen(url) > 0) {
-                         network.performHttpOTA(String(url));
-                         showStandbyScreen();
-                     }
-                     return;
+                        const char* url = doc["url"] | "";
+                        if (strlen(url) > 0) {
+                            network.performHttpOTA(String(url));
+                            showStandbyScreen();
+                        }
+                        return;
                     }
                     else if (strcmp(cmd, "RESET") == 0) {
                         ESP.restart();
@@ -323,6 +370,7 @@ void loop() {
                 currentGameMode = nullptr;
                 gameIsRunning = false;
                 inHardwareTest = false;
+                activeModeType = "";
                 showStandbyScreen();
             }
         }

@@ -372,7 +372,7 @@ class DominationEngine(BaseGameMode):
     """
     Motore autoritativo per la modalità Dominio (Domination).
     - Conta a 1 Hz il tempo di possesso di ciascuna fazione (score_a, score_b).
-    - Riceve dal RAT lo stato di cattura/possesso (NEUTRAL, CAPTURING A/B, ALPHA/BRAVO OWNED).
+    - Riceve dal RAT lo stato di cattura/possesso (NEUTRAL, CAPTURING A/B, OWNED ALPHA/BRAVO).
     - Decreta la vittoria per scadenza tempo (maggior possesso) o per eliminazione squadra.
     """
     def __init__(self, mission_ctrl):
@@ -391,7 +391,7 @@ class DominationEngine(BaseGameMode):
         """Imposta la fazione proprietaria della zona ('ALPHA' o 'BRAVO')."""
         if team_id in ["ALPHA", "BRAVO"]:
             self.owner = team_id
-            self.display_state = f"{team_id} OWNED"
+            self.display_state = f"OWNED {team_id}"
             self.capture_prog = 0
             logger.info(f"[DOMINATION] Zona conquistata da {team_id}! (A:{self.score_a}s B:{self.score_b}s)")
 
@@ -401,24 +401,23 @@ class DominationEngine(BaseGameMode):
         if "CAPTURE_PROG" in payload or "capture_prog" in payload:
             self.capture_prog = int(payload.get("capture_prog") or 0)
 
-        if "ALPHA OWNED" in raw_state:
+        if "OWNED ALPHA" in raw_state or "ALPHA OWNED" in raw_state:
             self.owner = "ALPHA"
-            self.display_state = "ALPHA OWNED"
+            self.display_state = "OWNED ALPHA"
             self.capture_prog = 0
-        elif "BRAVO OWNED" in raw_state:
+        elif "OWNED BRAVO" in raw_state or "BRAVO OWNED" in raw_state:
             self.owner = "BRAVO"
-            self.display_state = "BRAVO OWNED"
+            self.display_state = "OWNED BRAVO"
             self.capture_prog = 0
         elif "CAPTURING A" in raw_state:
-            self.display_state = "CAPTURING A"
+            self.display_state = "CAPTURING A..."
         elif "CAPTURING B" in raw_state:
-            self.display_state = "CAPTURING B"
+            self.display_state = "CAPTURING B..."
         elif raw_state == "NEUTRAL":
             self.owner = "NEUTRAL"
             self.display_state = "NEUTRAL"
             self.capture_prog = 0
 
-        # Per nodi RAT-V1 legacy che calcolavano i punti solo localmente, allinea se maggiori
         if not self.mc.target_v2:
             if isinstance(payload.get("score_a"), int) and payload["score_a"] > self.score_a:
                 self.score_a = payload["score_a"]
