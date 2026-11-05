@@ -30,7 +30,13 @@ void PinInteraction::begin() {
     _showingError = false;
     resetBuffer();
     hardware.noTone();
-    hardware.setOledLabels("ANNULLA", "");
+    if (_cancelEvent == EV_BTN_1_PRESSED) {
+        hardware.setOledLabels("ANNULLA", "");
+    } else if (_cancelEvent == EV_BTN_2_PRESSED) {
+        hardware.setOledLabels("", "ANNULLA");
+    } else {
+        hardware.setOledLabels("", "");
+    }
     hardware.printLcdLine(1, "INSERISCI PIN:", true);
     hardware.printLcdLine(2, "", false);
 }

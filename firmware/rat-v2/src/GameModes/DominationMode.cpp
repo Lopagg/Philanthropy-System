@@ -25,8 +25,8 @@ DominationMode::DominationMode()
       _team2Name("BRAVO"),
       _t1Color{255, 0, 0},
       _t2Color{0, 255, 0},
-      _alphaSequence("CONQUISTA A", 1, 400, 1100, 255, 0, 0, EV_BTN_2_PRESSED),
-      _bravoSequence("CONQUISTA B", 2, 400, 1100, 0, 255, 0, EV_BTN_1_PRESSED),
+      _alphaSequence("CONQUISTA A", 1, 400, 1100, 255, 0, 0, EV_BTN_2_PRESSED, "ALPHA\nCONQUISTA"),
+      _bravoSequence("CONQUISTA B", 2, 400, 1100, 0, 255, 0, EV_BTN_1_PRESSED, "BRAVO\nCONQUISTA"),
       _fxSmoke(false),
       _fxRelay(false),
       _fxPulseActive(false),
@@ -128,9 +128,9 @@ void DominationMode::renderIdleScreen() {
         }
     }
 
-    // I due OLED mostrano rigorosamente cosa succede premendo P1 e P2
-    String labelP1 = (_owner == OWNER_ALPHA) ? "" : _team1Name.substring(0, 10);
-    String labelP2 = (_owner == OWNER_BRAVO) ? "" : _team2Name.substring(0, 10);
+    // Etichette OLED su due righe: nome squadra + CONQUISTA (vuoto se la squadra possiede già la zona)
+    String labelP1 = (_owner == OWNER_ALPHA) ? "" : (_team1Name.substring(0, 10) + "\nCONQUISTA");
+    String labelP2 = (_owner == OWNER_BRAVO) ? "" : (_team2Name.substring(0, 10) + "\nCONQUISTA");
     setOledLabels(labelP1, labelP2);
 }
 
@@ -203,6 +203,9 @@ void DominationMode::processJsonConfig(const char* jsonStr) {
             _t2Color[1] = c2[1] | 255;
             _t2Color[2] = c2[2] | 0;
         }
+
+        _alphaSequence.setHoldActionLabel(_team1Name.substring(0, 10) + "\nCONQUISTA");
+        _bravoSequence.setHoldActionLabel(_team2Name.substring(0, 10) + "\nCONQUISTA");
         return;
     }
 
@@ -376,40 +379,57 @@ void DominationMode::handleEvent(const SystemEvent& event) {
         // Avvio diretto tramite scansione RFID se il primo step è RFID
         if (event.type == EV_RFID_SCANNED) {
             String keyHint;
-            if (canAlphaCapture && _alphaSequence.isFirstStepRfid()) {
-                if (_alphaSequence.areInitialKeysReady(keyHint)) {
-                    hardware.clearLcd();
-                    if (_alphaSequence.tryStartWithRfidEvent(event, "DOM_ALPHA_START")) {
-                        if (_alphaSequence.getResult() == INTERACTION_COMPLETED) {
-                            _owner = OWNER_ALPHA;
-                            sendCaptureEventToServer("ZONE_CAPTURED_ALPHA");
-                            enterCurrentOwnerIdleState(true);
-                        } else {
-                            _state = DOM_CAPTURING_ALPHA;
-                            sendTelemetry();
-                        }
-                        return;
+            if (canAlphaCapture && _alphaSequence.canStartWithRfidEvent(event)) {
+                if (!_alphaSequence.areInitialKeysReady(keyHint)) {
+                    RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "DOM_KEY_ERR");
+                    hardware.playTone(250, 400);
+                    hardware.printLcdLine(2, "CHIAVE FUORI POSTO", true);
+                    hardware.printLcdLine(3, keyHint, true);
+                    return;
+                }
+                hardware.clearLcd();
+                if (_alphaSequence.tryStartWithRfidEvent(event, "DOM_ALPHA_START")) {
+                    if (_alphaSequence.getResult() == INTERACTION_COMPLETED) {
+                        _owner = OWNER_ALPHA;
+                        sendCaptureEventToServer("ZONE_CAPTURED_ALPHA");
+                        enterCurrentOwnerIdleState(true);
+                    } else {
+                        _state = DOM_CAPTURING_ALPHA;
+                        sendTelemetry();
                     }
+                    return;
                 }
             }
-            if (canBravoCapture && _bravoSequence.isFirstStepRfid()) {
-                if (_bravoSequence.areInitialKeysReady(keyHint)) {
-                    hardware.clearLcd();
-                    if (_bravoSequence.tryStartWithRfidEvent(event, "DOM_BRAVO_START")) {
-                        if (_bravoSequence.getResult() == INTERACTION_COMPLETED) {
-                            _owner = OWNER_BRAVO;
-                            sendCaptureEventToServer("ZONE_CAPTURED_BRAVO");
-                            enterCurrentOwnerIdleState(true);
-                        } else {
-                            _state = DOM_CAPTURING_BRAVO;
-                            sendTelemetry();
-                        }
-                        return;
+            if (canBravoCapture && _bravoSequence.canStartWithRfidEvent(event)) {
+                if (!_bravoSequence.areInitialKeysReady(keyHint)) {
+                    RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "DOM_KEY_ERR");
+                    hardware.playTone(250, 400);
+                    hardware.printLcdLine(2, "CHIAVE FUORI POSTO", true);
+                    hardware.printLcdLine(3, keyHint, true);
+                    return;
+                }
+                hardware.clearLcd();
+                if (_bravoSequence.tryStartWithRfidEvent(event, "DOM_BRAVO_START")) {
+                    if (_bravoSequence.getResult() == INTERACTION_COMPLETED) {
+                        _owner = OWNER_BRAVO;
+                        sendCaptureEventToServer("ZONE_CAPTURED_BRAVO");
+                        enterCurrentOwnerIdleState(true);
+                    } else {
+                        _state = DOM_CAPTURING_BRAVO;
+                        sendTelemetry();
                     }
+                    return;
                 }
             }
-            renderIdleScreen();
-            hardware.printLcdLine(3, "TESSERA NON VALIDA!", true);
+
+            // Tessera non valida o primo step non RFID
+            RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "DOM_IDLE");
+            if ((canAlphaCapture && _alphaSequence.isFirstStepRfid()) ||
+                (canBravoCapture && _bravoSequence.isFirstStepRfid())) {
+                hardware.playTone(250, 400);
+                renderIdleScreen();
+                hardware.printLcdLine(3, "TESSERA ERRATA!", true);
+            }
             return;
         }
 
@@ -420,9 +440,23 @@ void DominationMode::handleEvent(const SystemEvent& event) {
     // 3. Delega degli eventi durante una sequenza di conquista attiva
     else if (_state == DOM_CAPTURING_ALPHA) {
         _alphaSequence.handleEvent(event);
+        if (_alphaSequence.getResult() == INTERACTION_CANCELLED) {
+            enterCurrentOwnerIdleState(false);
+        } else if (_alphaSequence.getResult() == INTERACTION_COMPLETED) {
+            _owner = OWNER_ALPHA;
+            sendCaptureEventToServer("ZONE_CAPTURED_ALPHA");
+            enterCurrentOwnerIdleState(true);
+        }
     }
     else if (_state == DOM_CAPTURING_BRAVO) {
         _bravoSequence.handleEvent(event);
+        if (_bravoSequence.getResult() == INTERACTION_CANCELLED) {
+            enterCurrentOwnerIdleState(false);
+        } else if (_bravoSequence.getResult() == INTERACTION_COMPLETED) {
+            _owner = OWNER_BRAVO;
+            sendCaptureEventToServer("ZONE_CAPTURED_BRAVO");
+            enterCurrentOwnerIdleState(true);
+        }
     }
 }
 

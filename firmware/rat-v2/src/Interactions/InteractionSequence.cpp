@@ -18,18 +18,21 @@ extern HardwareManager hardware;
 InteractionSequence::InteractionSequence(const char* headerTitle, uint8_t holdButtonIndex,
                                          uint16_t sweepStartFreq, uint16_t sweepEndFreq,
                                          uint8_t ledR, uint8_t ledG, uint8_t ledB,
-                                         EventType cancelEvent)
+                                         EventType cancelEvent,
+                                         const char* holdActionLabel)
     : _headerTitle(headerTitle),
       _holdButtonIndex(holdButtonIndex),
       _sweepStartFreq(sweepStartFreq),
       _sweepEndFreq(sweepEndFreq),
       _ledR(ledR), _ledG(ledG), _ledB(ledB),
       _cancelEvent(cancelEvent),
+      _holdActionLabel(holdActionLabel ? String(holdActionLabel) : (holdButtonIndex == 1 ? "INNESCA" : "DISINNESCA")),
       _stepCount(0),
       _currentStep(0),
       _result(INTERACTION_RUNNING) {
     for (uint8_t i = 0; i < MAX_STEPS; i++) {
         _steps[i] = nullptr;
+        _stepTypeTags[i] = 0;
     }
 }
 
@@ -43,16 +46,27 @@ void InteractionSequence::clearSteps() {
             delete _steps[i];
             _steps[i] = nullptr;
         }
+        _stepTypeTags[i] = 0;
     }
     _stepCount = 0;
-    _currentStep = 0;
+}
+
+void InteractionSequence::setHoldActionLabel(const String& label) {
+    _holdActionLabel = label;
+    for (uint8_t i = 0; i < _stepCount; i++) {
+        if (_steps[i] != nullptr && _stepTypeTags[i] == 1) {
+            static_cast<HoldButtonInteraction*>(_steps[i])->setActionLabel(_holdActionLabel);
+        }
+    }
 }
 
 void InteractionSequence::setDefaultHoldStep(uint32_t seconds) {
     clearSteps();
     _steps[0] = new HoldButtonInteraction(_holdButtonIndex, seconds,
                                           _sweepStartFreq, _sweepEndFreq,
-                                          _ledR, _ledG, _ledB, _cancelEvent);
+                                          _ledR, _ledG, _ledB,
+                                          _cancelEvent, _holdActionLabel);
+    _stepTypeTags[0] = 1;
     _stepCount = 1;
 }
 
@@ -60,23 +74,31 @@ void InteractionSequence::loadFromJson(JsonArray arr, uint32_t fallbackHoldSec) 
     clearSteps();
     for (JsonObject stepObj : arr) {
         if (_stepCount >= MAX_STEPS) break;
-        const char* typeStr = stepObj["type"] | "";
+        const char* type = stepObj["type"] | "HOLD";
 
-        if (strcmp(typeStr, "HOLD") == 0) {
+        if (strcmp(type, "HOLD") == 0) {
             uint32_t sec = stepObj["val_num"] | fallbackHoldSec;
-            _steps[_stepCount++] = new HoldButtonInteraction(_holdButtonIndex, sec,
-                                                             _sweepStartFreq, _sweepEndFreq,
-                                                             _ledR, _ledG, _ledB, _cancelEvent);
-        } else if (strcmp(typeStr, "PIN") == 0) {
+            _steps[_stepCount] = new HoldButtonInteraction(_holdButtonIndex, sec,
+                                                           _sweepStartFreq, _sweepEndFreq,
+                                                           _ledR, _ledG, _ledB,
+                                                           _cancelEvent, _holdActionLabel);
+            _stepTypeTags[_stepCount] = 1;
+            _stepCount++;
+        } else if (strcmp(type, "PIN") == 0) {
             const char* pin = stepObj["val_str"] | "1234";
-            _steps[_stepCount++] = new PinInteraction(pin, _cancelEvent);
-        } else if (strcmp(typeStr, "KEY") == 0) {
-            const char* keyModeStr = stepObj["val_str"] | "K1_ON";
-            KeyActionMode mode = KeyInteraction::parseMode(keyModeStr);
-            _steps[_stepCount++] = new KeyInteraction(mode, _cancelEvent);
-        } else if (strcmp(typeStr, "RFID") == 0) {
-            const char* uid = stepObj["val_str"] | "";
-            _steps[_stepCount++] = new RfidInteraction(uid, _cancelEvent);
+            _steps[_stepCount] = new PinInteraction(pin, _cancelEvent);
+            _stepTypeTags[_stepCount] = 0;
+            _stepCount++;
+        } else if (strcmp(type, "KEY") == 0) {
+            const char* modeStr = stepObj["val_str"] | "K1_ON";
+            _steps[_stepCount] = new KeyInteraction(KeyInteraction::parseMode(modeStr), _cancelEvent);
+            _stepTypeTags[_stepCount] = 0;
+            _stepCount++;
+        } else if (strcmp(type, "RFID") == 0) {
+            const char* uidStr = stepObj["val_str"] | "*";
+            _steps[_stepCount] = new RfidInteraction(uidStr, _cancelEvent);
+            _stepTypeTags[_stepCount] = 0;
+            _stepCount++;
         }
     }
 
@@ -137,6 +159,12 @@ void InteractionSequence::beginWithDirectKeyEvent(const SystemEvent& event) {
 
 bool InteractionSequence::isFirstStepRfid() const {
     return (_stepCount > 0 && _steps[0] != nullptr && _steps[0]->isRfidStep());
+}
+
+bool InteractionSequence::canStartWithRfidEvent(const SystemEvent& event) const {
+    if (!isFirstStepRfid() || event.type != EV_RFID_SCANNED) return false;
+    RfidInteraction* rfidStep = static_cast<RfidInteraction*>(_steps[0]);
+    return rfidStep->isUidAllowed(String(event.stringData));
 }
 
 bool InteractionSequence::tryStartWithRfidEvent(const SystemEvent& event, const char* context) {

@@ -213,7 +213,13 @@ void KeyInteraction::renderPrompt() {
 void KeyInteraction::begin() {
     _result = INTERACTION_RUNNING;
     hardware.noTone();
-    hardware.setOledLabels("ANNULLA", "");
+    if (_cancelEvent == EV_BTN_1_PRESSED) {
+        hardware.setOledLabels("ANNULLA", "");
+    } else if (_cancelEvent == EV_BTN_2_PRESSED) {
+        hardware.setOledLabels("", "ANNULLA");
+    } else {
+        hardware.setOledLabels("", "");
+    }
 
     _lastK1 = hardware.isKey1Inserted();
     _lastK2 = hardware.isKey2Inserted();
@@ -233,7 +239,13 @@ void KeyInteraction::begin() {
 void KeyInteraction::beginFromDirectEvent(const SystemEvent& event) {
     _result = INTERACTION_RUNNING;
     hardware.noTone();
-    hardware.setOledLabels("ANNULLA", "");
+    if (_cancelEvent == EV_BTN_1_PRESSED) {
+        hardware.setOledLabels("ANNULLA", "");
+    } else if (_cancelEvent == EV_BTN_2_PRESSED) {
+        hardware.setOledLabels("", "ANNULLA");
+    } else {
+        hardware.setOledLabels("", "");
+    }
 
     _lastK1 = hardware.isKey1Inserted();
     _lastK2 = hardware.isKey2Inserted();

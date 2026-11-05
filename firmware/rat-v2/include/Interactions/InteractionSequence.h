@@ -2,9 +2,9 @@
  * @file InteractionSequence.h
  * @brief Contenitore e orchestratore di una catena ordinata di step Interaction (max 5).
  *
- * Legge direttamente i JsonArray ("arm_seq" / "defuse_seq") inviati dal server,
- * istanzia dinamicamente gli step corrispondenti (HOLD, PIN, KEY, RFID), aggiorna
- * l'intestazione sull'LCD (es. "INNESCO [1/3]") e avanza automaticamente da uno step
+ * Legge direttamente i JsonArray ("arm_seq" / "defuse_seq" / "alpha_seq" / "bravo_seq")
+ * inviati dal server, istanzia dinamicamente gli step corrispondenti (HOLD, PIN, KEY, RFID),
+ * aggiorna l'intestazione sull'LCD (es. "INNESCO [1/3]") e avanza automaticamente da uno step
  * al successivo verificando che i vincoli fisici precedenti (es. chiavi girate) restino attivi.
  */
 
@@ -20,23 +20,26 @@ public:
 
     /**
      * @brief Costruttore della sequenza di interazione.
-     * @param headerTitle    Titolo mostrato sulla riga 0 dell'LCD (es. "INNESCO" o "DISINNESCO").
+     * @param headerTitle     Titolo mostrato sulla riga 0 dell'LCD (es. "INNESCO" o "CONQUISTA A").
      * @param holdButtonIndex Indice del pulsante associato agli step HOLD (1 = P1, 2 = P2).
-     * @param sweepStartFreq Frequenza iniziale dello sweep per gli step HOLD (Hz).
-     * @param sweepEndFreq   Frequenza finale dello sweep per gli step HOLD (Hz).
-     * @param ledR           Componente Rossa LED per gli step HOLD.
-     * @param ledG           Componente Verde LED per gli step HOLD.
-     * @param ledB           Componente Blu LED per gli step HOLD.
-     * @param cancelEvent    Evento pulsante per annullare la sequenza (default: EV_BTN_1_PRESSED).
+     * @param sweepStartFreq  Frequenza iniziale dello sweep per gli step HOLD (Hz).
+     * @param sweepEndFreq    Frequenza finale dello sweep per gli step HOLD (Hz).
+     * @param ledR            Componente Rossa LED per gli step HOLD.
+     * @param ledG            Componente Verde LED per gli step HOLD.
+     * @param ledB            Componente Blu LED per gli step HOLD.
+     * @param cancelEvent     Evento pulsante per annullare la sequenza (default: EV_BTN_1_PRESSED).
+     * @param holdActionLabel Etichetta mostrata sull'OLED durante gli step HOLD.
      */
     InteractionSequence(const char* headerTitle, uint8_t holdButtonIndex,
                         uint16_t sweepStartFreq, uint16_t sweepEndFreq,
                         uint8_t ledR, uint8_t ledG, uint8_t ledB,
-                        EventType cancelEvent = EV_BTN_1_PRESSED);
+                        EventType cancelEvent = EV_BTN_1_PRESSED,
+                        const char* holdActionLabel = nullptr);
     ~InteractionSequence();
 
     // --- Configurazione degli Step ---
     void clearSteps();
+    void setHoldActionLabel(const String& label);
     void setDefaultHoldStep(uint32_t seconds);
     void loadFromJson(JsonArray arr, uint32_t fallbackHoldSec);
 
@@ -51,6 +54,7 @@ public:
     bool areInitialKeysReady(String& outHint) const;
 
     bool isFirstStepRfid() const;
+    bool canStartWithRfidEvent(const SystemEvent& event) const;
     bool tryStartWithRfidEvent(const SystemEvent& event, const char* context);
 
     // --- Stato e Telemetria ---
@@ -64,8 +68,10 @@ private:
     uint16_t _sweepEndFreq;
     uint8_t _ledR, _ledG, _ledB;
     EventType _cancelEvent;
+    String _holdActionLabel;
 
     Interaction* _steps[MAX_STEPS];
+    uint8_t _stepTypeTags[MAX_STEPS]; // 0 = Altro, 1 = HOLD
     uint8_t _stepCount;
     uint8_t _currentStep;
     InteractionResult _result;

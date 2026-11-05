@@ -687,21 +687,68 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
 
 void HardwareManager::drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y) {
     if (!isInitialized) return;
-    if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        display.clearDisplay();
-        if (text.length() > 0) {
-            int charWidth = 6 * size;
-            int charHeight = 8 * size;
-            int calcX = (x < 0) ? ((128 - (int)text.length() * charWidth) / 2) : x;
-            int calcY = (y < 0) ? ((64 - charHeight) / 2) : y;
-            if (calcX < 0) calcX = 0;
-            if (calcY < 0) calcY = 0;
 
+    if (xSemaphoreTake(_i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        display.clearDisplay();
+        display.setTextColor(SSD1306_WHITE);
+        display.setTextWrap(false);
+
+        int newlineIdx = text.indexOf('\n');
+        if (newlineIdx >= 0 && x < 0 && y < 0) {
+            // Modalità a 2 righe centrate (es. "ALPHA\nCONQUISTA")
+            String line1 = text.substring(0, newlineIdx);
+            String line2 = text.substring(newlineIdx + 1);
+
+            int size1 = (line1.length() > 10 && size >= 2) ? 1 : size;
+            int size2 = (line2.length() > 10 && size >= 2) ? 1 : size;
+
+            int16_t x1, y1;
+            uint16_t w1, h1, w2, h2;
+
+            display.setTextSize(size1);
+            display.getTextBounds(line1, 0, 0, &x1, &y1, &w1, &h1);
+            int drawX1 = (128 - (int)w1) / 2;
+            if (drawX1 < 0) drawX1 = 0;
+
+            display.setTextSize(size2);
+            display.getTextBounds(line2, 0, 0, &x1, &y1, &w2, &h2);
+            int drawX2 = (128 - (int)w2) / 2;
+            if (drawX2 < 0) drawX2 = 0;
+
+            int gap = 8;
+            int totalH = (int)h1 + gap + (int)h2;
+            int startY = (64 - totalH) / 2;
+            if (startY < 0) startY = 0;
+
+            display.setTextSize(size1);
+            display.setCursor(drawX1, startY);
+            display.print(line1);
+
+            display.setTextSize(size2);
+            display.setCursor(drawX2, startY + (int)h1 + gap);
+            display.print(line2);
+        } else if (x < 0 || y < 0) {
+            // Modalità a riga singola centrata (es. "INNESCA", "TEST HW")
+            int effSize = (text.length() > 10 && size >= 2) ? 1 : size;
+            display.setTextSize(effSize);
+
+            int16_t x1, y1;
+            uint16_t w, h;
+            display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+
+            int drawX = (x < 0) ? ((128 - (int)w) / 2) : x;
+            int drawY = (y < 0) ? ((64 - (int)h) / 2) : y;
+            if (drawX < 0) drawX = 0;
+            if (drawY < 0) drawY = 0;
+
+            display.setCursor(drawX, drawY);
+            display.print(text);
+        } else {
             display.setTextSize(size);
-            display.setTextColor(SSD1306_WHITE);
-            display.setCursor(calcX, calcY);
-            display.println(text);
+            display.setCursor(x, y);
+            display.print(text);
         }
+
         display.display();
         xSemaphoreGive(_i2cMutex);
     }

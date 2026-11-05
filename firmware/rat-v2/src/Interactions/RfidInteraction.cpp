@@ -79,7 +79,13 @@ void RfidInteraction::begin() {
     _result = INTERACTION_RUNNING;
     _showingError = false;
     hardware.noTone();
-    hardware.setOledLabels("ANNULLA", "");
+    if (_cancelEvent == EV_BTN_1_PRESSED) {
+        hardware.setOledLabels("ANNULLA", "");
+    } else if (_cancelEvent == EV_BTN_2_PRESSED) {
+        hardware.setOledLabels("", "ANNULLA");
+    } else {
+        hardware.setOledLabels("", "");
+    }
     hardware.printLcdLine(1, "PASSA TESSERA RFID", true);
     hardware.printLcdLine(2, "", false);
 }

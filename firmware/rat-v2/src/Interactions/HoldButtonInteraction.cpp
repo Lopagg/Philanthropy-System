@@ -1,7 +1,7 @@
 /**
  * @file HoldButtonInteraction.cpp
  * @brief Implementazione dello step di pressione prolungata pulsante (P1 o P2)
- *        con barra di progresso LCD, sweep audio I2S e lampeggio LED.
+ *        con barra di progresso LCD, sweep audio I2S, lampeggio LED ed etichette OLED dinamiche.
  */
 
 #include "Interactions/HoldButtonInteraction.h"
@@ -15,19 +15,27 @@ extern HardwareManager hardware;
 HoldButtonInteraction::HoldButtonInteraction(uint8_t buttonIndex, uint32_t durationSec,
                                              uint16_t startFreq, uint16_t endFreq,
                                              uint8_t ledR, uint8_t ledG, uint8_t ledB,
-                                             EventType cancelEvent)
+                                             EventType cancelEvent,
+                                             const String& actionLabel)
     : _buttonIndex(buttonIndex),
       _durationMs((durationSec > 0 ? durationSec : 1) * 1000),
       _startFreq(startFreq),
       _endFreq(endFreq),
       _ledR(ledR), _ledG(ledG), _ledB(ledB),
       _cancelEvent(cancelEvent),
+      _actionLabel(actionLabel.length() > 0 ? actionLabel : (buttonIndex == 1 ? "INNESCA" : "DISINNESCA")),
       _holdingStarted(false),
       _startTime(0),
       _result(INTERACTION_RUNNING) {}
 
 HoldButtonInteraction::~HoldButtonInteraction() {
     hardware.noTone();
+}
+
+void HoldButtonInteraction::setActionLabel(const String& label) {
+    if (label.length() > 0) {
+        _actionLabel = label;
+    }
 }
 
 // ============================================================================
@@ -38,31 +46,33 @@ bool HoldButtonInteraction::isTargetButtonPressed() const {
     return (_buttonIndex == 1) ? hardware.isButton1Pressed() : hardware.isButton2Pressed();
 }
 
+void HoldButtonInteraction::applyOledLabels(bool isHolding) const {
+    if (_buttonIndex == 1) {
+        String p2Label = (!isHolding && _cancelEvent == EV_BTN_2_PRESSED) ? "ANNULLA" : "";
+        hardware.setOledLabels(_actionLabel, p2Label);
+    } else {
+        String p1Label = (!isHolding && _cancelEvent == EV_BTN_1_PRESSED) ? "ANNULLA" : "";
+        hardware.setOledLabels(p1Label, _actionLabel);
+    }
+}
+
 void HoldButtonInteraction::begin() {
     _result = INTERACTION_RUNNING;
     hardware.printLcdLine(2, "", false);
 
     if (isTargetButtonPressed()) {
-        // Il pulsante è già premuto (es. primo step avviato dalla schermata SAFE/ARMED)
+        // Il pulsante è già premuto (es. primo step avviato dalla schermata di riposo)
         _holdingStarted = true;
         _startTime = millis();
         hardware.printLcdLine(1, "TIENI PREMUTO...", true);
-        if (_buttonIndex == 1) {
-            hardware.setOledLabels("INNESCA", "");
-        } else {
-            hardware.setOledLabels("", "DISINNESCA");
-        }
+        applyOledLabels(true);
         hardware.startToneSweep(_startFreq, _endFreq, _durationMs);
     } else {
         // Step successivo (es. dopo un PIN): attende che il giocatore prema il pulsante target
         _holdingStarted = false;
         String prompt = (_buttonIndex == 1) ? "TIENI PREMUTO P1" : "TIENI PREMUTO P2";
         hardware.printLcdLine(1, prompt, true);
-        if (_buttonIndex == 1) {
-            hardware.setOledLabels("INNESCA", "");
-        } else {
-            hardware.setOledLabels("ANNULLA", "DISINNESCA");
-        }
+        applyOledLabels(false);
         hardware.noTone();
     }
 }
@@ -78,11 +88,7 @@ void HoldButtonInteraction::handleEvent(const SystemEvent& event) {
             _holdingStarted = true;
             _startTime = millis();
             hardware.printLcdLine(1, "TIENI PREMUTO...", true);
-            if (_buttonIndex == 1) {
-                hardware.setOledLabels("INNESCA", "");
-            } else {
-                hardware.setOledLabels("", "DISINNESCA");
-            }
+            applyOledLabels(true);
             hardware.startToneSweep(_startFreq, _endFreq, _durationMs);
             return;
         }
@@ -104,11 +110,7 @@ void HoldButtonInteraction::update() {
             _holdingStarted = true;
             _startTime = millis();
             hardware.printLcdLine(1, "TIENI PREMUTO...", true);
-            if (_buttonIndex == 1) {
-                hardware.setOledLabels("INNESCA", "");
-            } else {
-                hardware.setOledLabels("", "DISINNESCA");
-            }
+            applyOledLabels(true);
             hardware.startToneSweep(_startFreq, _endFreq, _durationMs);
         }
         return;
