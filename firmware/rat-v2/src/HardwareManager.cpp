@@ -25,8 +25,8 @@ void audio_eof_mp3(const char *info) {
 
 HardwareManager::HardwareManager() :
     _lcd(I2C_ADDR_LCD, 20, 4),
-    _oled1(128, 64, &Wire, -1),
-    _oled2(128, 64, &Wire, -1),
+    _oled1(128, 64, &Wire, -1, 100000UL, 100000UL),
+    _oled2(128, 64, &Wire, -1, 100000UL, 100000UL),
     _leds(NUM_LEDS, PIN_LEDS, NEO_GRB + NEO_KHZ800)
 {
     _nfc_i2c = nullptr;
@@ -99,8 +99,8 @@ bool HardwareManager::probeI2CDevice(uint8_t address) {
 void HardwareManager::initialize() {
     Serial.println("--- Inizializzazione Hardware RAT-V2 ---");
     
-    // 1. Inizializzazione Bus I2C (pull-up interni disabilitati perché presenti su PCB)
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+    // 1. Inizializzazione Bus I2C a 100 kHz (pull-up interni disabilitati perché presenti su PCB)
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
     gpio_pullup_dis((gpio_num_t)PIN_I2C_SDA);
     gpio_pullup_dis((gpio_num_t)PIN_I2C_SCL);
 
@@ -688,88 +688,98 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
 void HardwareManager::drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y) {
     if (!isInitialized) return;
 
-    if (xSemaphoreTake(_i2cMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
+        delayMicroseconds(1500);
+        Wire.setClock(100000);
+
         display.clearDisplay();
         display.setTextColor(SSD1306_WHITE);
         display.setTextWrap(false);
 
-        int newlineIdx = text.indexOf('\n');
-        if (newlineIdx >= 0 && x < 0 && y < 0) {
-            // Modalità a 2 righe centrate (es. "ALPHA\nCONQUISTA")
-            String line1 = text.substring(0, newlineIdx);
-            String line2 = text.substring(newlineIdx + 1);
+        if (text.length() > 0) {
+            int newlineIdx = text.indexOf('\n');
+            if (newlineIdx >= 0 && x < 0 && y < 0) {
+                // Modalità a 2 righe centrate (es. "ALPHA\nCONQUISTA")
+                String line1 = text.substring(0, newlineIdx);
+                String line2 = text.substring(newlineIdx + 1);
 
-            int size1 = (line1.length() > 10 && size >= 2) ? 1 : size;
-            int size2 = (line2.length() > 10 && size >= 2) ? 1 : size;
+                int size1 = (line1.length() > 10 && size >= 2) ? 1 : size;
+                int size2 = (line2.length() > 10 && size >= 2) ? 1 : size;
 
-            int16_t x1, y1;
-            uint16_t w1, h1, w2, h2;
+                int16_t x1, y1;
+                uint16_t w1, h1, w2, h2;
 
-            display.setTextSize(size1);
-            display.getTextBounds(line1, 0, 0, &x1, &y1, &w1, &h1);
-            int drawX1 = (128 - (int)w1) / 2;
-            if (drawX1 < 0) drawX1 = 0;
+                display.setTextSize(size1);
+                display.getTextBounds(line1, 0, 0, &x1, &y1, &w1, &h1);
+                int drawX1 = (128 - (int)w1) / 2;
+                if (drawX1 < 0) drawX1 = 0;
 
-            display.setTextSize(size2);
-            display.getTextBounds(line2, 0, 0, &x1, &y1, &w2, &h2);
-            int drawX2 = (128 - (int)w2) / 2;
-            if (drawX2 < 0) drawX2 = 0;
+                display.setTextSize(size2);
+                display.getTextBounds(line2, 0, 0, &x1, &y1, &w2, &h2);
+                int drawX2 = (128 - (int)w2) / 2;
+                if (drawX2 < 0) drawX2 = 0;
 
-            int gap = 8;
-            int totalH = (int)h1 + gap + (int)h2;
-            int startY = (64 - totalH) / 2;
-            if (startY < 0) startY = 0;
+                int gap = 8;
+                int totalH = (int)h1 + gap + (int)h2;
+                int startY = (64 - totalH) / 2;
+                if (startY < 0) startY = 0;
 
-            display.setTextSize(size1);
-            display.setCursor(drawX1, startY);
-            display.print(line1);
+                display.setTextSize(size1);
+                display.setCursor(drawX1, startY);
+                display.print(line1);
 
-            display.setTextSize(size2);
-            display.setCursor(drawX2, startY + (int)h1 + gap);
-            display.print(line2);
-        } else if (x < 0 || y < 0) {
-            // Modalità a riga singola centrata (es. "INNESCA", "TEST HW")
-            int effSize = (text.length() > 10 && size >= 2) ? 1 : size;
-            display.setTextSize(effSize);
+                display.setTextSize(size2);
+                display.setCursor(drawX2, startY + (int)h1 + gap);
+                display.print(line2);
+            } else if (x < 0 || y < 0) {
+                // Modalità a riga singola centrata (es. "INNESCA", "TEST HW")
+                int effSize = (text.length() > 10 && size >= 2) ? 1 : size;
+                display.setTextSize(effSize);
 
-            int16_t x1, y1;
-            uint16_t w, h;
-            display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+                int16_t x1, y1;
+                uint16_t w, h;
+                display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
 
-            int drawX = (x < 0) ? ((128 - (int)w) / 2) : x;
-            int drawY = (y < 0) ? ((64 - (int)h) / 2) : y;
-            if (drawX < 0) drawX = 0;
-            if (drawY < 0) drawY = 0;
+                int drawX = (x < 0) ? ((128 - (int)w) / 2) : x;
+                int drawY = (y < 0) ? ((64 - (int)h) / 2) : y;
+                if (drawX < 0) drawX = 0;
+                if (drawY < 0) drawY = 0;
 
-            display.setCursor(drawX, drawY);
-            display.print(text);
-        } else {
-            display.setTextSize(size);
-            display.setCursor(x, y);
-            display.print(text);
+                display.setCursor(drawX, drawY);
+                display.print(text);
+            } else {
+                display.setTextSize(size);
+                display.setCursor(x, y);
+                display.print(text);
+            }
         }
 
+        // Riallinea la modalità di indirizzamento orizzontale della GDDRAM prima del flush
+        display.ssd1306_command(SSD1306_MEMORYMODE);
+        display.ssd1306_command(0x00);
         display.display();
+
+        delayMicroseconds(1500);
         xSemaphoreGive(_i2cMutex);
     }
 }
 
 void HardwareManager::clearOled1() {
-    printOled1("", 1, 0, 0);
+    _lastOled1Text = "";
+    drawOledText(_oled1, _oled1Initialized, "", 1, 0, 0);
 }
 
 void HardwareManager::printOled1(const String& text, int size, int x, int y) {
-    if (_lastOled1Text == text) return;
     _lastOled1Text = text;
     drawOledText(_oled1, _oled1Initialized, text, size, x, y);
 }
 
 void HardwareManager::clearOled2() {
-    printOled2("", 1, 0, 0);
+    _lastOled2Text = "";
+    drawOledText(_oled2, _oled2Initialized, "", 1, 0, 0);
 }
 
 void HardwareManager::printOled2(const String& text, int size, int x, int y) {
-    if (_lastOled2Text == text) return;
     _lastOled2Text = text;
     drawOledText(_oled2, _oled2Initialized, text, size, x, y);
 }
@@ -892,7 +902,7 @@ String HardwareManager::readRFID(uint16_t timeout) {
 
 /**
  * @brief Legge la tensione della batteria LiPo 2S su GPIO 1 con multisampling e filtro EMA.
- * Restituisce 0.0f se il partitore o la batteria non sono collegati (< 1.0V).
+ * Restituisce 0.0f se il partitore o la batteria non sono collegati (< 5.5V).
  */
 float HardwareManager::readBatteryVoltage() {
     uint32_t sumMv = 0;
