@@ -5,7 +5,7 @@
  * Astrae l'accesso a:
  * - Bus I2C (protetto da mutex): LCD 20x4, Dual OLED 128x64, MCP23017, RTC DS3231, RFID PN532.
  * - Bus SPI: Scheda Micro-SD per asset audio MP3.
- * - Bus I2S: Amplificatore digitale MAX98357A (riproduzione MP3 + sintetizzatore DDS).
+ * - Bus I2S: Amplificatore digitale MAX98357A gestito dal mixer polifonico AudioEngine.
  * - Effetti e Sensori: Striscia LED WS2812, MOSFET macchina del fumo, Relè 12V, Batteria LiPo 2S.
  *
  * Tutte le periferiche vengono verificate all'avvio: se un modulo è scollegato,
@@ -28,14 +28,14 @@
 #include <Adafruit_NeoPixel.h>
 #include <SPI.h>
 #include <SD.h>
-#include <Audio.h>
+#include "AudioEngine.h"
 #include <time.h>
 
 // ============================================================================
 // VERSIONE FIRMWARE E FUSO ORARIO
 // ============================================================================
 
-#define FIRMWARE_VERSION "v0.0.4"
+#define FIRMWARE_VERSION "v0.0.5"
 #define TIMEZONE_ITALY   "CET-1CEST,M3.5.0,M10.5.0/3"
 #define NTP_SERVER_1     "pool.ntp.org"
 #define NTP_SERVER_2     "time.nist.gov"
@@ -131,8 +131,9 @@ public:
     bool isNfcInitialized() const  { return _nfcInitialized; }
     bool isMcpInitialized() const  { return _mcpInitialized; }
 
-    // --- Gestione Audio I2S (MP3 da SD + Sintetizzatore DDS) ---
-    void playAudio(const String& filename);
+    // --- Gestione Audio I2S (Mixer Polifonico 4 Canali: 2x MP3 + Sweep + Beep) ---
+    void playAudio(const String& filename, AudioChannel channel = AUDIO_CH_AUTO);
+    void playAudioUrl(const String& url, AudioChannel channel = AUDIO_CH_VOICE);
     void startToneSweep(uint16_t startFreq, uint16_t endFreq, uint32_t durationMs);
     void playTone(uint16_t freq, uint32_t durationMs);
     void noTone();
@@ -153,11 +154,10 @@ private:
     Adafruit_MCP23X17 _mcp;
     PN532_I2C* _nfc_i2c;
     PN532* _nfc;
-    Audio _audio;
+    AudioEngine _audioEngine;
     Adafruit_NeoPixel _leds;
 
     SemaphoreHandle_t _i2cMutex;
-    SemaphoreHandle_t _audioMutex;
 
     bool _lcdInitialized;
     bool _oled1Initialized;
@@ -188,24 +188,9 @@ private:
     String _lastOled1Text;
     String _lastOled2Text;
 
-    volatile bool _toneActive;
-    volatile bool _toneIsSweep;
-    volatile uint16_t _toneStartFreq;
-    volatile uint16_t _toneEndFreq;
-    volatile uint32_t _toneTotalSamples;
-    volatile uint32_t _toneSampleIndex;
-    volatile uint32_t _toneTailSamples;
-    uint32_t _tonePhase;
-    char _pendingMp3Path[64];
-    unsigned long _ampTurnOffTimeMs;
-    bool _waitingAmpTurnOff;
-
     float _filteredBattMv;
 
     bool probeI2CDevice(uint8_t address);
-    bool isValidAudioFile(const String& path);
-    void ensureMp3Padding(const String& path);
-    void startToneInternal(uint16_t startFreq, uint16_t endFreq, uint32_t durationMs, bool isSweep);
     void drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y);
 };
 
