@@ -179,10 +179,13 @@ void HardwareManager::initialize() {
             if (versiondata) {
                 _nfc->SAMConfig();
                 _nfc->setRFField(0x00, 0x01);
-                // 0x01 = 1 retry RF per poll (~7ms invece di 156ms con 0x10!)
+                // Imposta il guadagno del ricevitore LNA al massimo: 48 dB (RxGain = 111b -> 0x78)
+                // Rif. Datasheet PN532_C1 sez. 8.6.23.36 (Tabella 244/245, registro CIU_RFCfg 0x6316)
+                _nfc->writeRegister(0x6316, 0x78);
+                // 0x01 = 2 tentativi di attivazione RF per scansione (massima affidabilità senza bloccare il bus)
                 _nfc->setPassiveActivationRetries(0x01);
                 _nfcInitialized = true;
-                Serial.println("[I2C] RFID PN532 (0x24): OK");
+                Serial.println("[I2C] RFID PN532 (0x24): OK (RxGain: 48dB Max)");
             } else {
                 Serial.println("[I2C] RFID PN532 (0x24): Errore versione firmware");
             }
@@ -191,7 +194,13 @@ void HardwareManager::initialize() {
         }
 
         Wire.setClock(100000);
-        xSemaphoreGive(_i2cMutex); 
+        xSemaphoreGive(_i2cMutex);
+
+        // Associa il mutex I2C al driver PN532_I2C in modo che acquisisca il bus
+        // solo durante i trasferimenti fisici Wire e lo lasci libero durante le attese RF
+        if (_nfc_i2c) {
+            _nfc_i2c->setMutex(_i2cMutex);
+        }
     }
 
     // 4. Inizializzazione Bus SPI e Scheda Micro-SD
@@ -745,16 +754,12 @@ String HardwareManager::readRFID(uint16_t timeout) {
     if (!_nfcInitialized || !_nfc) return "";
     uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
     uint8_t uidLength = 0;
-    bool success = false;
-    unsigned long tStart = 0;
-    unsigned long tEnd   = 0;
 
-    if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        tStart = micros();
-        success = _nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, timeout);
-        tEnd = micros();
-        xSemaphoreGive(_i2cMutex);
-    }
+    unsigned long tStart = micros();
+    // _nfc_i2c gestisce internamente _i2cMutex solo durante le letture/scritture Wire,
+    // lasciando libero il bus I2C per LCD e OLED mentre il PN532 interroga l'antenna RF
+    bool success = _nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, timeout);
+    unsigned long tEnd = micros();
 
     if (success) {
         String uidString = "";
@@ -764,7 +769,7 @@ String HardwareManager::readRFID(uint16_t timeout) {
         }
         uidString.toUpperCase();
 #if DEBUG_I2C_TIMING
-        Serial.printf("[RFID-PROF] Tag Letto: %s (%u byte) in %.2f ms\n",
+        Serial.printf("[RFID-PROF] Tag Letto: %s (%u byte) in %.2f ms (I2C mutex libero durante RF)\n",
                       uidString.c_str(), uidLength, (tEnd - tStart) / 1000.0f);
 #endif
         return uidString;

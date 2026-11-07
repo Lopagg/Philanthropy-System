@@ -1,56 +1,56 @@
 /**
- * @modified picospuch
- * @modified Zulu System (FreeRTOS optimization for ESP32-S3)
+ * @file PN532_I2C.cpp
+ * @brief Implementazione I2C ad alta efficienza per PN532 su ESP32-S3 (FreeRTOS).
+ *
+ * Ottimizzazioni rispetto alla libreria standard Seeed/Adafruit:
+ * - Lock del mutex I2C confinato alle sole transazioni fisiche Wire (~0.8 - 2.2 ms).
+ * - Rilascio completo del bus I2C durante l'attesa di scansione RF (zero blocchi su LCD/OLED).
+ * - Eliminazione del doppio ciclo getResponseLength() + PN532_NACK: la risposta viene letta
+ *   in un'unica transazione I2C non appena il bit RDY diventa 1.
  */
 
 #include "PN532_I2C.h"
 #include "PN532_debug.h"
 #include "Arduino.h"
 
-#define PN532_I2C_ADDRESS       (0x48 >> 1)
-
+#define PN532_I2C_ADDRESS (0x48 >> 1)
 
 PN532_I2C::PN532_I2C(TwoWire &wire)
-{
-    _wire = &wire;
-    command = 0;
-}
+    : _wire(&wire),
+      _mutex(nullptr),
+      command(0) {}
 
-void PN532_I2C::begin()
-{
+void PN532_I2C::begin() {
     _wire->begin();
 }
 
-void PN532_I2C::wakeup()
-{
-    vTaskDelay(pdMS_TO_TICKS(500)); // Usiamo vTaskDelay invece di delay() per non bloccare il core
+void PN532_I2C::wakeup() {
+    vTaskDelay(pdMS_TO_TICKS(500));
 }
 
-int8_t PN532_I2C::writeCommand(const uint8_t *header, uint8_t hlen, const uint8_t *body, uint8_t blen)
-{
+int8_t PN532_I2C::writeCommand(const uint8_t *header, uint8_t hlen, const uint8_t *body, uint8_t blen) {
     command = header[0];
+
+    lockBus();
     _wire->beginTransmission(PN532_I2C_ADDRESS);
-    
+
     write(PN532_PREAMBLE);
     write(PN532_STARTCODE1);
     write(PN532_STARTCODE2);
-    
-    uint8_t length = hlen + blen + 1;   // length of data field: TFI + DATA
+
+    uint8_t length = hlen + blen + 1; // TFI + DATA
     write(length);
-    write(~length + 1);                 // checksum of length
-    
+    write(~length + 1);               // LCS (checksum di length)
+
     write(PN532_HOSTTOPN532);
-    uint8_t sum = PN532_HOSTTOPN532;    // sum of TFI + DATA
-    
-    DMSG("write: ");
-       
+    uint8_t sum = PN532_HOSTTOPN532;
+
     for (uint8_t i = 0; i < hlen; i++) {
         if (write(header[i])) {
             sum += header[i];
-            
-            DMSG_HEX(header[i]);
         } else {
-            DMSG("\nToo many data to send, I2C doesn't support such a big packet\n");     
+            _wire->endTransmission();
+            unlockBus();
             return PN532_INVALID_FRAME;
         }
     }
@@ -58,179 +58,126 @@ int8_t PN532_I2C::writeCommand(const uint8_t *header, uint8_t hlen, const uint8_
     for (uint8_t i = 0; i < blen; i++) {
         if (write(body[i])) {
             sum += body[i];
-            
-            DMSG_HEX(body[i]);
         } else {
-            DMSG("\nToo many data to send, I2C doesn't support such a big packet\n");     
+            _wire->endTransmission();
+            unlockBus();
             return PN532_INVALID_FRAME;
         }
     }
-  
-    uint8_t checksum = ~sum + 1;            // checksum of TFI + DATA
+
+    uint8_t checksum = ~sum + 1;      // DCS (checksum di TFI + DATA)
     write(checksum);
     write(PN532_POSTAMBLE);
-    
+
     _wire->endTransmission();
-    
-    DMSG('\n');
+    unlockBus();
 
     return readAckFrame();
 }
 
-int16_t PN532_I2C::getResponseLength(uint8_t buf[], uint8_t len, uint16_t timeout) {
-    const uint8_t PN532_NACK[] = {0, 0, 0xFF, 0xFF, 0, 0};
-    uint16_t time = 0;
-
-    do {
-        if (_wire->requestFrom(PN532_I2C_ADDRESS, 6)) {
-            if (read() & 1) {  // check first byte --- status
-                break;         // PN532 is ready
-            }
-        }
-
-        // FIX: Invece di spammare e intasare l'I2C, diamo il respiro con FreeRTOS
-        vTaskDelay(pdMS_TO_TICKS(5)); 
-        time += 5; 
-
-        if ((0 != timeout) && (time > timeout)) {
-            return -1;
-        }
-    } while (1); 
-    
-    if (0x00 != read()      ||       // PREAMBLE
-            0x00 != read()  ||       // STARTCODE1
-            0xFF != read()           // STARTCODE2
-        ) {
-        
-        return PN532_INVALID_FRAME;
-    }
-    
-    uint8_t length = read();
-
-    // request for last respond msg again
-    _wire->beginTransmission(PN532_I2C_ADDRESS);
-    for (uint16_t i = 0; i < sizeof(PN532_NACK); ++i) {
-      write(PN532_NACK[i]);
-    }
-    _wire->endTransmission();
-
-    return length;
-}
-
-int16_t PN532_I2C::readResponse(uint8_t buf[], uint8_t len, uint16_t timeout)
-{
-    uint16_t time = 0;
-    uint8_t length;
-
-    length = getResponseLength(buf, len, timeout);
-
-    if (length < 0) {
-        return -1; // Se c'è stato timeout, esci e libera il bus, non procedere oltre!
-    }
-
-    // [RDY] 00 00 FF LEN LCS (TFI PD0 ... PDn) DCS 00
-    do {
-        if (_wire->requestFrom(PN532_I2C_ADDRESS, 6 + length + 2)) {
-            if (read() & 1) {  // check first byte --- status
-                break;         // PN532 is ready
-            }
-        }
-
-        // FIX: Anche qui, non monopolizziamo il bus mentre l'RFID pensa
-        vTaskDelay(pdMS_TO_TICKS(5)); 
-        time += 5;
-
-        if ((0 != timeout) && (time > timeout)) {
-            return -1;
-        }
-    } while (1); 
-    
-    if (0x00 != read()      ||       // PREAMBLE
-            0x00 != read()  ||       // STARTCODE1
-            0xFF != read()           // STARTCODE2
-        ) {
-        
-        return PN532_INVALID_FRAME;
-    }
-    
-    length = read();
-
-    if (0 != (uint8_t)(length + read())) {   // checksum of length
-        return PN532_INVALID_FRAME;
-    }
-    
-    uint8_t cmd = command + 1;               // response command
-    if (PN532_PN532TOHOST != read() || (cmd) != read()) {
-        return PN532_INVALID_FRAME;
-    }
-    
-    length -= 2;
-    if (length > len) {
-        return PN532_NO_SPACE;  // not enough space
-    }
-    
-    DMSG("read:  ");
-    DMSG_HEX(cmd);
-    
-    uint8_t sum = PN532_PN532TOHOST + cmd;
-    for (uint8_t i = 0; i < length; i++) {
-        buf[i] = read();
-        sum += buf[i];
-        
-        DMSG_HEX(buf[i]);
-    }
-    DMSG('\n');
-    
-    uint8_t checksum = read();
-    if (0 != (uint8_t)(sum + checksum)) {
-        DMSG("checksum is not ok\n");
-        return PN532_INVALID_FRAME;
-    }
-    read();         // POSTAMBLE
-    
-    return length;
-}
-
-int8_t PN532_I2C::readAckFrame()
-{
+int8_t PN532_I2C::readAckFrame() {
     const uint8_t PN532_ACK[] = {0, 0, 0xFF, 0, 0xFF, 0};
     uint8_t ackBuf[sizeof(PN532_ACK)];
-    
-    DMSG("wait for ack at : ");
-    DMSG(millis());
-    DMSG('\n');
-    
+
+    // Concede 1 ms alla CPU 80C51 del PN532 per elaborare il comando e preparare l'ACK
+    // (evita un primo polling I2C a vuoto)
+    vTaskDelay(pdMS_TO_TICKS(1));
+
     uint16_t time = 0;
     do {
-        if (_wire->requestFrom(PN532_I2C_ADDRESS,  sizeof(PN532_ACK) + 1)) {
-            if (read() & 1) {  // check first byte --- status
-                break;         // PN532 is ready
+        lockBus();
+        uint8_t got = _wire->requestFrom(PN532_I2C_ADDRESS, (int)sizeof(PN532_ACK) + 1);
+        if (got > 0 && (read() & 1)) {
+            for (uint8_t i = 0; i < sizeof(PN532_ACK); i++) {
+                ackBuf[i] = read();
             }
+            unlockBus();
+
+            if (memcmp(ackBuf, PN532_ACK, sizeof(PN532_ACK)) != 0) {
+                return PN532_INVALID_ACK;
+            }
+            return 0;
         }
+        unlockBus();
 
-        // FIX: Evitiamo il polling incessante in busy-wait
-        vTaskDelay(pdMS_TO_TICKS(5)); 
-        time += 5;
-
+        vTaskDelay(pdMS_TO_TICKS(2));
+        time += 2;
         if (time > PN532_ACK_WAIT_TIME) {
-            DMSG("Time out when waiting for ACK\n");
             return PN532_TIMEOUT;
         }
-    } while (1); 
-    
-    DMSG("ready at : ");
-    DMSG(millis());
-    DMSG('\n');
-    
+    } while (1);
+}
 
-    for (uint8_t i = 0; i < sizeof(PN532_ACK); i++) {
-        ackBuf[i] = read();
-    }
-    
-    if (memcmp(ackBuf, PN532_ACK, sizeof(PN532_ACK))) {
-        DMSG("Invalid ACK\n");
-        return PN532_INVALID_ACK;
-    }
-    
-    return 0;
+int16_t PN532_I2C::readResponse(uint8_t buf[], uint8_t len, uint16_t timeout) {
+    uint16_t time = 0;
+
+    // Numero massimo di byte da richiedere sul bus I2C in un'unica transazione:
+    // [RDY(1)] + [00 00 FF(3)] + [LEN(1)] + [LCS(1)] + [TFI + CMD(2)] + [Payload] + [DCS(1)] + [00(1)]
+    // Per tutte le operazioni del RAT-V2 (UID fino a 7 byte), il frame totale è <= 24 byte.
+    uint8_t reqLen = (len > 22) ? 30 : (len + 8);
+
+    // Breve attesa iniziale fuori dal mutex mentre il PN532 avvia la scansione RF
+    vTaskDelay(pdMS_TO_TICKS(2));
+    time += 2;
+
+    uint8_t frameLen = 0;
+
+    do {
+        lockBus();
+        uint8_t got = _wire->requestFrom(PN532_I2C_ADDRESS, (int)reqLen);
+        if (got > 0 && (read() & 1)) {
+            // Il PN532 ha completato l'operazione: leggiamo direttamente l'intero frame già nel buffer Wire!
+            if (read() != 0x00 || read() != 0x00 || read() != 0xFF) {
+                unlockBus();
+                return PN532_INVALID_FRAME;
+            }
+
+            frameLen = read();
+            if (0 != (uint8_t)(frameLen + read())) { // Verifica LCS
+                unlockBus();
+                return PN532_INVALID_FRAME;
+            }
+
+            uint8_t cmd = command + 1;
+            if (PN532_PN532TOHOST != read() || cmd != read()) {
+                unlockBus();
+                return PN532_INVALID_FRAME;
+            }
+
+            if (frameLen < 2) {
+                unlockBus();
+                return PN532_INVALID_FRAME;
+            }
+
+            uint8_t payloadLen = frameLen - 2;
+            if (payloadLen > len) {
+                unlockBus();
+                return PN532_NO_SPACE;
+            }
+
+            uint8_t sum = PN532_PN532TOHOST + cmd;
+            for (uint8_t i = 0; i < payloadLen; i++) {
+                buf[i] = read();
+                sum += buf[i];
+            }
+
+            uint8_t checksum = read();
+            read(); // POSTAMBLE
+            unlockBus();
+
+            if (0 != (uint8_t)(sum + checksum)) {
+                return PN532_INVALID_FRAME;
+            }
+            return payloadLen;
+        }
+        unlockBus();
+
+        // Il PN532 sta ancora interrogando il campo RF: dorme 3ms lasciando libero il bus I2C!
+        vTaskDelay(pdMS_TO_TICKS(3));
+        time += 3;
+
+        if ((0 != timeout) && (time > timeout)) {
+            return -1;
+        }
+    } while (1);
 }

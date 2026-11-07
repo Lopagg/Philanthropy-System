@@ -83,9 +83,9 @@ void inputTask(void * pvParameters) {
             xQueueSend(eventQueue, &ev, 0);
         }
 
-        if (millis() - lastRfidCheck > 250) {
+        if (millis() - lastRfidCheck > 120) {
             lastRfidCheck = millis();
-            String uid = hardware.readRFID(10);
+            String uid = hardware.readRFID(35);
             if (uid.length() > 0) {
                 if (uid != lastScannedUid || (millis() - lastScanTime > 1200)) {
                     lastScannedUid = uid;
