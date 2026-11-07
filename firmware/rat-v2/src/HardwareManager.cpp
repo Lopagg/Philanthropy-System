@@ -366,50 +366,79 @@ bool HardwareManager::isKey2Inserted() { return _k2State; }
 char HardwareManager::getKeyPressed() { if (_keyPressed != '\0') { char k = _keyPressed; _keyPressed = '\0'; return k; } return '\0'; }
 
 // ============================================================================
-// GESTIONE DISPLAY LCD 20x4 E BARRA DI AVANZAMENTO PIXEL-PER-PIXEL
+// GESTIONE DISPLAY LCD 20x4 AD ALTA VELOCITÀ (I2C NIBBLE BURSTING + DIFFING)
 // ============================================================================
+
+// Maschere bit standard del backpack I2C PCF8574 per HD44780
+#define PCF_RS  0x01 // P0: Register Select (0 = Comando, 1 = Dati)
+#define PCF_EN  0x04 // P2: Enable (fronte di discesa campiona i 4 bit)
+#define PCF_BL  0x08 // P3: Backlight ON
+
+/**
+ * @brief Invia un singolo byte (comando o carattere) all'LCD in una sola transazione I2C da 4 byte.
+ *        Richiede che _i2cMutex sia già acquisito.
+ */
+void HardwareManager::lcdSendByte(uint8_t val, uint8_t mode) {
+    uint8_t hi = (val & 0xF0) | mode | PCF_BL;
+    uint8_t lo = ((val << 4) & 0xF0) | mode | PCF_BL;
+
+    Wire.beginTransmission(I2C_ADDR_LCD);
+    Wire.write(hi | PCF_EN);
+    Wire.write(hi);
+    Wire.write(lo | PCF_EN);
+    Wire.write(lo);
+    Wire.endTransmission();
+}
+
+/**
+ * @brief Posiziona il cursore e invia una sequenza di caratteri impacchettando fino a 7 caratteri
+ *        (28 byte) per singola transazione I2C. Riduce il tempo di una riga da 33ms a ~7.8ms.
+ */
+void HardwareManager::lcdWriteBurst(uint8_t col, uint8_t row, const char* data, uint8_t len) {
+    static const uint8_t rowOffsets[4] = { 0x00, 0x40, 0x14, 0x54 };
+    if (row > 3 || len == 0) return;
+
+    // 1. Comando Set DDRAM Address (posizionamento cursore in 1 sola transazione I2C)
+    lcdSendByte(0x80 | (col + rowOffsets[row]), 0);
+
+    // 2. Burst dei caratteri a blocchi di max 7 caratteri (28 byte sul bus I2C)
+    uint8_t idx = 0;
+    while (idx < len) {
+        uint8_t chunk = (len - idx > 7) ? 7 : (len - idx);
+        Wire.beginTransmission(I2C_ADDR_LCD);
+        for (uint8_t i = 0; i < chunk; i++) {
+            uint8_t c = (uint8_t)data[idx + i];
+            uint8_t hi = (c & 0xF0) | PCF_RS | PCF_BL;
+            uint8_t lo = ((c << 4) & 0xF0) | PCF_RS | PCF_BL;
+            Wire.write(hi | PCF_EN);
+            Wire.write(hi);
+            Wire.write(lo | PCF_EN);
+            Wire.write(lo);
+        }
+        Wire.endTransmission();
+        idx += chunk;
+    }
+}
 
 void HardwareManager::clearLcd() {
     if (!_lcdInitialized) return;
-
-    // Se lo shadow buffer è già completamente vuoto, evita anche i 2ms di comando I2C
-    bool alreadyBlank = true;
+    // Pulisce tutte le 4 righe tramite diffing: cancella solo i caratteri che non sono già spazi
+    // evitando il flash di spegnimento di _lcd.clear()
     for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 20; c++) {
-            if (_lcdShadow[r][c] != ' ') {
-                alreadyBlank = false;
-                break;
-            }
-        }
+        printLcdLine(r, "", false);
     }
-    if (alreadyBlank && _lastBarPixels == -1) return;
-
-    unsigned long tWait = micros();
-    if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        unsigned long tStart = micros();
-        _lcd.clear(); // Comando hardware 0x01 (2.0 ms totali invece di 128 ms!)
-        for (int r = 0; r < 4; r++) {
-            memset(_lcdShadow[r], ' ', 20);
-            _lcdShadow[r][20] = '\0';
-        }
-        _lastBarPixels = -1;
-        unsigned long tEnd = micros();
-        xSemaphoreGive(_i2cMutex);
-
-#if DEBUG_I2C_TIMING
-        Serial.printf("[I2C-PROF] LCD Clear: %.2f ms (attesa mutex: %.2f ms)\n",
-                      (tEnd - tStart) / 1000.0f, (tStart - tWait) / 1000.0f);
-#endif
-    }
+    _lastBarPixels = -1;
 }
 
 void HardwareManager::printLcd(int col, int row, const String& text) {
     if (!_lcdInitialized || row < 0 || row > 3 || col < 0 || col >= 20) return;
+    int len = text.length();
+    if (col + len > 20) len = 20 - col;
+    if (len <= 0) return;
+
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        _lcd.setCursor(col, row);
-        _lcd.print(text);
-        int len = text.length();
-        for (int i = 0; i < len && (col + i) < 20; i++) {
+        lcdWriteBurst((uint8_t)col, (uint8_t)row, text.c_str(), (uint8_t)len);
+        for (int i = 0; i < len; i++) {
             _lcdShadow[row][col + i] = text[i];
         }
         xSemaphoreGive(_i2cMutex);
@@ -431,11 +460,9 @@ void HardwareManager::printLcdLine(int row, const String& text, bool centered) {
         buf[startCol + i] = text[i];
     }
 
-    // Trova il primo e l'ultimo carattere effettivamente diversi rispetto allo shadow buffer
     int firstDiff = -1;
     int lastDiff  = -1;
     if (_lastBarPixels >= 0 && row == 2) {
-        // Se sulla riga 2 c'era una barra grafica custom, forza la riscrittura completa
         firstDiff = 0;
         lastDiff  = 19;
         _lastBarPixels = -1;
@@ -448,20 +475,14 @@ void HardwareManager::printLcdLine(int row, const String& text, bool centered) {
         }
     }
 
-    // Se la riga è già identica sull'LCD, esce in 0 ms senza toccare il bus I2C!
     if (firstDiff == -1) return;
 
     unsigned long tWait = micros();
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
         unsigned long tStart = micros();
 
-        char subBuf[21];
-        int spanLen = lastDiff - firstDiff + 1;
-        memcpy(subBuf, &buf[firstDiff], spanLen);
-        subBuf[spanLen] = '\0';
-
-        _lcd.setCursor(firstDiff, row);
-        _lcd.print(subBuf);
+        uint8_t spanLen = (uint8_t)(lastDiff - firstDiff + 1);
+        lcdWriteBurst((uint8_t)firstDiff, (uint8_t)row, &buf[firstDiff], spanLen);
         memcpy(_lcdShadow[row], buf, 21);
 
         unsigned long tEnd = micros();
@@ -477,7 +498,7 @@ void HardwareManager::printLcdLine(int row, const String& text, bool centered) {
 void HardwareManager::writeCustomChar(uint8_t charIndex) {
     if (!_lcdInitialized) return;
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        _lcd.write(byte(charIndex));
+        lcdSendByte(charIndex, PCF_RS);
         xSemaphoreGive(_i2cMutex);
     }
 }
@@ -494,9 +515,10 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
     if (progressPixels == _lastBarPixels) return;
 
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
+        char barBuf[16];
         if (_lastBarPixels < 0 || progressPixels < _lastBarPixels) {
-            _lcd.setCursor(2, row);
-            for (int i = 0; i < barWidthChars; i++) _lcd.print(" ");
+            memset(barBuf, ' ', barWidthChars);
+            lcdWriteBurst(2, (uint8_t)row, barBuf, barWidthChars);
             _lastBarPixels = 0;
         }
 
@@ -504,19 +526,17 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
         int endChar = progressPixels / 5;
         if (endChar >= barWidthChars) endChar = barWidthChars - 1;
 
-        _lcd.setCursor(2 + startChar, row);
+        uint8_t spanLen = (uint8_t)(endChar - startChar + 1);
         for (int c = startChar; c <= endChar; c++) {
             int charPixels = progressPixels - (c * 5);
-            if (charPixels >= 5) {
-                _lcd.write(byte(4));
-            } else if (charPixels > 0) {
-                _lcd.write(byte(charPixels - 1));
-            } else {
-                _lcd.print(" ");
-            }
+            if (charPixels >= 5)      barBuf[c - startChar] = (char)4;
+            else if (charPixels > 0)  barBuf[c - startChar] = (char)(charPixels - 1);
+            else                      barBuf[c - startChar] = ' ';
         }
+
+        lcdWriteBurst((uint8_t)(2 + startChar), (uint8_t)row, barBuf, spanLen);
         _lastBarPixels = progressPixels;
-        _lcdShadow[row][0] = '\x01'; // Marca la riga come sporca da barra grafica
+        _lcdShadow[row][0] = '\x01'; // Marca la riga come occupata da barra grafica
         xSemaphoreGive(_i2cMutex);
     }
 }
@@ -726,12 +746,16 @@ String HardwareManager::readRFID(uint16_t timeout) {
     uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
     uint8_t uidLength = 0;
     bool success = false;
-    
+    unsigned long tStart = 0;
+    unsigned long tEnd   = 0;
+
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
+        tStart = micros();
         success = _nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, timeout);
+        tEnd = micros();
         xSemaphoreGive(_i2cMutex);
     }
-    
+
     if (success) {
         String uidString = "";
         for (uint8_t i = 0; i < uidLength; i++) {
@@ -739,6 +763,10 @@ String HardwareManager::readRFID(uint16_t timeout) {
             uidString += String(uid[i], HEX);
         }
         uidString.toUpperCase();
+#if DEBUG_I2C_TIMING
+        Serial.printf("[RFID-PROF] Tag Letto: %s (%u byte) in %.2f ms\n",
+                      uidString.c_str(), uidLength, (tEnd - tStart) / 1000.0f);
+#endif
         return uidString;
     }
     return "";

@@ -194,6 +194,8 @@ private:
     void drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y);
 
     char _lcdShadow[4][21]; // Shadow buffer per aggiornare solo i caratteri cambiati sull'LCD
+    void lcdSendByte(uint8_t val, uint8_t mode);
+    void lcdWriteBurst(uint8_t col, uint8_t row, const char* data, uint8_t len);
 };
 
 #endif // HARDWARE_MANAGER_H

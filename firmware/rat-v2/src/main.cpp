@@ -85,7 +85,7 @@ void inputTask(void * pvParameters) {
 
         if (millis() - lastRfidCheck > 250) {
             lastRfidCheck = millis();
-            String uid = hardware.readRFID(20);
+            String uid = hardware.readRFID(10);
             if (uid.length() > 0) {
                 if (uid != lastScannedUid || (millis() - lastScanTime > 1200)) {
                     lastScannedUid = uid;
