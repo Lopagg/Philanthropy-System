@@ -6,14 +6,16 @@
 #include "HardwareManager.h"
 #include <math.h>
 
+#define DEBUG_I2C_TIMING 1
+
 // ============================================================================
 // COSTRUTTORE E INIZIALIZZAZIONE HARDWARE
 // ============================================================================
 
 HardwareManager::HardwareManager() :
     _lcd(I2C_ADDR_LCD, 20, 4),
-    _oled1(128, 64, &Wire, -1, 100000UL, 100000UL),
-    _oled2(128, 64, &Wire, -1, 100000UL, 100000UL),
+    _oled1(128, 64, &Wire, -1, 400000UL, 100000UL),
+    _oled2(128, 64, &Wire, -1, 400000UL, 100000UL),
     _leds(NUM_LEDS, PIN_LEDS, NEO_GRB + NEO_KHZ800)
 {
     _nfc_i2c = nullptr;
@@ -59,6 +61,11 @@ HardwareManager::HardwareManager() :
     _lastBarPixels = -1;
     _lastOled1Text = "__INIT__";
     _lastOled2Text = "__INIT__";
+
+    for (int r = 0; r < 4; r++) {
+        memset(_lcdShadow[r], ' ', 20);
+        _lcdShadow[r][20] = '\0';
+    }
 }
 
 /**
@@ -172,7 +179,8 @@ void HardwareManager::initialize() {
             if (versiondata) {
                 _nfc->SAMConfig();
                 _nfc->setRFField(0x00, 0x01);
-                _nfc->setPassiveActivationRetries(0x10);
+                // 0x01 = 1 retry RF per poll (~7ms invece di 156ms con 0x10!)
+                _nfc->setPassiveActivationRetries(0x01);
                 _nfcInitialized = true;
                 Serial.println("[I2C] RFID PN532 (0x24): OK");
             } else {
@@ -363,25 +371,53 @@ char HardwareManager::getKeyPressed() { if (_keyPressed != '\0') { char k = _key
 
 void HardwareManager::clearLcd() {
     if (!_lcdInitialized) return;
+
+    // Se lo shadow buffer è già completamente vuoto, evita anche i 2ms di comando I2C
+    bool alreadyBlank = true;
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 20; c++) {
+            if (_lcdShadow[r][c] != ' ') {
+                alreadyBlank = false;
+                break;
+            }
+        }
+    }
+    if (alreadyBlank && _lastBarPixels == -1) return;
+
+    unsigned long tWait = micros();
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        _lcd.clear();
+        unsigned long tStart = micros();
+        _lcd.clear(); // Comando hardware 0x01 (2.0 ms totali invece di 128 ms!)
+        for (int r = 0; r < 4; r++) {
+            memset(_lcdShadow[r], ' ', 20);
+            _lcdShadow[r][20] = '\0';
+        }
         _lastBarPixels = -1;
+        unsigned long tEnd = micros();
         xSemaphoreGive(_i2cMutex);
+
+#if DEBUG_I2C_TIMING
+        Serial.printf("[I2C-PROF] LCD Clear: %.2f ms (attesa mutex: %.2f ms)\n",
+                      (tEnd - tStart) / 1000.0f, (tStart - tWait) / 1000.0f);
+#endif
     }
 }
 
 void HardwareManager::printLcd(int col, int row, const String& text) {
-    if (!_lcdInitialized) return;
+    if (!_lcdInitialized || row < 0 || row > 3 || col < 0 || col >= 20) return;
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        delayMicroseconds(500);
         _lcd.setCursor(col, row);
         _lcd.print(text);
+        int len = text.length();
+        for (int i = 0; i < len && (col + i) < 20; i++) {
+            _lcdShadow[row][col + i] = text[i];
+        }
         xSemaphoreGive(_i2cMutex);
     }
 }
 
 void HardwareManager::printLcdLine(int row, const String& text, bool centered) {
-    if (!_lcdInitialized) return;
+    if (!_lcdInitialized || row < 0 || row > 3) return;
     char buf[21];
     memset(buf, ' ', 20);
     buf[20] = '\0';
@@ -395,12 +431,46 @@ void HardwareManager::printLcdLine(int row, const String& text, bool centered) {
         buf[startCol + i] = text[i];
     }
 
+    // Trova il primo e l'ultimo carattere effettivamente diversi rispetto allo shadow buffer
+    int firstDiff = -1;
+    int lastDiff  = -1;
+    if (_lastBarPixels >= 0 && row == 2) {
+        // Se sulla riga 2 c'era una barra grafica custom, forza la riscrittura completa
+        firstDiff = 0;
+        lastDiff  = 19;
+        _lastBarPixels = -1;
+    } else {
+        for (int c = 0; c < 20; c++) {
+            if (buf[c] != _lcdShadow[row][c]) {
+                if (firstDiff == -1) firstDiff = c;
+                lastDiff = c;
+            }
+        }
+    }
+
+    // Se la riga è già identica sull'LCD, esce in 0 ms senza toccare il bus I2C!
+    if (firstDiff == -1) return;
+
+    unsigned long tWait = micros();
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        delayMicroseconds(500);
-        if (row == 2) _lastBarPixels = -1;
-        _lcd.setCursor(0, row);
-        _lcd.print(buf);
+        unsigned long tStart = micros();
+
+        char subBuf[21];
+        int spanLen = lastDiff - firstDiff + 1;
+        memcpy(subBuf, &buf[firstDiff], spanLen);
+        subBuf[spanLen] = '\0';
+
+        _lcd.setCursor(firstDiff, row);
+        _lcd.print(subBuf);
+        memcpy(_lcdShadow[row], buf, 21);
+
+        unsigned long tEnd = micros();
         xSemaphoreGive(_i2cMutex);
+
+#if DEBUG_I2C_TIMING
+        Serial.printf("[I2C-PROF] LCD R%d (%d char): %.2f ms (attesa mutex: %.2f ms)\n",
+                      row, spanLen, (tEnd - tStart) / 1000.0f, (tStart - tWait) / 1000.0f);
+#endif
     }
 }
 
@@ -446,6 +516,7 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
             }
         }
         _lastBarPixels = progressPixels;
+        _lcdShadow[row][0] = '\x01'; // Marca la riga come sporca da barra grafica
         xSemaphoreGive(_i2cMutex);
     }
 }
@@ -457,9 +528,10 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
 void HardwareManager::drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y) {
     if (!isInitialized) return;
 
+    unsigned long tWait = micros();
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        delayMicroseconds(1500);
-        Wire.setClock(100000);
+        unsigned long tStart = micros();
+        delayMicroseconds(1000);
 
         display.clearDisplay();
         display.setTextColor(SSD1306_WHITE);
@@ -468,7 +540,6 @@ void HardwareManager::drawOledText(Adafruit_SSD1306& display, bool isInitialized
         if (text.length() > 0) {
             int newlineIdx = text.indexOf('\n');
             if (newlineIdx >= 0 && x < 0 && y < 0) {
-                // Modalità a 2 righe centrate (es. "ALPHA\nCONQUISTA")
                 String line1 = text.substring(0, newlineIdx);
                 String line2 = text.substring(newlineIdx + 1);
 
@@ -501,7 +572,6 @@ void HardwareManager::drawOledText(Adafruit_SSD1306& display, bool isInitialized
                 display.setCursor(drawX2, startY + (int)h1 + gap);
                 display.print(line2);
             } else if (x < 0 || y < 0) {
-                // Modalità a riga singola centrata (es. "INNESCA", "TEST HW")
                 int effSize = (text.length() > 10 && size >= 2) ? 1 : size;
                 display.setTextSize(effSize);
 
@@ -523,23 +593,30 @@ void HardwareManager::drawOledText(Adafruit_SSD1306& display, bool isInitialized
             }
         }
 
-        // Riallinea la modalità di indirizzamento orizzontale della GDDRAM prima del flush
         display.ssd1306_command(SSD1306_MEMORYMODE);
         display.ssd1306_command(0x00);
         display.display();
 
-        delayMicroseconds(1500);
+        Wire.setClock(100000);
+        delayMicroseconds(1000);
+        unsigned long tEnd = micros();
         xSemaphoreGive(_i2cMutex);
+
+#if DEBUG_I2C_TIMING
+        Serial.printf("[I2C-PROF] OLED Flush: %.2f ms (attesa mutex: %.2f ms)\n",
+                      (tEnd - tStart) / 1000.0f, (tStart - tWait) / 1000.0f);
+#endif
     }
 }
 
 void HardwareManager::clearOled1() {
-    _lastOled1Text = "";
-    drawOledText(_oled1, _oled1Initialized, "", 1, 0, 0);
+    printOled1("", 2, -1, -1);
 }
 
 void HardwareManager::printOled1(const String& text, int size, int x, int y) {
-    _lastOled1Text = text;
+    String key = text + "|" + String(size);
+    if (_lastOled1Text == key) return;
+    _lastOled1Text = key;
     drawOledText(_oled1, _oled1Initialized, text, size, x, y);
 }
 
@@ -549,7 +626,9 @@ void HardwareManager::clearOled2() {
 }
 
 void HardwareManager::printOled2(const String& text, int size, int x, int y) {
-    _lastOled2Text = text;
+    String key = text + "|" + String(size);
+    if (_lastOled2Text == key) return;
+    _lastOled2Text = key;
     drawOledText(_oled2, _oled2Initialized, text, size, x, y);
 }
 

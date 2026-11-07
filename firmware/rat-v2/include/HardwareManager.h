@@ -192,6 +192,8 @@ private:
 
     bool probeI2CDevice(uint8_t address);
     void drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y);
+
+    char _lcdShadow[4][21]; // Shadow buffer per aggiornare solo i caratteri cambiati sull'LCD
 };
 
 #endif // HARDWARE_MANAGER_H
