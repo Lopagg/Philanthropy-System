@@ -4,7 +4,7 @@
  *
  * Architettura Multitasking:
  * - Core 0 (inputTask)  : Scansione continua a bassa latenza di MCP23017 (pulsanti, chiavi, keypad) e RFID PN532.
- * - Core 1 (audioTask)  : Sintesi digitale I2S e streaming MP3 da Micro-SD ad alta priorità.
+ * - Core 1 (audioTask)  : Mixer polifonico I2S a 4 canali (2x MP3 + Sweep DDS + Beep DDS) ad alta priorità.
  * - Core 1 (networkTask): Gestione Wi-Fi, sync NTP/RTC, ArduinoOTA e client MQTT.
  * - Core 1 (loop)       : Schermata Standby ("REMOTE ACCESS TERMINAL"), diagnostica e delega alla GameMode attiva.
  */
@@ -283,6 +283,22 @@ void loop() {
                         }
                         return;
                     }
+                    else if (strcmp(cmd, "PLAY_AUDIO_URL") == 0) {
+                        const char* url = doc["url"] | "";
+                        const char* ch  = doc["channel"] | "VOICE";
+                        if (strlen(url) > 0) {
+                            AudioChannel targetCh = (strcmp(ch, "SFX") == 0) ? AUDIO_CH_SFX : AUDIO_CH_VOICE;
+                            hardware.playAudioUrl(String(url), targetCh);
+                        }
+                        return;
+                    }
+                    else if (strcmp(cmd, "PLAY_AUDIO") == 0) {
+                        const char* path = doc["path"] | "";
+                        if (strlen(path) > 0) {
+                            hardware.playAudio(String(path), AUDIO_CH_AUTO);
+                        }
+                        return;
+                    }
                     else if (strcmp(cmd, "START_HW_TEST") == 0) {
                         Serial.println("[SYS] Avvio modalità Hardware Test");
                         startHardwareTestMode();
@@ -300,7 +316,6 @@ void loop() {
                         return;
                     }
                     else if (strcmp(cmd, "NET_PING_REQ") == 0) {
-                        // Avvia un ping misurato verso il server
                         uint32_t nowMs = millis();
                         String payload = "{\"id\":\"" + String(DEVICE_ID) + "\",\"type\":\"NET_PING\",\"payload\":{";
                         payload += "\"client_ts\":" + String(nowMs) + ",";
@@ -344,10 +359,8 @@ void loop() {
             if (ev.type == EV_WIFI_CONNECTED || ev.type == EV_MQTT_CONNECTED) {
                 showStandbyScreen();
             } else if (ev.type == EV_BTN_1_PRESSED) {
-                // P1 ("TEST HW"): entra direttamente nella modalità di collaudo
                 startHardwareTestMode();
             } else if (ev.type == EV_BTN_2_PRESSED) {
-                // P2 ("INFO RETE" / "INDIETRO"): mostra o chiude il riepilogo rete e RTC
                 hardware.playTone(900, 40);
                 if (showingNetInfoOverlay) {
                     showStandbyScreen();
@@ -362,7 +375,6 @@ void loop() {
     if (gameIsRunning && currentGameMode != nullptr) {
         currentGameMode->update();
 
-        // Se l'operatore ha premuto "ESCI TEST" (P2 sulla pagina 4), torna a Standby
         if (inHardwareTest) {
             HardwareTestMode* testMode = static_cast<HardwareTestMode*>(currentGameMode);
             if (testMode->isExitRequested()) {

@@ -50,7 +50,7 @@ void SearchDestroyMode::begin() {
     stopAllEffects();
     _pendingServerEvent = "";
     enterSafeState();
-    hardware.playAudio("/audio/common/match_start.mp3");
+    hardware.playAudio("/audio/common/match_start.mp3", AUDIO_CH_VOICE);
 }
 
 // ============================================================================
@@ -86,7 +86,7 @@ void SearchDestroyMode::enterArmedState(bool playSound) {
     hardware.setLedsColor(255, 0, 0);
 
     if (playSound) {
-        hardware.playAudio("/audio/sd/bomb_armed.mp3");
+        hardware.playAudio("/audio/sd/bomb_armed.mp3", AUDIO_CH_VOICE);
     }
 
     _bombTimer.forceRedraw();
@@ -158,7 +158,7 @@ void SearchDestroyMode::triggerDefusal() {
     hardware.printLcdLine(1, "BOMBA DISINNESCATA", true);
     hardware.printLcdLine(2, "Attesa Arbitro...", true);
     hardware.setLedsColor(0, 255, 0);
-    hardware.playAudio("/audio/sd/bomb_defused.mp3");
+    hardware.playAudio("/audio/sd/bomb_defused.mp3", AUDIO_CH_VOICE);
     setOledLabels("", ""); 
     
     sendMatchEventToServer();
@@ -183,7 +183,7 @@ void SearchDestroyMode::triggerExplosion() {
     _fxPulseActive = true;
     _fxPulseStartTime = millis();
 
-    hardware.playAudio("/audio/sd/bomb_exploded.mp3");
+    hardware.playAudio("/audio/sd/bomb_exploded.mp3", AUDIO_CH_SFX);
     
     // Invia immediatamente l'evento al server (latenza zero)
     sendMatchEventToServer();
@@ -233,7 +233,7 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
 
                     // Riproduce il suono di fine match se il round è terminato per Tempo Scaduto o Squadra Eliminata
                     if (strcmp(reason, "TEMPO SCADUTO!") == 0 || strcmp(reason, "SQUADRA ELIMINATA!") == 0) {
-                        hardware.playAudio("/audio/common/match_end.mp3");
+                        hardware.playAudio("/audio/common/match_end.mp3", AUDIO_CH_VOICE);
                     }
 
                     setOledLabels("", "");
@@ -416,9 +416,10 @@ void SearchDestroyMode::update() {
         }
     }
 
-    // 5. Aggiornamento conto alla rovescia bomba (attivo sia in SD_ARMED che in SD_DEFUSING)
+    // 5. Aggiornamento conto alla rovescia bomba (con mixer polifonico gli annunci e i beep
+    //    continuano a suonare in sottofondo anche durante SD_DEFUSING!)
     if (_state == SD_ARMED || _state == SD_DEFUSING) {
-        if (_bombTimer.update(_state == SD_ARMED)) {
+        if (_bombTimer.update(true)) {
             triggerExplosion();
         }
     }

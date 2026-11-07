@@ -1,23 +1,10 @@
 /**
  * @file HardwareManager.cpp
- * @brief Implementazione dei driver hardware, sintesi audio DDS I2S e gestione bus I2C/SPI.
+ * @brief Implementazione dei driver hardware, delega al mixer AudioEngine I2S e gestione bus I2C/SPI.
  */
 
 #include "HardwareManager.h"
-#include <driver/i2s.h>
 #include <math.h>
-
-// ============================================================================
-// CALLBACK DIAGNOSTICHE LIBRERIA AUDIO I2S
-// ============================================================================
-
-void audio_info(const char *info) {
-    Serial.printf("[AUDIO-LIB] %s\n", info);
-}
-
-void audio_eof_mp3(const char *info) {
-    Serial.printf("[AUDIO-EOF] Fine traccia MP3: %s\n", info);
-}
 
 // ============================================================================
 // COSTRUTTORE E INIZIALIZZAZIONE HARDWARE
@@ -32,7 +19,6 @@ HardwareManager::HardwareManager() :
     _nfc_i2c = nullptr;
     _nfc = nullptr;
     _i2cMutex = xSemaphoreCreateMutex();
-    _audioMutex = xSemaphoreCreateMutex();
 
     _lcdInitialized = false;
     _oled1Initialized = false;
@@ -73,18 +59,6 @@ HardwareManager::HardwareManager() :
     _lastBarPixels = -1;
     _lastOled1Text = "__INIT__";
     _lastOled2Text = "__INIT__";
-
-    _toneActive = false;
-    _toneIsSweep = false;
-    _toneStartFreq = 0;
-    _toneEndFreq = 0;
-    _toneTotalSamples = 0;
-    _toneSampleIndex = 0;
-    _toneTailSamples = 0;
-    _tonePhase = 0;
-    memset(_pendingMp3Path, 0, sizeof(_pendingMp3Path));
-    _ampTurnOffTimeMs = 0;
-    _waitingAmpTurnOff = false;
 }
 
 /**
@@ -226,17 +200,15 @@ void HardwareManager::initialize() {
         listSdFiles("/", 2);
     }
 
-    // 5. Inizializzazione Bus Audio I2S (MAX98357A) con Pre-Gain EQ
-    Serial.print("[I2S] Audio MAX98357A... ");
-    _audio.setPinout(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT);
-    _audio.setVolume(21);          // Volume master al massimo (scala 0..21)
-    _audio.setTone(2, 6, 6);       // Boost +2dB Bassi, +6dB Medi, +6dB Alti per massima resa su speaker compatti
-    Serial.println("OK.");
+    // 5. Inizializzazione Mixer Polifonico I2S (MAX98357A)
+    Serial.print("[I2S] Avvio AudioEngine Polifonico... ");
+    _audioEngine.begin(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT, PIN_AUDIO_EN);
+    _audioEngine.setMasterVolume(21);
     delay(50);
 }
 
 // ============================================================================
-// GESTIONE AUDIO I2S (MP3 DA MICRO-SD + SINTETIZZATORE DDS)
+// GESTIONE AUDIO I2S (DELEGA AL MIXER POLIFONICO AUDIOENGINE)
 // ============================================================================
 
 void HardwareManager::listSdFiles(const char* dirname, uint8_t levels) {
@@ -258,250 +230,47 @@ void HardwareManager::listSdFiles(const char* dirname, uint8_t levels) {
     }
 }
 
-bool HardwareManager::isValidAudioFile(const String& path) {
-    if (!_sdInitialized || !SD.exists(path)) return false;
-    File f = SD.open(path, FILE_READ);
-    if (!f) return false;
-    size_t sz = f.size();
-    f.close();
-    return (sz > 512);
-}
-
-/**
- * @brief Aggiunge una coda di 24 frame MP3 silenziosi (~620ms) ai file sulla SD (una tantum)
- * per evitare che la chiusura anticipata dello stream da parte di ESP32-audioI2S tagli il finale.
- */
-void HardwareManager::ensureMp3Padding(const String& path) {
-    if (!_sdInitialized) return;
-    File f = SD.open(path, FILE_READ);
-    if (!f) return;
-    size_t sz = f.size();
-    if (sz <= 512) {
-        f.close();
+void HardwareManager::playAudio(const String& filename, AudioChannel channel) {
+    if (_sdInitialized && _audioEngine.playFile(filename, channel)) {
         return;
     }
-
-    const uint8_t marker[4] = {'Z', 'P', 'A', 'D'};
-    uint8_t tail[4] = {0};
-    if (sz > 4) {
-        f.seek(sz - 4);
-        f.read(tail, 4);
-    }
-    f.close();
-
-    if (memcmp(tail, marker, 4) == 0) return;
-
-    File fw = SD.open(path, FILE_APPEND);
-    if (!fw) return;
-
-    uint8_t silentFrame[417];
-    memset(silentFrame, 0, sizeof(silentFrame));
-    silentFrame[0] = 0xFF;
-    silentFrame[1] = 0xFB;
-    silentFrame[2] = 0x90;
-    silentFrame[3] = 0x64;
-
-    for (int i = 0; i < 24; i++) {
-        fw.write(silentFrame, sizeof(silentFrame));
-    }
-    fw.write(marker, 4);
-    fw.close();
+    // Fallback sintetizzato se la SD è assente o il file MP3 non esiste
+    if (filename.indexOf("match_start") != -1)      playTone(1000, 200);
+    else if (filename.indexOf("match_end") != -1)   playTone(600, 350);
+    else if (filename.indexOf("armed") != -1)       playTone(1400, 250);
+    else if (filename.indexOf("defused") != -1)     playTone(1600, 300);
+    else if (filename.indexOf("explo") != -1)       playTone(200, 600);
+    else if (filename.indexOf("min_") != -1)        playTone(1500, 150);
+    else if (filename.indexOf("sec_30") != -1)      playTone(1650, 220);
+    else if (filename.indexOf("sec_10") != -1)      playTone(1800, 120);
 }
 
-void HardwareManager::playAudio(const String& filename) {
-    String resolvedPath = "";
-
-    if (_sdInitialized && xSemaphoreTake(_audioMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (isValidAudioFile(filename)) {
-            resolvedPath = filename;
-        } else {
-            int lastSlash = filename.lastIndexOf('/');
-            if (lastSlash >= 0) {
-                String baseName = filename.substring(lastSlash);
-                if (isValidAudioFile(baseName)) {
-                    resolvedPath = baseName;
-                } else {
-                    String legacyName = baseName;
-                    legacyName.replace("/bomb_exploded.mp3", "/explosion.mp3");
-                    legacyName.replace("/bomb_armed.mp3", "/armed.mp3");
-                    legacyName.replace("/bomb_defused.mp3", "/defused.mp3");
-                    if (isValidAudioFile(legacyName)) {
-                        resolvedPath = legacyName;
-                    }
-                }
-            }
-        }
-
-        if (resolvedPath.length() > 0) {
-            ensureMp3Padding(resolvedPath);
-            _waitingAmpTurnOff = false;
-
-            // Se un beep breve (es. conferma PIN) sta uscendo dal DMA, accoda l'MP3
-            if (_toneActive && !_toneIsSweep) {
-                strncpy(_pendingMp3Path, resolvedPath.c_str(), sizeof(_pendingMp3Path) - 1);
-                _pendingMp3Path[sizeof(_pendingMp3Path) - 1] = '\0';
-                xSemaphoreGive(_audioMutex);
-                return;
-            }
-
-            _toneActive = false;
-            _toneIsSweep = false;
-            _pendingMp3Path[0] = '\0';
-            if (_audio.isRunning()) {
-                _audio.stopSong();
-            }
-            digitalWrite(PIN_AUDIO_EN, HIGH);
-            delay(15);
-            _audio.connecttoFS(SD, resolvedPath.c_str());
-            xSemaphoreGive(_audioMutex);
-            return;
-        }
-        xSemaphoreGive(_audioMutex);
-    }
-
-    // Fallback sintetizzato se la SD è scollegata o il file MP3 non è presente
-    if (filename.indexOf("match_start") != -1) {
-        playTone(1000, 200);
-    } else if (filename.indexOf("match_end") != -1) {
-        playTone(600, 350);
-    } else if (filename.indexOf("armed") != -1) {
-        playTone(1400, 250);
-    } else if (filename.indexOf("defused") != -1) {
-        playTone(1600, 300);
-    } else if (filename.indexOf("explo") != -1) {
-        playTone(200, 600);
-    }
-}
-
-void HardwareManager::startToneInternal(uint16_t startFreq, uint16_t endFreq, uint32_t durationMs, bool isSweep) {
-    if (xSemaphoreTake(_audioMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (isSweep) {
-            _pendingMp3Path[0] = '\0';
-        }
-        if (_audio.isRunning()) {
-            _audio.stopSong();
-        }
-
-        if (!_toneActive) {
-            i2s_start(I2S_NUM_0);
-            i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
-            digitalWrite(PIN_AUDIO_EN, HIGH);
-        }
-
-        uint32_t dur = (durationMs > 0) ? durationMs : 1;
-        _toneStartFreq = startFreq;
-        _toneEndFreq = endFreq;
-
-        uint32_t totalSamples = ((uint64_t)dur * 44100ULL) / 1000ULL;
-        if (totalSamples == 0) totalSamples = 44;
-
-        _toneTotalSamples = totalSamples;
-        _toneSampleIndex = 0;
-        _toneTailSamples = 10240; // Svuotamento completo del ring buffer DMA I2S (8192 campioni)
-        _toneIsSweep = isSweep;
-        _toneActive = true;
-
-        xSemaphoreGive(_audioMutex);
-    }
+void HardwareManager::playAudioUrl(const String& url, AudioChannel channel) {
+    _audioEngine.playUrl(url, channel);
 }
 
 void HardwareManager::startToneSweep(uint16_t startFreq, uint16_t endFreq, uint32_t durationMs) {
-    startToneInternal(startFreq, endFreq, durationMs, true);
+    _audioEngine.startToneSweep(startFreq, endFreq, durationMs);
 }
 
 void HardwareManager::playTone(uint16_t freq, uint32_t durationMs) {
-    startToneInternal(freq, freq, durationMs, false);
+    _audioEngine.playTone(freq, durationMs);
 }
 
 void HardwareManager::noTone() {
-    if (_toneActive && _toneIsSweep) {
-        if (xSemaphoreTake(_audioMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            _toneActive = false;
-            _toneIsSweep = false;
-            if (!_audio.isRunning()) {
-                i2s_zero_dma_buffer(I2S_NUM_0);
-                digitalWrite(PIN_AUDIO_EN, LOW);
-            }
-            xSemaphoreGive(_audioMutex);
-        }
-    }
+    _audioEngine.stopToneSweep();
 }
 
 void HardwareManager::audioLoop() {
-    if (xSemaphoreTake(_audioMutex, pdMS_TO_TICKS(5)) != pdTRUE) {
-        return;
-    }
-
-    if (!_toneActive) {
-        _audio.loop();
-        static bool wasRunning = false;
-        bool isRunning = _audio.isRunning();
-        if (wasRunning && !isRunning) {
-            _waitingAmpTurnOff = true;
-            _ampTurnOffTimeMs = millis();
-        }
-        if (_waitingAmpTurnOff && !isRunning && (millis() - _ampTurnOffTimeMs >= 250)) {
-            _waitingAmpTurnOff = false;
-            digitalWrite(PIN_AUDIO_EN, LOW);
-        }
-        wasRunning = isRunning;
-        xSemaphoreGive(_audioMutex);
-        return;
-    }
-
-    _waitingAmpTurnOff = false;
-    int16_t samples[512];
-    const float amplitude = 26000.0f; // ~80% del fondoscala 16-bit (32767) per il massimo volume pulito
-
-    for (int i = 0; i < 256; i++) {
-        int16_t val = 0;
-
-        if (_toneSampleIndex < _toneTotalSamples) {
-            int32_t fStart = _toneStartFreq;
-            int32_t fEnd = _toneEndFreq;
-            uint16_t currentFreq = fStart + ((int64_t)(fEnd - fStart) * (int64_t)_toneSampleIndex) / (int64_t)_toneTotalSamples;
-            _toneSampleIndex++;
-
-            uint32_t phaseStep = ((uint64_t)currentFreq << 16) / 44100;
-            _tonePhase = (_tonePhase + phaseStep) & 0xFFFF;
-            float angle = (_tonePhase * 6.2831853f) / 65536.0f;
-            val = (int16_t)(sinf(angle) * amplitude);
-        } else if (_toneTailSamples > 0) {
-            _toneTailSamples--;
-            val = 0;
-        } else {
-            _toneActive = false;
-            _toneIsSweep = false;
-
-            if (_pendingMp3Path[0] != '\0') {
-                char nextMp3[64];
-                strncpy(nextMp3, _pendingMp3Path, sizeof(nextMp3));
-                _pendingMp3Path[0] = '\0';
-                digitalWrite(PIN_AUDIO_EN, HIGH);
-                _audio.connecttoFS(SD, nextMp3);
-            } else if (!_audio.isRunning()) {
-                digitalWrite(PIN_AUDIO_EN, LOW);
-            }
-            xSemaphoreGive(_audioMutex);
-            return;
-        }
-
-        samples[i * 2]     = val;
-        samples[i * 2 + 1] = val;
-    }
-
-    xSemaphoreGive(_audioMutex);
-
-    size_t bytesWritten = 0;
-    i2s_write(I2S_NUM_0, samples, sizeof(samples), &bytesWritten, pdMS_TO_TICKS(100));
+    _audioEngine.loop();
 }
 
 void HardwareManager::setVolume(uint8_t vol) {
-    _audio.setVolume(vol);
+    _audioEngine.setMasterVolume(vol);
 }
 
 bool HardwareManager::isAudioPlaying() {
-    return _audio.isRunning();
+    return _audioEngine.isPlaying();
 }
 
 // ============================================================================
@@ -801,10 +570,6 @@ void HardwareManager::printOled(const String& text, int size, int x, int y) {
 // RTC DS3231, LETTORE RFID PN532 E MONITORAGGIO BATTERIA
 // ============================================================================
 
-/**
- * @brief Sincronizza l'orologio di sistema via NTP sul fuso orario italiano (CET/CEST)
- *        e aggiorna il modulo hardware RTC DS3231 se presente sul bus I2C.
- */
 bool HardwareManager::syncRTCWithNTP(uint32_t timeoutMs) {
     configTzTime(TIMEZONE_ITALY, NTP_SERVER_1, NTP_SERVER_2);
 
@@ -900,10 +665,6 @@ String HardwareManager::readRFID(uint16_t timeout) {
     return "";
 }
 
-/**
- * @brief Legge la tensione della batteria LiPo 2S su GPIO 1 con multisampling e filtro EMA.
- * Restituisce 0.0f se il partitore o la batteria non sono collegati (< 5.5V).
- */
 float HardwareManager::readBatteryVoltage() {
     uint32_t sumMv = 0;
     for (uint8_t i = 0; i < 8; i++) {
@@ -923,20 +684,15 @@ float HardwareManager::readBatteryVoltage() {
     }
 
     float voltage = (_filteredBattMv * BATT_DIVIDER_RATIO * BATT_CALIBRATION_TRIM) / 1000.0f;
-    // Una LiPo 2S non può trovarsi sotto 5.5V: valori inferiori indicano pin non cablato
     if (voltage < 5.50f) {
         return 0.0f;
     }
     return voltage;
 }
 
-/**
- * @brief Calcola la percentuale di carica (0..100%) per una batteria LiPo 2S (6.60V .. 8.40V)
- *        usando una curva di interpolazione a tratti. Restituisce -1 se non collegata.
- */
 int8_t HardwareManager::readBatteryPercentage() {
     float v = readBatteryVoltage();
-    if (v < 5.50f) return -1; // Batteria non collegata (EXT / USB)
+    if (v < 5.50f) return -1;
 
     const float vTable[6] = { 6.60f, 7.00f, 7.40f, 7.60f, 8.00f, 8.40f };
     const float pTable[6] = { 0.0f,  10.0f, 35.0f, 60.0f, 85.0f, 100.0f };
