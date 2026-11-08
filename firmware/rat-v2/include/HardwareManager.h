@@ -66,11 +66,33 @@
 #define PIN_I2S_DOUT   12
 #define PIN_AUDIO_EN   13  // Pin SD/EN dell'amplificatore (HIGH = Attivo, LOW = Mute/Standby)
 
+// --- Microfono I2S (INMP441) ---
+#define PIN_I2S_MIC_SCK 6
+#define PIN_I2S_MIC_WS  7
+#define PIN_I2S_MIC_SD 14
+
+// --- Seriale princpiale ---
+#define PIN_UART_TX 43
+#define PIN_UART_RX 44
+
+// --- Seriale espansione ---
+#define PIN_EXP_RX 40
+#define PIN_EXP_TX 41
+
+// --- GPIO espansione ---
+#define PIN_EXP_GPIO_1 2
+#define PIN_EXP_GPIO_2 21
+#define PIN_EXP_GPIO_3 38
+
+// --- USB ---
+#define PIN_USB_DM 20
+#define PIN_USB_DP 19
+
 // --- Effetti Fisici ed Espansioni ---
 #define PIN_LEDS       4   // Striscia LED WS2812 (tramite level shifter 5V)
 #define NUM_LEDS       60
 #define PIN_SMOKE      39  // Controllo PWM MOSFET macchina del fumo (AOD4184A)
-#define PIN_EXP_CTRL_1 42  // Uscita controllo relè esterno 12V / carichi ausiliari
+#define PIN_EXP_CTRL_1 42  // Uscita controllo relè esterno / carichi ausiliari
 
 // --- Indirizzi Periferiche I2C ---
 #define I2C_ADDR_MCP    0x20
