@@ -227,12 +227,17 @@ function updateInspectorData(device) {
         }
     }
 
+    // Visibilità scheda Regia Audio Tattica (Solo per nodi RAT-V2)
+    const audioDirCard = document.getElementById('insp-audio-director-card');
+    if (audioDirCard) {
+        audioDirCard.style.display = (isV2 && !isKiosk) ? 'block' : 'none';
+    }
+
     // Stato pulsante OTA Update
     const otaBtn = document.getElementById('ota-update-btn');
     if (otaBtn) {
         const isVirtual = (device.id === 'SERVER-TDM');
         otaBtn.style.display = isVirtual ? 'none' : 'block';
-        const isKiosk = (device.mode === 'KIOSK' || (device.id && device.id.includes('KIOSK')));
         const manifest = window.__zuluOtaManifest || {};
         const fwKey = isV2 ? 'rat-v2' : (isKiosk ? 'kiosk-v1' : 'rat-v1');
         const latestVer = manifest[fwKey]?.version;

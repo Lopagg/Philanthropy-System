@@ -299,6 +299,11 @@ void loop() {
                         }
                         return;
                     }
+                    else if (strcmp(cmd, "SET_VOLUME") == 0) {
+                        uint8_t vol = doc["volume"] | 21;
+                        hardware.setVolume(vol);
+                        return;
+                    }
                     else if (strcmp(cmd, "START_HW_TEST") == 0) {
                         Serial.println("[SYS] Avvio modalità Hardware Test");
                         startHardwareTestMode();

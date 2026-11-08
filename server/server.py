@@ -6,6 +6,7 @@ Espone:
 - Le viste tattiche per gli arbitri/admin (/, /mobile, /tv).
 - Il portale personale per i giocatori PRO (/portal/login, /portal/setup, /portal/dashboard).
 - Gli endpoint WebSocket (Socket.IO) per la gestione in tempo reale di roster, database, OTA e missioni.
+- Gli endpoint Regia Audio (/api/audio/tts e /api/audio/intercom) per annunci vocali e Push-To-Talk live.
 """
 
 from functools import wraps
@@ -16,16 +17,19 @@ import time
 import os
 import sys
 import urllib.request
+import socket as py_socket
+import asyncio
+import hmac
+import hashlib
+import subprocess
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, abort
 from flask_socketio import SocketIO, emit
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from werkzeug.middleware.proxy_fix import ProxyFix
 import db_manager
 import game_engine
 
@@ -43,6 +47,9 @@ app.config['SECRET_KEY'] = 'philanthropy_secret_key_change_in_prod'
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+TTS_FOLDER = os.path.join(app.root_path, 'static', 'tts')
+os.makedirs(TTS_FOLDER, exist_ok=True)
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -730,12 +737,156 @@ def handle_socket_command(data):
     except Exception as e:
         logger.error(f"[ERROR SOCKET CMD] {e}")
 
-import hmac
-import hashlib
-import subprocess
 
-# Imposta una tua chiave segreta (la stessa che inserirai su GitHub)
+# =============================================================================
+# REGIA AUDIO TATTICA: TTS LIVE E INTERCOM PUSH-TO-TALK (WALKIE-TALKIE)
+# =============================================================================
+
+LIVE_VOICE_FILTER = (
+    "highpass=f=220:poles=2,"
+    "lowpass=f=3800:poles=2,"
+    "equalizer=f=2500:t=q:w=1.2:g=4.5,"
+    "acompressor=threshold=-18dB:ratio=4:attack=8:release=120:makeup=5dB,"
+    "alimiter=limit=0.94:attack=5:release=50"
+)
+
+VOICE_PROFILES = {
+    "COMMANDER":   {"voice": "it-IT-DiegoNeural",    "rate": "+5%", "pitch": "-10Hz"},
+    "RADIO_OP":    {"voice": "it-IT-GiuseppeNeural", "rate": "+8%", "pitch": "-2Hz"},
+    "TACTICAL_AI": {"voice": "it-IT-IsabellaNeural", "rate": "+5%", "pitch": "+0Hz"}
+}
+
+
+def resolve_audio_base_url(target_id):
+    """
+    Determina l'URL HTTP diretto (porta 5000) raggiungibile dall'ESP32-S3.
+    Se il nodo è sulla LAN locale, usa l'IP LAN del server evitando problemi di HTTPS/Reverse Proxy.
+    """
+    dev = game_engine.registry.devices.get(target_id, {})
+    dev_ip = str(dev.get("ip", ""))
+    try:
+        s = py_socket.socket(py_socket.AF_INET, py_socket.SOCK_DGRAM)
+        probe_ip = dev_ip if (dev_ip and dev_ip != "MQTT") else "8.8.8.8"
+        s.connect((probe_ip, 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+        if dev_ip.startswith(("192.168.", "10.", "172.")) or request.host.startswith(("192.168.", "10.", "localhost", "127.")):
+            return f"http://{lan_ip}:5000"
+    except Exception:
+        pass
+    host_only = request.host.split(':')[0]
+    return f"http://{host_only}:5000"
+
+
+def publish_audio_url_to_target(target_id, filename, channel="VOICE"):
+    """Invia il comando PLAY_AUDIO_URL al nodo specifico o a tutti i nodi V2."""
+    ts = int(time.time() * 1000)
+    targets = []
+    if target_id == "ALL_V2":
+        active_devs, _ = game_engine.registry.get_active_devices()
+        targets = [d["id"] for d in active_devs if "V2" in str(d.get("version", "")).upper() or "V2" in d["id"].upper()]
+    elif target_id:
+        targets = [target_id]
+
+    for tid in targets:
+        base_url = resolve_audio_base_url(tid)
+        audio_url = f"{base_url}/static/tts/{filename}?t={ts}"
+        game_engine.mqtt_client.publish(f"zulu/cmd/{tid}", json.dumps({
+            "cmd": "PLAY_AUDIO_URL",
+            "url": audio_url,
+            "channel": channel
+        }), qos=1)
+
+
+@app.route('/api/audio/tts', methods=['POST'])
+@admin_required
+def api_audio_tts():
+    data = request.get_json(silent=True) or {}
+    text = str(data.get('text', '')).strip()
+    target_id = str(data.get('target_id', '')).strip()
+    profile_key = str(data.get('profile', 'COMMANDER')).upper()
+
+    if not text or not target_id:
+        return jsonify({"status": "error", "msg": "Testo o nodo target mancante."}), 400
+    if len(text) > 280:
+        text = text[:280]
+
+    profile = VOICE_PROFILES.get(profile_key, VOICE_PROFILES["COMMANDER"])
+    raw_path = os.path.join(TTS_FOLDER, "tts_raw.mp3")
+    out_filename = "tts_live.mp3"
+    out_path = os.path.join(TTS_FOLDER, out_filename)
+
+    try:
+        import edge_tts  # type: ignore
+
+        async def _gen():
+            comm = edge_tts.Communicate(
+                text,
+                profile["voice"],
+                rate=profile["rate"],
+                pitch=profile["pitch"]
+            )
+            await comm.save(raw_path)
+
+        asyncio.run(_gen())
+
+        subprocess.run([
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", raw_path,
+            "-vn", "-map_metadata", "-1",
+            "-ac", "1", "-ar", "44100",
+            "-af", LIVE_VOICE_FILTER,
+            "-c:a", "libmp3lame", "-b:a", "128k", "-write_xing", "0",
+            out_path
+        ], check=True)
+
+        publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
+        logger.info(f"[LIVE TTS] Inviato a {target_id} ({profile_key}): '{text}'")
+        return jsonify({"status": "ok", "text": text})
+    except Exception as e:
+        logger.error(f"[LIVE TTS ERROR] {e}")
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+
+@app.route('/api/audio/intercom', methods=['POST'])
+@admin_required
+def api_audio_intercom():
+    target_id = request.form.get('target_id', '').strip()
+    if 'audio' not in request.files or not target_id:
+        return jsonify({"status": "error", "msg": "File audio o target mancante."}), 400
+
+    audio_file = request.files['audio']
+    raw_ext = os.path.splitext(audio_file.filename or 'ptt.webm')[1] or '.webm'
+    raw_path = os.path.join(TTS_FOLDER, f"ptt_raw{raw_ext}")
+    out_filename = "ptt_live.mp3"
+    out_path = os.path.join(TTS_FOLDER, out_filename)
+
+    try:
+        audio_file.save(raw_path)
+        subprocess.run([
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", raw_path,
+            "-vn", "-map_metadata", "-1",
+            "-ac", "1", "-ar", "44100",
+            "-af", LIVE_VOICE_FILTER,
+            "-c:a", "libmp3lame", "-b:a", "128k", "-write_xing", "0",
+            out_path
+        ], check=True)
+
+        publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
+        logger.info(f"[LIVE INTERCOM] Messaggio vocale PTT trasmesso a {target_id}")
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"[LIVE INTERCOM ERROR] {e}")
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+
+# =============================================================================
+# WEBHOOK GITHUB DEPLOY AUTOMATICO E RIAVVIO SERVER
+# =============================================================================
+
 GITHUB_WEBHOOK_SECRET = os.environ.get('ZULU_WEBHOOK_SECRET', 'philanthropy_webhook_secret_2026')
+
 
 @app.route('/api/github-webhook', methods=['POST'])
 def github_webhook():
@@ -748,14 +899,12 @@ def github_webhook():
         return jsonify({"status": "invalid signature"}), 403
 
     payload = request.get_json(silent=True) or {}
-    # Esegue il deploy solo sui push verso il branch main
     if payload.get('ref') and payload.get('ref') != 'refs/heads/main':
         return jsonify({"status": "ignored branch"}), 200
 
     repo_root = os.path.abspath(os.path.join(app.root_path, '..'))
     subprocess.run(['git', 'pull', 'origin', 'main'], cwd=repo_root)
 
-    # Controlla se sono stati modificati file del server o solo firmware/asset
     changed_files = []
     for commit in payload.get('commits', []):
         changed_files.extend(commit.get('added', []) + commit.get('modified', []) + commit.get('removed', []))
@@ -765,7 +914,6 @@ def github_webhook():
         for f in changed_files
     )
 
-    # Aggiorna subito il manifesto OTA su tutti i browser connessi
     socketio.emit('ota_manifest_update', get_ota_manifest())
 
     if server_code_changed or not changed_files:
@@ -780,6 +928,7 @@ def github_webhook():
 
     logger.info("[WEBHOOK] Aggiornato solo il pacchetto Firmware OTA (nessun riavvio server necessario).")
     return jsonify({"status": "ota_updated_live"}), 200
+
 
 @socketio.on('server_reset_request')
 @login_required

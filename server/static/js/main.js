@@ -6,6 +6,7 @@
  * - Connessione singleton Socket.IO e sincronizzazione real-time con il server Flask.
  * - Costruttore visuale delle sequenze modulari V2 (HOLD, PIN, KEY a 8 modalità, RFID a 4 modalità) per S&D e Dominio.
  * - Validazione automatica di coerenza per lo stato delle chiavi K1/K2.
+ * - Regia Audio Tattica (Soundboard Micro-SD, Annunciatore TTS Live e Intercom Push-To-Talk).
  * - Gestione fazioni, meteo tattico, ritaglio foto profilo/prop (Cropper.js), OTA e registrazione tessere.
  */
 
@@ -188,9 +189,7 @@ function sanitizeChain(stepsArray) {
 }
 
 function sanitizeKeySequences() {
-    // 1. In Search & Destroy l'innesco precede sempre il disinnesco
     sanitizeChain([...window.v2ArmSequence, ...window.v2DefuseSequence]);
-    // 2. In Dominio ciascuna squadra esegue la propria sequenza di conquista
     sanitizeChain(window.v2DomAlphaSequence);
     sanitizeChain(window.v2DomBravoSequence);
 }
@@ -543,6 +542,167 @@ if (!window.__zuluMainInitialized) {
                 socket.emit('server_reset_request');
             }
         };
+
+        // ====================================================================
+        // REGIA AUDIO TATTICA: SOUNDBOARD SD, TTS LIVE E INTERCOM PTT
+        // ====================================================================
+
+        function setAudioDirectorStatus(msg, color = '#888') {
+            const el = document.getElementById('insp-audio-status');
+            if (el) {
+                el.textContent = msg;
+                el.style.color = color;
+            }
+        }
+
+        window.playSdSound = function(sdPath) {
+            if (!activeInspectorId || !sdPath) return;
+            socket.emit('send_command', {
+                target_id: activeInspectorId,
+                command: { cmd: "PLAY_AUDIO", path: sdPath }
+            });
+            setAudioDirectorStatus(`SD PLAY -> ${sdPath}`, 'var(--sop-primary)');
+            logSystem(`AUDIO SD [${activeInspectorId}]: ${sdPath}`);
+        };
+
+        window.sendNodeVolume = function(vol) {
+            if (!activeInspectorId) return;
+            const v = parseInt(vol);
+            socket.emit('send_command', {
+                target_id: activeInspectorId,
+                command: { cmd: "SET_VOLUME", volume: isNaN(v) ? 21 : v }
+            });
+            setAudioDirectorStatus(`MASTER VOLUME IMPOSTATO A ${v}/21`, 'var(--sop-primary)');
+        };
+
+        window.sendLiveTts = function() {
+            if (!activeInspectorId) return;
+            const inputEl = document.getElementById('insp-tts-input');
+            const profEl  = document.getElementById('insp-tts-profile');
+            const btnEl   = document.getElementById('insp-tts-btn');
+            const text = (inputEl?.value || '').trim();
+            if (!text) return;
+
+            setAudioDirectorStatus("SINTESI E MASTERING TTS IN CORSO...", "var(--sop-secondary)");
+            if (btnEl) btnEl.disabled = true;
+
+            fetch('/api/audio/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_id: activeInspectorId,
+                    text: text,
+                    profile: profEl ? profEl.value : 'COMMANDER'
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    setAudioDirectorStatus(`TTS TRASMESSO: "${text}"`, 'var(--sop-success)');
+                    logSystem(`TTS LIVE [${activeInspectorId}]: "${text}"`);
+                    if (inputEl) inputEl.value = '';
+                } else {
+                    setAudioDirectorStatus(`ERRORE TTS: ${data.msg || 'Fallito'}`, 'var(--sop-alert)');
+                }
+            })
+            .catch(err => setAudioDirectorStatus(`ERRORE RETE TTS: ${err}`, 'var(--sop-alert)'))
+            .finally(() => { if (btnEl) btnEl.disabled = false; });
+        };
+
+        function transmitIntercomBlob(blob, filename = 'ptt.webm') {
+            if (!activeInspectorId || !blob || blob.size < 200) {
+                setAudioDirectorStatus("AUDIO TROPPO BREVE - ANNULLATO", "#888");
+                return;
+            }
+            setAudioDirectorStatus("MASTERING WALKIE-TALKIE E INVIO AL RAT...", "var(--sop-secondary)");
+            const formData = new FormData();
+            formData.append('target_id', activeInspectorId);
+            formData.append('audio', blob, filename);
+
+            fetch('/api/audio/intercom', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        setAudioDirectorStatus("INTERCOM VOCALE RIPRODOTTO SUL RAT!", "var(--sop-success)");
+                        logSystem(`INTERCOM PTT trasmesso a ${activeInspectorId}`);
+                    } else {
+                        setAudioDirectorStatus(`ERRORE INTERCOM: ${data.msg}`, "var(--sop-alert)");
+                    }
+                })
+                .catch(err => setAudioDirectorStatus(`ERRORE UPLOAD PTT: ${err}`, "var(--sop-alert)"));
+        }
+
+        window.uploadIntercomFileFallback = function(input) {
+            if (input.files && input.files[0]) {
+                transmitIntercomBlob(input.files[0], input.files[0].name);
+                input.value = '';
+            }
+        };
+
+        let pttRecorder = null;
+        let pttChunks = [];
+        let pttStream = null;
+        const pttBtn = document.getElementById('insp-ptt-btn');
+
+        async function startPttRecording(e) {
+            if (e) e.preventDefault();
+            if (!activeInspectorId) return;
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                setAudioDirectorStatus("Su HTTP non-sicuro usa il tasto [📱 VOCALE MOBILE] a destra.", "var(--sop-secondary)");
+                return;
+            }
+            try {
+                pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                pttChunks = [];
+                pttRecorder = new MediaRecorder(pttStream);
+                pttRecorder.ondataavailable = (ev) => {
+                    if (ev.data && ev.data.size > 0) pttChunks.push(ev.data);
+                };
+                pttRecorder.onstop = () => {
+                    const mime = pttRecorder.mimeType || 'audio/webm';
+                    const ext = mime.includes('mp4') ? 'm4a' : (mime.includes('ogg') ? 'ogg' : 'webm');
+                    const blob = new Blob(pttChunks, { type: mime });
+                    if (pttStream) {
+                        pttStream.getTracks().forEach(t => t.stop());
+                        pttStream = null;
+                    }
+                    transmitIntercomBlob(blob, `ptt.${ext}`);
+                };
+                pttRecorder.start();
+                if (pttBtn) {
+                    pttBtn.textContent = "🔴 REGISTRAZIONE IN CORSO... RILASCIA PER TRASMETTERE";
+                    pttBtn.style.borderColor = "var(--sop-alert)";
+                    pttBtn.style.color = "var(--sop-alert)";
+                }
+                setAudioDirectorStatus("MICROFONO APERTO - PARLA ORA...", "var(--sop-alert)");
+            } catch (err) {
+                setAudioDirectorStatus(`Accesso microfono negato (${err.message}). Usa [📱 VOCALE MOBILE].`, "var(--sop-alert)");
+            }
+        }
+
+        function stopPttRecording(e) {
+            if (e) e.preventDefault();
+            if (pttRecorder && pttRecorder.state === 'recording') {
+                pttRecorder.stop();
+            }
+            if (pttBtn) {
+                pttBtn.textContent = "[ 🎙️ TIENI PREMUTO PER PARLARE (PTT WALKIE-TALKIE) ]";
+                pttBtn.style.borderColor = "var(--sop-secondary)";
+                pttBtn.style.color = "var(--sop-secondary)";
+            }
+        }
+
+        if (pttBtn) {
+            pttBtn.addEventListener('mousedown', startPttRecording);
+            pttBtn.addEventListener('mouseup', stopPttRecording);
+            pttBtn.addEventListener('mouseleave', stopPttRecording);
+            pttBtn.addEventListener('touchstart', startPttRecording, { passive: false });
+            pttBtn.addEventListener('touchend', stopPttRecording, { passive: false });
+        }
+
+        // ====================================================================
+        // GESTIONE FAZIONI, INSPECTOR E MISSION SETUP
+        // ====================================================================
 
         window.openFactionModal = function(teamId) {
             const f = currentFactions[teamId];

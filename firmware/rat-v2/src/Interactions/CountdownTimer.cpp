@@ -1,7 +1,8 @@
 /**
  * @file CountdownTimer.cpp
  * @brief Implementazione del conto alla rovescia basato su RTC DS3231 con
- *        segnali acustici di scandaglio e lampeggio LED progressivo.
+ *        annunci vocali MP3 (/audio/sd/min_X, sec_30, sec_10), segnali acustici
+ *        di scandaglio e lampeggio LED progressivo.
  */
 
 #include "Interactions/CountdownTimer.h"
@@ -74,7 +75,7 @@ bool CountdownTimer::update(bool enableEffects) {
 
     uint32_t remaining = _cachedRemainingSec;
 
-    // 2. Aggiornamento riga LCD (solo al cambio effettivo del secondo)
+    // 2. Aggiornamento riga LCD e annunci vocali (solo al cambio effettivo del secondo)
     if ((int)remaining != _lastDisplayedSec) {
         bool isFirstDraw = (_lastDisplayedSec == -1);
         _lastDisplayedSec = (int)remaining;
@@ -85,17 +86,24 @@ bool CountdownTimer::update(bool enableEffects) {
         sprintf(timeBuffer, "%02d : %02d", minutes, seconds);
         hardware.printLcdLine(_lcdRow, String(timeBuffer), true);
 
-        // Beep di scandaglio ad ogni minuto esatto e alla soglia dei 30 secondi
-        if (enableEffects && !isFirstDraw && remaining > 0) {
+        // Annunci vocali bomba ad ogni minuto esatto (1..15), a 30s e a 10s
+        // (remaining < _durationSec evita di sovrascrivere bomb_armed.mp3 all'istante 0)
+        if (enableEffects && !isFirstDraw && remaining > 0 && remaining < _durationSec) {
             if (remaining >= 60 && (remaining % 60 == 0)) {
-                hardware.playTone(1500, 150);
+                if (minutes >= 1 && minutes <= 15) {
+                    hardware.playAudio("/audio/sd/min_" + String(minutes) + ".mp3", AUDIO_CH_VOICE);
+                } else {
+                    hardware.playTone(1500, 150);
+                }
             } else if (remaining == 30) {
-                hardware.playTone(1650, 220);
+                hardware.playAudio("/audio/sd/sec_30.mp3", AUDIO_CH_VOICE);
+            } else if (remaining == 10) {
+                hardware.playAudio("/audio/sd/sec_10.mp3", AUDIO_CH_VOICE);
             }
         }
     }
 
-    // 3. Lampeggio LED e accelerazione sonora negli ultimi 10 secondi
+    // 3. Lampeggio LED e accelerazione sonora negli ultimi 10 secondi (in polifonia sotto la voce)
     if (enableEffects && remaining > 0) {
         if (remaining > 10) {
             if (millis() % 1000 < 100) {

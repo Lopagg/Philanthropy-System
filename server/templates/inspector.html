@@ -1,7 +1,7 @@
 <!-- ==========================================================================
      inspector.html
      Pannello di diagnostica, test di rete, collaudo hardware remoto,
-     rinomina alias e riavvio del singolo nodo.
+     regia audio tattica (Soundboard SD, TTS Live, Intercom PTT), rinomina e riavvio.
      ========================================================================== -->
 <div id="view-inspector" class="view-panel hidden">
     <div class="inspector-header">
@@ -10,7 +10,7 @@
     </div>
 
     <div class="inspector-grid">
-        <!-- Scheda Profilo Hardware, Foto Prop & Telemetria di Rete -->
+        <!-- Scheda 1: Profilo Hardware, Foto Prop & Telemetria di Rete -->
         <div class="sop-card profile-panel" style="padding: 20px;">
             <h3 style="color: var(--sop-primary); margin-bottom: 15px; letter-spacing: 2px;">ASSET PROFILE</h3>
             <div class="profile-content">
@@ -58,7 +58,7 @@
             </button>
         </div>
 
-        <!-- Scheda Configurazione, Collaudo Hardware e Manutenzione -->
+        <!-- Scheda 2: Configurazione, Collaudo Hardware e Manutenzione -->
         <div class="sop-card config-panel" style="padding: 20px;">
             <h3 style="color: var(--sop-primary); margin-bottom: 15px; letter-spacing: 2px;">CONFIGURATION &amp; MAINTENANCE</h3>
             <div class="data-row" style="margin-bottom: 8px;"><span class="label" style="color: #888;">STATUS:</span> <span id="insp-state" class="value" style="font-weight: bold;">--</span></div>
@@ -88,6 +88,81 @@
                 <button type="button" id="hard-reset-btn" class="deck-btn btn-danger">
                     [ HARDWARE RESET ]
                 </button>
+            </div>
+        </div>
+
+        <!-- Scheda 3: Regia Audio & Intercom Tattico (Solo Nodi V2 con AudioEngine I2S) -->
+        <div id="insp-audio-director-card" class="sop-card" style="padding: 20px; grid-column: 1 / -1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                <h3 style="color: var(--sop-primary); margin: 0; letter-spacing: 2px;">🔊 TACTICAL AUDIO DIRECTOR &amp; LIVE INTERCOM</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="color: #888; font-size: 12px; font-family: monospace;">MASTER VOL:</span>
+                    <input type="range" id="insp-vol-slider" min="0" max="21" value="21" style="width: 110px; accent-color: var(--sop-primary);" onchange="sendNodeVolume(this.value)" oninput="document.getElementById('insp-vol-val').textContent = this.value">
+                    <span id="insp-vol-val" style="color: var(--sop-primary); font-family: monospace; font-weight: bold; width: 24px;">21</span>
+                </div>
+            </div>
+
+            <!-- 1. Soundboard Micro-SD Remota -->
+            <div style="margin-bottom: 16px;">
+                <label class="setup-label" style="display: block; margin-bottom: 8px; color: #aaa;">1. SOUNDBOARD MICRO-SD REMOTA (LATENZA ZERO)</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px;">
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px;" onclick="playSdSound('/audio/common/match_start.mp3')">[ ▶ INIZIO MATCH ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px;" onclick="playSdSound('/audio/common/match_end.mp3')">[ ⏹ FINE MATCH ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px; border-color:#ff5555; color:#ff5555;" onclick="playSdSound('/audio/sd/bomb_armed.mp3')">[ 💣 BOMBA INNESCATA ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px; border-color:var(--sop-success); color:var(--sop-success);" onclick="playSdSound('/audio/sd/bomb_defused.mp3')">[ 🔧 DISINNESCATA ]</button>
+                    <button type="button" class="deck-btn btn-danger" style="margin:0; padding:8px; font-size:12px;" onclick="playSdSound('/audio/sd/bomb_exploded.mp3')">[ 💥 ESPLOSIONE ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px; border-color:var(--sop-secondary); color:var(--sop-secondary);" onclick="playSdSound('/audio/sd/sec_30.mp3')">[ ⏱ 30 SECONDI ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px; border-color:var(--sop-secondary); color:var(--sop-secondary);" onclick="playSdSound('/audio/sd/sec_10.mp3')">[ 🔟 COUNTDOWN 10s ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px;" onclick="playSdSound('/audio/dom/zone_captured.mp3')">[ 🚩 ZONA PRESA ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px;" onclick="playSdSound('/audio/dom/zone_contested.mp3')">[ ⚠️ ZONA CONTESA ]</button>
+                    <button type="button" class="deck-btn" style="margin:0; padding:8px; font-size:12px; border-color:var(--sop-primary); color:var(--sop-primary);" onclick="playSdSound('/audio/test.mp3')">[ 🎵 TEST MUSICA ]</button>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px; align-items: center;">
+                    <select id="insp-sd-min-select" class="tactical-select" style="margin-bottom: 0; width: auto; min-width: 180px;">
+                        <option value="/audio/sd/min_15.mp3">Annuncio: 15 Minuti</option>
+                        <option value="/audio/sd/min_10.mp3">Annuncio: 10 Minuti</option>
+                        <option value="/audio/sd/min_5.mp3">Annuncio: 5 Minuti</option>
+                        <option value="/audio/sd/min_3.mp3">Annuncio: 3 Minuti</option>
+                        <option value="/audio/sd/min_2.mp3">Annuncio: 2 Minuti</option>
+                        <option value="/audio/sd/min_1.mp3">Annuncio: 1 Minuto</option>
+                    </select>
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 8px 14px; font-size: 12px;" onclick="playSdSound(document.getElementById('insp-sd-min-select').value)">[ ▶ RIPRODUCI MINUTO ]</button>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- 2. Annunciatore Vocale TTS in Tempo Reale -->
+            <div style="margin-bottom: 16px;">
+                <label class="setup-label" style="display: block; margin-bottom: 8px; color: #aaa;">2. ANNUNCIATORE VOCALE TTS LIVE (SINTESI NEURALE IN CAMPO)</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                    <select id="insp-tts-profile" class="tactical-select" style="width: auto; margin-bottom: 0;">
+                        <option value="COMMANDER">Voce: Comando Militare (Diego Grave)</option>
+                        <option value="RADIO_OP">Voce: Operatore Radio (Giuseppe)</option>
+                        <option value="TACTICAL_AI">Voce: IA Tattica (Isabella)</option>
+                    </select>
+                    <input type="text" id="insp-tts-input" class="setup-input" style="flex: 1; min-width: 220px;" placeholder="Scrivi messaggio vocale da far pronunciare al RAT..." maxlength="260" onkeydown="if(event.key==='Enter') sendLiveTts()">
+                    <button type="button" id="insp-tts-btn" class="deck-btn" style="margin: 0; padding: 10px 16px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="sendLiveTts()">
+                        [ 📢 PARLA SUL RAT ]
+                    </button>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- 3. Intercom Vocale Push-To-Talk (PTT) -->
+            <div>
+                <label class="setup-label" style="display: block; margin-bottom: 8px; color: #aaa;">3. INTERCOM VOCALE PUSH-TO-TALK (DAL MICROFONO ALL'ALTOPARLANTE DEL RAT)</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                    <button type="button" id="insp-ptt-btn" class="deck-btn full-width" style="flex: 1; margin: 0; padding: 14px; font-size: 15px; font-weight: bold; border-color: var(--sop-secondary); color: var(--sop-secondary); user-select: none; -webkit-user-select: none; touch-action: none;">
+                        [ 🎙️ TIENI PREMUTO PER PARLARE (PTT WALKIE-TALKIE) ]
+                    </button>
+                    <input type="file" id="insp-ptt-fallback-file" accept="audio/*" capture="microphone" class="hidden" onchange="uploadIntercomFileFallback(this)">
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 14px 12px; font-size: 12px;" onclick="document.getElementById('insp-ptt-fallback-file').click()" title="Usa registratore nativo dello smartphone (utile su connessione HTTP)">
+                        [ 📱 VOCALE MOBILE ]
+                    </button>
+                </div>
+                <div id="insp-audio-status" style="margin-top: 6px; font-size: 12px; font-family: monospace; color: #888;">READY // CANALE AUDIO POLIFONICO ATTIVO</div>
             </div>
         </div>
     </div>
