@@ -339,9 +339,11 @@ void KeyInteraction::update() {
             }
             if (millis() - _syncTimerMs > SYNC_WINDOW_MS) {
                 hardware.playTone(250, 400);
+                hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                 hardware.printLcdLine(2, "FUORI SINCRONIA!", true);
                 _syncPhase = SYNC_ERROR_COOLDOWN;
                 _syncTimerMs = millis();
+                _result = INTERACTION_FAILED;
             }
             return;
         }

@@ -123,6 +123,25 @@
                     <div id="v2-defuse-sequence-container" style="margin-bottom: 10px;"></div>
                     <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('defuse')">+ ADD DEFUSE STEP</button>
 
+                    <h5 style="color: var(--sop-secondary); margin-top: 15px; margin-bottom: 10px; letter-spacing: 1px;">STEP FAILURE PENALTY RULES (SE SI SBAGLIA UNO STEP)</h5>
+                    <div class="row-inputs" style="margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-v2-arm-fail-mode">ON ARM STEP ERROR (ATTACCANTI)</label>
+                            <select id="sd-v2-arm-fail-mode" class="tactical-select">
+                                <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
+                                <option value="RESTART_SEQ">RIPETI L'INTERA SEQUENZA DA CAPO</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="sd-v2-defuse-fail-mode">ON DEFUSE STEP ERROR (DIFENSORI)</label>
+                            <select id="sd-v2-defuse-fail-mode" class="tactical-select">
+                                <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
+                                <option value="RESTART_SEQ">RIPETI L'INTERA SEQUENZA DA CAPO</option>
+                                <option value="EXPLODE">LA BOMBA ESPLODE IMMEDIATAMENTE!</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <h5 style="color: var(--sop-dim); margin-top: 15px; margin-bottom: 10px; letter-spacing: 1px;">EXTRA EFFECTS (HARDWARE REQUIRED)</h5>
                     <div class="row-inputs" style="margin-bottom: 15px;">
                         <div style="flex: 1;">

@@ -131,9 +131,8 @@ void showStandbyScreen() {
     hardware.printLcdLine(2, "FIRMWARE " + String(FIRMWARE_VERSION), true);
     hardware.printLcdLine(3, "In attesa server...", true);
 
-    // Etichette rigorose per i pulsanti P1 e P2 in Standby
     hardware.setOledLabels("TEST HW", "INFO RETE");
-    hardware.setLedsColor(0, 0, 0);
+    hardware.updateRainbowEffect();
     network.setCurrentModeName("STANDBY");
 }
 
@@ -219,6 +218,7 @@ void loop() {
                         currentGameMode->handleEvent(ev);
                         if (!gameIsRunning) {
                             hardware.playTone(1200, 80);
+                            hardware.triggerLedFlash(0, 255, 180, 90, 70, 2);
                             hardware.printLcdLine(3, "CONFIG. S&D OK!", true);
                         }
                         return;
@@ -255,6 +255,7 @@ void loop() {
                         currentGameMode->handleEvent(ev);
                         if (!gameIsRunning) {
                             hardware.playTone(1200, 80);
+                            hardware.triggerLedFlash(0, 255, 180, 90, 70, 2);
                             hardware.printLcdLine(3, "CONFIG. DOM OK!", true);
                         }
                         return;
@@ -300,8 +301,9 @@ void loop() {
                         return;
                     }
                     else if (strcmp(cmd, "SET_VOLUME") == 0) {
-                        uint8_t vol = doc["volume"] | 21;
-                        hardware.setVolume(vol);
+                        uint8_t vol = doc["volume"] | 100;
+                        hardware.setVolume(vol, true);
+                        network.setCurrentModeName(gameIsRunning ? activeModeType.c_str() : "STANDBY");
                         return;
                     }
                     else if (strcmp(cmd, "START_HW_TEST") == 0) {
@@ -391,7 +393,12 @@ void loop() {
                 showStandbyScreen();
             }
         }
-    } else if (showingNetInfoOverlay && (millis() - netInfoOverlayStartMs >= 4000)) {
-        showStandbyScreen();
+    } else {
+        // Effetto Rainbow continuo in Standby (come sul RAT-V1)
+        hardware.updateRainbowEffect();
+
+        if (showingNetInfoOverlay && (millis() - netInfoOverlayStartMs >= 4000)) {
+            showStandbyScreen();
+        }
     }
 }

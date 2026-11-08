@@ -232,6 +232,12 @@ function updateInspectorData(device) {
     if (audioDirCard) {
         audioDirCard.style.display = (isV2 && !isKiosk) ? 'block' : 'none';
     }
+    const volSlider = document.getElementById('insp-vol-slider');
+    const volValEl  = document.getElementById('insp-vol-val');
+    if (volSlider && volValEl && typeof device.volume === 'number' && document.activeElement !== volSlider) {
+        volSlider.value = device.volume;
+        volValEl.textContent = `${device.volume}%`;
+    }
 
     // Stato pulsante OTA Update
     const otaBtn = document.getElementById('ota-update-btn');

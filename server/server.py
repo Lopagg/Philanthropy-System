@@ -698,6 +698,18 @@ def handle_socket_command(data):
                 game_engine.mission_control.sd_settings = cmd_obj
                 return
 
+            elif c == "SET_VOLUME":
+                vol = max(0, min(100, int(cmd_obj.get("volume", 100))))
+                if target_id:
+                    game_engine.registry.set_device_volume(target_id, vol)
+                    game_engine.mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps({
+                        "cmd": "SET_VOLUME",
+                        "volume": vol
+                    }), qos=1)
+                    active_devs, _ = game_engine.registry.get_active_devices()
+                    socketio.emit('devices_update', active_devs)
+                return
+
             elif c == "TRIGGER_OTA":
                 manifest = get_ota_manifest()
                 tid_upper = str(target_id).upper()

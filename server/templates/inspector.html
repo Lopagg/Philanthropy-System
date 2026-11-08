@@ -97,8 +97,8 @@
                 <h3 style="color: var(--sop-primary); margin: 0; letter-spacing: 2px;">🔊 TACTICAL AUDIO DIRECTOR &amp; LIVE INTERCOM</h3>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span style="color: #888; font-size: 12px; font-family: monospace;">MASTER VOL:</span>
-                    <input type="range" id="insp-vol-slider" min="0" max="21" value="21" style="width: 110px; accent-color: var(--sop-primary);" onchange="sendNodeVolume(this.value)" oninput="document.getElementById('insp-vol-val').textContent = this.value">
-                    <span id="insp-vol-val" style="color: var(--sop-primary); font-family: monospace; font-weight: bold; width: 24px;">21</span>
+                    <input type="range" id="insp-vol-slider" min="0" max="100" value="100" style="width: 120px; accent-color: var(--sop-primary);" onchange="sendNodeVolume(this.value)" oninput="document.getElementById('insp-vol-val').textContent = this.value + '%'">
+                    <span id="insp-vol-val" style="color: var(--sop-primary); font-family: monospace; font-weight: bold; width: 42px;">100%</span>
                 </div>
             </div>
 

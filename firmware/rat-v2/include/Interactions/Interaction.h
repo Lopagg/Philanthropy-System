@@ -22,7 +22,14 @@
 enum InteractionResult {
     INTERACTION_RUNNING,    // Interazione in corso di svolgimento
     INTERACTION_COMPLETED,  // Interazione completata con successo
-    INTERACTION_CANCELLED   // Interazione annullata dall'utente o interrotta per errore/violazione vincoli
+    INTERACTION_CANCELLED,   // Interazione annullata dall'utente o interrotta per errore/violazione vincoli
+    INTERACTION_FAILED
+};
+
+enum SequenceFailMode : uint8_t {
+    SEQ_FAIL_RETRY_STEP  = 0, // Ripete lo step che è stato sbagliato
+    SEQ_FAIL_RESTART_SEQ = 1, // Ripete l'intera sequenza da capo
+    SEQ_FAIL_EXPLODE     = 2  // La bomba esplode immediatamente (solo Disinnesco)
 };
 
 class Interaction {

@@ -89,6 +89,7 @@ void PinInteraction::handleEvent(const SystemEvent& event) {
                     hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     _showingError = true;
                     _errorTime = millis();
+                    _result = INTERACTION_FAILED;
                 }
             } else {
                 hardware.playTone(700, 35);

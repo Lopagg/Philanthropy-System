@@ -140,6 +140,8 @@ public:
     void audioLoop();
     void setVolume(uint8_t vol);
     bool isAudioPlaying();
+    void setVolume(uint8_t volPct, bool saveToNvs = true);
+    uint8_t getVolume() const { return _currentVolumePct; }
 
     // --- Controllo LED ed Effetti Esterni (Non bloccanti se scollegati) ---
     void setLedsColor(uint8_t r, uint8_t g, uint8_t b);
@@ -196,6 +198,8 @@ private:
     String _lastOled2Text;
 
     float _filteredBattMv;
+
+    uint8_t _currentVolumePct;
 
     bool probeI2CDevice(uint8_t address);
     void drawOledText(Adafruit_SSD1306& display, bool isInitialized, const String& text, int size, int x, int y);

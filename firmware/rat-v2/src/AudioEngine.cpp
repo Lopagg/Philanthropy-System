@@ -654,8 +654,8 @@ void AudioEngine::loop() {
 }
 
 void AudioEngine::setMasterVolume(uint8_t vol) {
-    if (vol > 21) vol = 21;
-    _masterGain = (float)vol / 21.0f;
+    if (vol > 100) vol = 100;
+    _masterGain = (float)vol / 100.0f;
 }
 
 bool AudioEngine::isPlaying() const {

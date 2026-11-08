@@ -11,6 +11,7 @@
 #ifndef INTERACTION_SEQUENCE_H
 #define INTERACTION_SEQUENCE_H
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include "Interactions/Interaction.h"
 
@@ -33,7 +34,7 @@ public:
     InteractionSequence(const char* headerTitle, uint8_t holdButtonIndex,
                         uint16_t sweepStartFreq, uint16_t sweepEndFreq,
                         uint8_t ledR, uint8_t ledG, uint8_t ledB,
-                        EventType cancelEvent = EV_BTN_1_PRESSED,
+                        EventType cancelEvent,
                         const char* holdActionLabel = nullptr);
     ~InteractionSequence();
 
@@ -43,21 +44,23 @@ public:
     void setDefaultHoldStep(uint32_t seconds);
     void loadFromJson(JsonArray arr, uint32_t fallbackHoldSec);
 
-    // --- Ciclo di Vita e Avanzamento ---
-    void begin();
-    void handleEvent(const SystemEvent& event);
-    void update();
+    void setFailMode(SequenceFailMode mode) { _failMode = mode; }
+    SequenceFailMode getFailMode() const { return _failMode; }
+    static SequenceFailMode parseFailMode(const char* str, bool allowExplode);
 
-    // --- Supporto Avvio Diretto (Chiave o RFID come Primo Step) ---
+    void begin();
     bool canStartWithKeyEvent(const SystemEvent& event) const;
     void beginWithDirectKeyEvent(const SystemEvent& event);
-    bool areInitialKeysReady(String& outHint) const;
 
     bool isFirstStepRfid() const;
     bool canStartWithRfidEvent(const SystemEvent& event) const;
     bool tryStartWithRfidEvent(const SystemEvent& event, const char* context);
 
-    // --- Stato e Telemetria ---
+    bool areInitialKeysReady(String& outHint) const;
+
+    void handleEvent(const SystemEvent& event);
+    void update();
+
     InteractionResult getResult() const;
     uint8_t getProgress() const;
 
@@ -71,14 +74,15 @@ private:
     String _holdActionLabel;
 
     Interaction* _steps[MAX_STEPS];
-    uint8_t _stepTypeTags[MAX_STEPS]; // 0 = Altro, 1 = HOLD
+    uint8_t _stepTypeTags[MAX_STEPS];
     uint8_t _stepCount;
     uint8_t _currentStep;
     InteractionResult _result;
 
-    /**
-     * @brief Stampa l'intestazione "TITOLO [X/Y]" sulla riga 0 dell'LCD e avvia lo step corrente.
-     */
+    SequenceFailMode _failMode;
+    bool _waitingFailDelay;
+    unsigned long _failDelayStartMs;
+
     void startCurrentStep();
 
     /**
@@ -86,6 +90,7 @@ private:
      *        inserite) siano ancora mantenute; in caso contrario annulla la sequenza con tono di errore.
      */
     bool checkPriorConditionsMaintained();
+    void handleStepFailure(bool isHoldStep);
 };
 
-#endif // INTERACTION_SEQUENCE_H
+#endif

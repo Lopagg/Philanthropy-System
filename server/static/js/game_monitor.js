@@ -353,6 +353,24 @@ export function renderRules(payload) {
         elSdRulesList.appendChild(li);
     }
 
+    const failLabels = {
+        'RETRY_STEP':  'RIPETI STEP',
+        'RESTART_SEQ': 'DA CAPO',
+        'EXPLODE':     'ESPLOSIONE BOMBA!'
+    };
+    if (payload.arm_fail_mode) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="rule-key">ERRORE INNESCO</span> <span class="rule-val">${failLabels[payload.arm_fail_mode] || payload.arm_fail_mode}</span>`;
+        elSdRulesList.appendChild(li);
+    }
+    if (payload.defuse_fail_mode) {
+        const isExplode = payload.defuse_fail_mode === 'EXPLODE';
+        const valStyle = isExplode ? 'color:var(--sop-alert); font-weight:bold;' : '';
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="rule-key">ERRORE DISINNESCO</span> <span class="rule-val" style="${valStyle}">${failLabels[payload.defuse_fail_mode] || payload.defuse_fail_mode}</span>`;
+        elSdRulesList.appendChild(li);
+    }
+
     if (Array.isArray(payload.alpha_seq)) {
         const li = document.createElement('li');
         li.innerHTML = `<span class="rule-key">CONQUISTA ${currentFactions.ALPHA.name}</span> <span class="rule-val">${formatSeq(payload.alpha_seq)}</span>`;

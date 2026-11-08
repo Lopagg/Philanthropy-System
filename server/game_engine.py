@@ -151,6 +151,8 @@ def publish_sd_settings_to_target(target_id, cmd_obj):
             "bomb_time": int(cmd_obj.get("bomb_time", 10)),
             "fx_smoke": bool(cmd_obj.get("fx_smoke", False)),
             "fx_relay": bool(cmd_obj.get("fx_relay", False)),
+            "arm_fail_mode": str(cmd_obj.get("arm_fail_mode", "RETRY_STEP")),
+            "defuse_fail_mode": str(cmd_obj.get("defuse_fail_mode", "RETRY_STEP")),
             "arm_seq": resolve_rfid_sequence_for_rat(cmd_obj.get("arm_seq", []), attacker_team),
             "defuse_seq": resolve_rfid_sequence_for_rat(cmd_obj.get("defuse_seq", []), defender_team)
         }
@@ -618,6 +620,8 @@ class MissionController:
                     start_payload["bomb_time"] = int(self.sd_settings.get("bomb_time", 10))
                     start_payload["fx_smoke"] = bool(self.sd_settings.get("fx_smoke", False))
                     start_payload["fx_relay"] = bool(self.sd_settings.get("fx_relay", False))
+                    start_payload["arm_fail_mode"] = str(self.sd_settings.get("arm_fail_mode", "RETRY_STEP"))
+                    start_payload["defuse_fail_mode"] = str(self.sd_settings.get("defuse_fail_mode", "RETRY_STEP"))
                     if "arm_seq" in self.sd_settings:
                         start_payload["arm_seq"] = resolve_rfid_sequence_for_rat(self.sd_settings.get("arm_seq", []), self.sd_attacker_team)
                     if "defuse_seq" in self.sd_settings:
@@ -746,17 +750,19 @@ class DeviceRegistry:
         self.timeout_seconds = 15
         self.lock = Lock()
 
-    def update_device(self, device_id, msg_type, mode=None, version=None, ip=None, batt_v=None, batt_pct=None):
+    def update_device(self, device_id, msg_type, mode=None, version=None, ip=None, batt_v=None, batt_pct=None, volume=None):
         now = time.time()
         changed = False
         with self.lock:
             if device_id not in self.devices:
                 meta = db_manager.get_device_meta(device_id)
                 display_name = meta['alias'] if meta['alias'] else device_id
+                saved_vol = meta['volume'] if meta['volume'] is not None else (volume if volume is not None else 100)
                 self.devices[device_id] = {
                     "id": device_id,
                     "name": display_name,
                     "photo": meta['photo'],
+                    "volume": saved_vol,
                     "type": "NODE",
                     "mode": "BOOTING...",
                     "version": "Unknown",
@@ -783,6 +789,9 @@ class DeviceRegistry:
             if batt_pct is not None and dev.get("batt_pct") != batt_pct:
                 dev["batt_pct"] = batt_pct
                 changed = True
+            if volume is not None and dev.get("volume") != volume:
+                dev["volume"] = int(volume)
+                changed = True
             if mode and dev.get("mode") != mode:
                 dev["mode"] = mode
                 changed = True
@@ -792,6 +801,15 @@ class DeviceRegistry:
                 dev["telemetry"] = {}
                 changed = True
         return changed
+
+    def set_device_volume(self, device_id, volume):
+        vol = max(0, min(100, int(volume)))
+        with self.lock:
+            db_manager.set_device_volume(device_id, vol)
+            if device_id in self.devices:
+                self.devices[device_id]["volume"] = vol
+                return True
+        return False
 
     def set_device_photo(self, device_id, filename):
         with self.lock:
@@ -948,13 +966,24 @@ def on_mqtt_message(client, userdata, msg):
                 db_manager.register_player(payload.get('uid'), payload.get('team'))
                 socketio.emit('roster_update', db_manager.get_full_roster())
 
-        # 3. Aggiornamento Registro Dispositivi
+        # 3. Aggiornamento Registro Dispositivi e Sincronizzazione Volume
         mode = payload.get('mode') or parsed.get('mode')
         version = payload.get('version') or parsed.get('version')
         ip = payload.get('ip') or parsed.get('ip')
         batt_v = payload.get('batt_v') if 'batt_v' in payload else parsed.get('batt_v')
         batt_pct = payload.get('batt_pct') if 'batt_pct' in payload else parsed.get('batt_pct')
-        has_changed = registry.update_device(device_id, msg_type, mode, version, ip, batt_v, batt_pct)
+        rep_vol = payload.get('volume') if 'volume' in payload else parsed.get('volume')
+
+        meta = db_manager.get_device_meta(device_id)
+        db_vol = meta.get('volume')
+        if rep_vol is not None and db_vol is not None and int(rep_vol) != int(db_vol):
+            # Il server ha un volume salvato per questo nodo diverso da quello attuale del RAT: lo riallinea subito!
+            mqtt_client.publish(f"zulu/cmd/{device_id}", json.dumps({"cmd": "SET_VOLUME", "volume": int(db_vol)}), qos=1)
+            rep_vol = int(db_vol)
+        elif rep_vol is not None and db_vol is None:
+            db_manager.set_device_volume(device_id, int(rep_vol))
+
+        has_changed = registry.update_device(device_id, msg_type, mode, version, ip, batt_v, batt_pct, rep_vol)
 
         # Aggiorna RSSI e Heap se presenti nell'HEARTBEAT
         hb_rssi = payload.get('rssi') if 'rssi' in payload else parsed.get('rssi')

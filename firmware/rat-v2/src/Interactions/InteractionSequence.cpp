@@ -1,7 +1,7 @@
 /**
  * @file InteractionSequence.cpp
  * @brief Implementazione dell'orchestratore di sequenze modulari (HOLD, PIN, KEY, RFID)
- *        con feedback LED multi-step (mantenimento colore, progresso step e lampi di conferma/errore).
+ *        con gestione delle 3 modalità di errore (RETRY_STEP, RESTART_SEQ, EXPLODE).
  */
 
 #include "Interactions/InteractionSequence.h"
@@ -30,7 +30,10 @@ InteractionSequence::InteractionSequence(const char* headerTitle, uint8_t holdBu
       _holdActionLabel(holdActionLabel ? String(holdActionLabel) : (holdButtonIndex == 1 ? "INNESCA" : "DISINNESCA")),
       _stepCount(0),
       _currentStep(0),
-      _result(INTERACTION_RUNNING) {
+      _result(INTERACTION_RUNNING),
+      _failMode(SEQ_FAIL_RETRY_STEP),
+      _waitingFailDelay(false),
+      _failDelayStartMs(0) {
     for (uint8_t i = 0; i < MAX_STEPS; i++) {
         _steps[i] = nullptr;
         _stepTypeTags[i] = 0;
@@ -39,6 +42,13 @@ InteractionSequence::InteractionSequence(const char* headerTitle, uint8_t holdBu
 
 InteractionSequence::~InteractionSequence() {
     clearSteps();
+}
+
+SequenceFailMode InteractionSequence::parseFailMode(const char* str, bool allowExplode) {
+    if (!str) return SEQ_FAIL_RETRY_STEP;
+    if (strcmp(str, "EXPLODE") == 0 && allowExplode) return SEQ_FAIL_EXPLODE;
+    if (strcmp(str, "RESTART_SEQ") == 0) return SEQ_FAIL_RESTART_SEQ;
+    return SEQ_FAIL_RETRY_STEP;
 }
 
 void InteractionSequence::clearSteps() {
@@ -113,6 +123,7 @@ void InteractionSequence::loadFromJson(JsonArray arr, uint32_t fallbackHoldSec) 
 // ============================================================================
 
 void InteractionSequence::startCurrentStep() {
+    _waitingFailDelay = false;
     String top = String(_headerTitle) + " [" + String(_currentStep + 1) + "/" + String(_stepCount) + "]";
     hardware.printLcdLine(0, top, true);
     _steps[_currentStep]->begin();
@@ -124,6 +135,7 @@ void InteractionSequence::begin() {
     }
     _currentStep = 0;
     _result = INTERACTION_RUNNING;
+    _waitingFailDelay = false;
     startCurrentStep();
 }
 
@@ -140,6 +152,7 @@ void InteractionSequence::beginWithDirectKeyEvent(const SystemEvent& event) {
     }
     _currentStep = 0;
     _result = INTERACTION_RUNNING;
+    _waitingFailDelay = false;
 
     String top = String(_headerTitle) + " [1/" + String(_stepCount) + "]";
     hardware.printLcdLine(0, top, true);
@@ -184,6 +197,7 @@ bool InteractionSequence::tryStartWithRfidEvent(const SystemEvent& event, const 
 
     hardware.playTone(1500, 120);
     _currentStep = 1;
+    _waitingFailDelay = false;
     if (_currentStep >= _stepCount) {
         hardware.noTone();
         _result = INTERACTION_COMPLETED;
@@ -196,7 +210,7 @@ bool InteractionSequence::tryStartWithRfidEvent(const SystemEvent& event, const 
 }
 
 // ============================================================================
-// CONTROLLO VINCOLI CHIAVI E AVANZAMENTO STEP
+// CONTROLLO VINCOLI CHIAVI, GESTIONE ERRORI E AVANZAMENTO STEP
 // ============================================================================
 
 bool InteractionSequence::areInitialKeysReady(String& outHint) const {
@@ -232,15 +246,54 @@ bool InteractionSequence::checkPriorConditionsMaintained() {
             hardware.noTone();
             hardware.playTone(250, 400);
             hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
-            _result = INTERACTION_CANCELLED;
+            if (_failMode == SEQ_FAIL_EXPLODE) {
+                _result = INTERACTION_FAILED;
+            } else {
+                _result = INTERACTION_CANCELLED;
+            }
             return false;
         }
     }
     return true;
 }
 
+void InteractionSequence::handleStepFailure(bool isHoldStep) {
+    hardware.noTone();
+
+    // 1. Modalità BOMBA ESPLODE (solo disinnesco): innesca l'esplosione a latenza zero!
+    if (_failMode == SEQ_FAIL_EXPLODE) {
+        _result = INTERACTION_FAILED;
+        return;
+    }
+
+    // 2. Se l'utente ha rilasciato il pulsante HOLD al primo step (#1), torna subito allo stato base
+    if (isHoldStep && _currentStep == 0) {
+        _result = INTERACTION_CANCELLED;
+        return;
+    }
+
+    // 3. Per gli altri errori (PIN errato, RFID errato, Chiavi fuori sincronia, o rilascio HOLD in step > 0):
+    //    attende 1.2s mostrando l'errore e il lampeggio LED ambra, poi applica RETRY_STEP o RESTART_SEQ
+    if (isHoldStep) {
+        hardware.printLcdLine(2, (_failMode == SEQ_FAIL_RESTART_SEQ) ? "ERRORE! DA CAPO" : "RILASCIATO PRIMA!", true);
+    } else if (_failMode == SEQ_FAIL_RESTART_SEQ) {
+        hardware.printLcdLine(1, "SEQUENZA FALLITA!", true);
+    }
+
+    _waitingFailDelay = true;
+    _failDelayStartMs = millis();
+}
+
 void InteractionSequence::handleEvent(const SystemEvent& event) {
     if (_result != INTERACTION_RUNNING || _currentStep >= _stepCount) return;
+
+    if (_waitingFailDelay) {
+        if (_cancelEvent != EV_NONE && event.type == _cancelEvent) {
+            _waitingFailDelay = false;
+            _result = INTERACTION_CANCELLED;
+        }
+        return;
+    }
 
     if (!checkPriorConditionsMaintained()) return;
 
@@ -254,6 +307,8 @@ void InteractionSequence::handleEvent(const SystemEvent& event) {
     if (stepRes == INTERACTION_CANCELLED) {
         hardware.noTone();
         _result = INTERACTION_CANCELLED;
+    } else if (stepRes == INTERACTION_FAILED) {
+        handleStepFailure(_stepTypeTags[_currentStep] == 1);
     } else if (stepRes == INTERACTION_COMPLETED) {
         _currentStep++;
         if (_currentStep >= _stepCount) {
@@ -271,12 +326,29 @@ void InteractionSequence::update() {
 
     if (!checkPriorConditionsMaintained()) return;
 
+    // Gestione del ritardo di 1.2s dopo un errore per far leggere il messaggio sull'LCD
+    if (_waitingFailDelay) {
+        hardware.updateLedFlash();
+        if (millis() - _failDelayStartMs >= 1200) {
+            _waitingFailDelay = false;
+            if (_failMode == SEQ_FAIL_RESTART_SEQ) {
+                _result = INTERACTION_CANCELLED; // Riporta a SD_SAFE / SD_ARMED per ricominciare dallo step #1
+            } else {
+                startCurrentStep(); // SEQ_FAIL_RETRY_STEP: ripete solo lo step corrente!
+            }
+        }
+        return;
+    }
+
     _steps[_currentStep]->update();
     InteractionResult stepRes = _steps[_currentStep]->getResult();
 
     if (stepRes == INTERACTION_CANCELLED) {
         hardware.noTone();
         _result = INTERACTION_CANCELLED;
+        return;
+    } else if (stepRes == INTERACTION_FAILED) {
+        handleStepFailure(_stepTypeTags[_currentStep] == 1);
         return;
     } else if (stepRes == INTERACTION_COMPLETED) {
         _currentStep++;
@@ -290,11 +362,6 @@ void InteractionSequence::update() {
         return;
     }
 
-    // Gestione LED durante gli step non-HOLD (PIN, KEY, RFID) o in attesa di premere HOLD:
-    // - Se c'è un flash prioritario in corso (conferma step, pressione tasto, errore), lascialo eseguire.
-    // - Se siamo in uno step HOLD e il pulsante target è premuto, HoldButtonInteraction pilota già la barra LED.
-    // - Negli altri casi: mantieni fissi i LED degli step già completati (_currentStep / _stepCount)
-    //   e fai lampeggiare a 2 Hz i LED rimanenti con il colore dell'azione (Rosso in innesco, Verde in disinnesco)!
     if (hardware.updateLedFlash()) {
         return;
     }
@@ -322,6 +389,6 @@ InteractionResult InteractionSequence::getResult() const {
 
 uint8_t InteractionSequence::getProgress() const {
     if (_result == INTERACTION_COMPLETED) return 100;
-    if (_result == INTERACTION_CANCELLED || _currentStep >= _stepCount) return 0;
+    if (_result == INTERACTION_CANCELLED || _result == INTERACTION_FAILED || _currentStep >= _stepCount) return 0;
     return _steps[_currentStep]->getProgress();
 }

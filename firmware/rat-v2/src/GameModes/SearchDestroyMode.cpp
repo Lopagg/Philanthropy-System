@@ -117,6 +117,12 @@ void SearchDestroyMode::processJsonConfig(const char* jsonStr) {
         if (doc["defuse_seq"].is<JsonArray>()) {
             _defuseSequence.loadFromJson(doc["defuse_seq"].as<JsonArray>(), 10);
         }
+        if (!doc["arm_fail_mode"].isNull()) {
+            _armSequence.setFailMode(InteractionSequence::parseFailMode(doc["arm_fail_mode"], false));
+        }
+        if (!doc["defuse_fail_mode"].isNull()) {
+            _defuseSequence.setFailMode(InteractionSequence::parseFailMode(doc["defuse_fail_mode"], true));
+        }
         Serial.println("[S&D] Sequenze e parametri configurati con successo.");
     }
 }
@@ -365,6 +371,10 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                         sendTelemetry("DEFUSING...");
                     }
                 } else {
+                    if (_defuseSequence.getFailMode() == SEQ_FAIL_EXPLODE) {
+                        triggerExplosion();
+                        return;
+                    }
                     hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     hardware.printLcdLine(2, "TESSERA ERRATA!", true);
                 }
@@ -449,10 +459,11 @@ void SearchDestroyMode::update() {
     //    senza mai tornare al colore precedente tra uno step e l'altro!
     if (_state == SD_ARMING) {
         _armSequence.update();
-        if (_armSequence.getResult() == INTERACTION_CANCELLED) {
+        InteractionResult res = _armSequence.getResult();
+        if (res == INTERACTION_CANCELLED || res == INTERACTION_FAILED) {
             enterSafeState();
             return;
-        } else if (_armSequence.getResult() == INTERACTION_COMPLETED) {
+        } else if (res == INTERACTION_COMPLETED) {
             _bombTimer.start();
             enterArmedState(true);
             return;
@@ -460,10 +471,14 @@ void SearchDestroyMode::update() {
     }
     else if (_state == SD_DEFUSING) {
         _defuseSequence.update();
-        if (_defuseSequence.getResult() == INTERACTION_CANCELLED) {
+        InteractionResult res = _defuseSequence.getResult();
+        if (res == INTERACTION_FAILED && _defuseSequence.getFailMode() == SEQ_FAIL_EXPLODE) {
+            triggerExplosion();
+            return;
+        } else if (res == INTERACTION_CANCELLED || res == INTERACTION_FAILED) {
             enterArmedState(false);
             return;
-        } else if (_defuseSequence.getResult() == INTERACTION_COMPLETED) {
+        } else if (res == INTERACTION_COMPLETED) {
             triggerDefusal();
             return;
         }

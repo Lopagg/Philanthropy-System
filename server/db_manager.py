@@ -93,6 +93,11 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS device_aliases (device_id TEXT PRIMARY KEY, alias TEXT)''')
         try:
             c.execute("ALTER TABLE device_aliases ADD COLUMN photo TEXT")
+            
+        except sqlite3.OperationalError:
+            pass
+        try:
+            c.execute("ALTER TABLE device_aliases ADD COLUMN volume INTEGER DEFAULT 100")
         except sqlite3.OperationalError:
             pass
         c.execute('''CREATE TABLE IF NOT EXISTS factions_config (team_id TEXT PRIMARY KEY, display_name TEXT)''')
@@ -178,14 +183,15 @@ def reset_daily_wins():
 
 
 def get_device_meta(device_id):
-    """Restituisce un dizionario {'alias': ..., 'photo': ...} per il dispositivo specificato."""
+    """Restituisce un dizionario {'alias': ..., 'photo': ..., 'volume': ...} per il dispositivo."""
     with get_db_connection(use_row_factory=True) as conn:
         c = conn.cursor()
-        c.execute("SELECT alias, photo FROM device_aliases WHERE device_id = ?", (device_id,))
+        c.execute("SELECT alias, photo, volume FROM device_aliases WHERE device_id = ?", (device_id,))
         row = c.fetchone()
         if row:
-            return {'alias': row['alias'], 'photo': row['photo']}
-        return {'alias': None, 'photo': None}
+            vol = row['volume'] if row['volume'] is not None else 100
+            return {'alias': row['alias'], 'photo': row['photo'], 'volume': int(vol)}
+        return {'alias': None, 'photo': None, 'volume': None}
 
 
 def get_device_alias(device_id):
@@ -193,14 +199,14 @@ def get_device_alias(device_id):
 
 
 def set_device_alias(device_id, alias):
-    """Salva o aggiorna l'alias mantenendo eventuale foto già associata al dispositivo."""
+    """Salva o aggiorna l'alias mantenendo eventuale foto e volume già associati."""
     with get_db_connection() as conn:
         c = conn.cursor()
         c.execute("SELECT device_id FROM device_aliases WHERE device_id = ?", (device_id,))
         if c.fetchone():
             c.execute("UPDATE device_aliases SET alias = ? WHERE device_id = ?", (alias, device_id))
         else:
-            c.execute("INSERT INTO device_aliases (device_id, alias, photo) VALUES (?, ?, NULL)", (device_id, alias))
+            c.execute("INSERT INTO device_aliases (device_id, alias, photo, volume) VALUES (?, ?, NULL, 100)", (device_id, alias))
         conn.commit()
 
 
@@ -212,7 +218,20 @@ def set_device_photo(device_id, filename):
         if c.fetchone():
             c.execute("UPDATE device_aliases SET photo = ? WHERE device_id = ?", (filename, device_id))
         else:
-            c.execute("INSERT INTO device_aliases (device_id, alias, photo) VALUES (?, ?, ?)", (device_id, device_id, filename))
+            c.execute("INSERT INTO device_aliases (device_id, alias, photo, volume) VALUES (?, ?, ?, 100)", (device_id, device_id, filename))
+        conn.commit()
+
+
+def set_device_volume(device_id, volume):
+    """Salva nel database il volume (0..100%) associato a un nodo hardware."""
+    vol = max(0, min(100, int(volume)))
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT device_id FROM device_aliases WHERE device_id = ?", (device_id,))
+        if c.fetchone():
+            c.execute("UPDATE device_aliases SET volume = ? WHERE device_id = ?", (vol, device_id))
+        else:
+            c.execute("INSERT INTO device_aliases (device_id, alias, photo, volume) VALUES (?, ?, NULL, ?)", (device_id, device_id, vol))
         conn.commit()
 
 

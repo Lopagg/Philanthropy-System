@@ -1,9 +1,10 @@
 /**
  * @file HardwareManager.cpp
- * @brief Implementazione dei driver hardware, delega al mixer AudioEngine I2S e gestione bus I2C/SPI.
+ * @brief Implementazione dei driver hardware, delega al mixer AudioEngine I2S, persistenza NVS e gestione bus I2C/SPI.
  */
 
 #include "HardwareManager.h"
+#include <Preferences.h>
 #include <math.h>
 
 #define DEBUG_I2C_TIMING 1
@@ -60,6 +61,7 @@ HardwareManager::HardwareManager() :
     _keyPressed = '\0';
 
     _filteredBattMv = 0.0f;
+    _currentVolumePct = 100;
 
     maxMutexWaitTime = 0;
     maxI2cReadTime = 0;
@@ -88,10 +90,6 @@ HardwareManager::HardwareManager() :
     }
 }
 
-/**
- * @brief Verifica fisicamente se un dispositivo risponde con ACK all'indirizzo I2C specificato.
- * Deve essere chiamata mentre si detiene già _i2cMutex.
- */
 bool HardwareManager::probeI2CDevice(uint8_t address) {
     Wire.beginTransmission(address);
     return (Wire.endTransmission() == 0);
@@ -100,12 +98,12 @@ bool HardwareManager::probeI2CDevice(uint8_t address) {
 void HardwareManager::initialize() {
     Serial.println("--- Inizializzazione Hardware RAT-V2 ---");
     
-    // 1. Inizializzazione Bus I2C a 100 kHz (pull-up interni disabilitati perché presenti su PCB)
+    // 1. Inizializzazione Bus I2C a 100 kHz
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
     gpio_pullup_dis((gpio_num_t)PIN_I2C_SDA);
     gpio_pullup_dis((gpio_num_t)PIN_I2C_SCL);
 
-    // 2. Inizializzazione GPIO diretti (non bloccanti anche se scollegati)
+    // 2. Inizializzazione GPIO diretti
     pinMode(PIN_MCP_INT, INPUT_PULLUP);
     pinMode(PIN_BATT_SENSE, INPUT_PULLDOWN);
 
@@ -119,12 +117,12 @@ void HardwareManager::initialize() {
     digitalWrite(PIN_AUDIO_EN, LOW);
 
     _leds.begin();
+    _leds.setBrightness(255);
     _leds.clear();
     _leds.show();
 
     // 3. Rilevamento e configurazione periferiche sul bus I2C
     if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
-        // Display LCD 20x4 (0x27)
         if (probeI2CDevice(I2C_ADDR_LCD)) {
             _lcd.init();
             _lcd.backlight();
@@ -145,7 +143,6 @@ void HardwareManager::initialize() {
             Serial.println("[I2C] LCD 20x4 (0x27): NON RILEVATO");
         }
 
-        // Display OLED 1 (0x3C - Etichetta Pulsante P1)
         if (probeI2CDevice(I2C_ADDR_OLED_1) && _oled1.begin(SSD1306_SWITCHCAPVCC, I2C_ADDR_OLED_1)) {
             _oled1.clearDisplay();
             _oled1.display();
@@ -155,7 +152,6 @@ void HardwareManager::initialize() {
             Serial.println("[I2C] OLED 1 (0x3C): NON RILEVATO");
         }
 
-        // Display OLED 2 (0x3D - Etichetta Pulsante P2)
         if (probeI2CDevice(I2C_ADDR_OLED_2) && _oled2.begin(SSD1306_SWITCHCAPVCC, I2C_ADDR_OLED_2)) {
             _oled2.clearDisplay();
             _oled2.display();
@@ -165,7 +161,6 @@ void HardwareManager::initialize() {
             Serial.println("[I2C] OLED 2 (0x3D): NON RILEVATO");
         }
 
-        // Real-Time Clock DS3231 (0x68)
         if (probeI2CDevice(I2C_ADDR_RTC) && _rtc.begin()) {
             _rtcInitialized = true;
             Serial.println("[I2C] RTC DS3231 (0x68): OK");
@@ -173,7 +168,6 @@ void HardwareManager::initialize() {
             Serial.println("[I2C] RTC DS3231 (0x68): NON RILEVATO (attivo fallback millis)");
         }
         
-        // Port Expander MCP23017 (0x20)
         if (probeI2CDevice(I2C_ADDR_MCP) && _mcp.begin_I2C(I2C_ADDR_MCP)) {
             _mcp.pinMode(MCP_PIN_P1, INPUT_PULLUP);
             _mcp.pinMode(MCP_PIN_P2, INPUT_PULLUP);
@@ -190,7 +184,6 @@ void HardwareManager::initialize() {
             Serial.println("[I2C] MCP23017 (0x20): NON RILEVATO");
         }
 
-        // Modulo RFID/NFC PN532 (0x24)
         if (probeI2CDevice(I2C_ADDR_PN532)) {
             _nfc_i2c = new PN532_I2C(Wire);
             _nfc = new PN532(*_nfc_i2c);
@@ -232,10 +225,18 @@ void HardwareManager::initialize() {
         listSdFiles("/", 2);
     }
 
-    // 5. Inizializzazione Mixer Polifonico I2S (MAX98357A)
+    // 5. Inizializzazione Mixer Polifonico I2S e ripristino Volume da NVS
     Serial.print("[I2S] Avvio AudioEngine Polifonico... ");
     _audioEngine.begin(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT, PIN_AUDIO_EN);
-    _audioEngine.setMasterVolume(21);
+
+    Preferences prefs;
+    prefs.begin("rat_cfg", true);
+    uint8_t savedVol = prefs.getUChar("vol_pct", 100);
+    prefs.end();
+    if (savedVol > 100) savedVol = 100;
+
+    setVolume(savedVol, false);
+    Serial.printf("[AUDIO] Volume iniziale ripristinato da NVS: %u%%\n", savedVol);
     delay(50);
 }
 
@@ -296,8 +297,19 @@ void HardwareManager::audioLoop() {
     _audioEngine.loop();
 }
 
-void HardwareManager::setVolume(uint8_t vol) {
-    _audioEngine.setMasterVolume(vol);
+void HardwareManager::setVolume(uint8_t volPct, bool saveToNvs) {
+    if (volPct > 100) volPct = 100;
+    bool changed = (_currentVolumePct != volPct);
+    _currentVolumePct = volPct;
+    _audioEngine.setMasterVolume(volPct);
+
+    if (saveToNvs && changed) {
+        Preferences prefs;
+        prefs.begin("rat_cfg", false);
+        prefs.putUChar("vol_pct", volPct);
+        prefs.end();
+        Serial.printf("[AUDIO] Nuovo volume salvato in NVS: %u%%\n", volPct);
+    }
 }
 
 bool HardwareManager::isAudioPlaying() {
@@ -408,10 +420,6 @@ void HardwareManager::lcdSendByte(uint8_t val, uint8_t mode) {
     Wire.endTransmission();
 }
 
-/**
- * @brief Posiziona il cursore e invia una sequenza di caratteri impacchettando fino a 7 caratteri
- *        (28 byte) per singola transazione I2C. Riduce il tempo di una riga da 33ms a ~7.8ms.
- */
 void HardwareManager::lcdWriteBurst(uint8_t col, uint8_t row, const char* data, uint8_t len) {
     static const uint8_t rowOffsets[4] = { 0x00, 0x40, 0x14, 0x54 };
     if (row > 3 || len == 0) return;
@@ -853,8 +861,6 @@ void HardwareManager::updateBreathingEffect(uint8_t r, uint8_t g, uint8_t b) {
     if (now - s_breathingLastMs < 25) return;
     s_breathingLastMs = now;
 
-    // Escursione 6% <-> 42% (come il limite 80/255 del RAT-V1): rende il respiro
-    // molto più evidente e lascia il 100% di potenza ai flash di minuto/30s/errore!
     if (s_breathingUp) {
         s_breathingBrightness += 0.012f;
         if (s_breathingBrightness >= 0.42f) {
@@ -884,14 +890,13 @@ void HardwareManager::updateRainbowEffect() {
 
     uint16_t numPixels = _leds.numPixels();
     for (uint16_t i = 0; i < numPixels; i++) {
-        uint16_t pixelHue = s_rainbowFirstPixelHue + (uint32_t)i * 65536UL / numPixels;
-        uint32_t c = _leds.gamma32(_leds.ColorHSV(pixelHue, 255, 110));
-        _leds.setPixelColor(i, c);
+        uint16_t pixelHue = s_rainbowFirstPixelHue + (uint32_t)(i * (65536.0f / numPixels));
+        _leds.setPixelColor(i, _leds.gamma32(_leds.ColorHSV(pixelHue)));
     }
     _leds.show();
     _lastLedR = -1; _lastLedG = -1; _lastLedB = -1;
     s_lastProgressLitLeds = -1;
-    s_rainbowFirstPixelHue = (s_rainbowFirstPixelHue + 256) & 0xFFFF;
+    s_rainbowFirstPixelHue = (s_rainbowFirstPixelHue + 256) % 65536;
 }
 
 void HardwareManager::setLedsProgress(uint32_t progress, uint32_t totalDuration,

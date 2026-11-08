@@ -113,10 +113,12 @@ void HoldButtonInteraction::update() {
         return;
     }
 
-    // 2. Verifica mantenimento pressione: il rilascio anticipato annulla la sequenza
+    // 2. Verifica mantenimento pressione: il rilascio anticipato segnala errore sullo step
     if (!isTargetButtonPressed()) {
         hardware.noTone();
-        _result = INTERACTION_CANCELLED;
+        hardware.playTone(250, 300);
+        hardware.triggerLedFlash(255, 80, 0, 90, 90, 3);
+        _result = INTERACTION_FAILED;
         return;
     }
 

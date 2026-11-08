@@ -461,6 +461,8 @@ function buildMissionConfig() {
                 bomb_time: parseInt(document.getElementById('sd-bomb-time').value) || 10,
                 fx_smoke: document.getElementById('sd-v2-fx-smoke').value === 'true',
                 fx_relay: document.getElementById('sd-v2-fx-relay').value === 'true',
+                arm_fail_mode: document.getElementById('sd-v2-arm-fail-mode')?.value || 'RETRY_STEP',
+                defuse_fail_mode: document.getElementById('sd-v2-defuse-fail-mode')?.value || 'RETRY_STEP',
                 arm_seq: armSeqPayload,
                 defuse_seq: defuseSeqPayload
             };
@@ -567,12 +569,12 @@ if (!window.__zuluMainInitialized) {
 
         window.sendNodeVolume = function(vol) {
             if (!activeInspectorId) return;
-            const v = parseInt(vol);
+            const v = Math.max(0, Math.min(100, parseInt(vol)));
             socket.emit('send_command', {
                 target_id: activeInspectorId,
-                command: { cmd: "SET_VOLUME", volume: isNaN(v) ? 21 : v }
+                command: { cmd: "SET_VOLUME", volume: isNaN(v) ? 100 : v }
             });
-            setAudioDirectorStatus(`MASTER VOLUME IMPOSTATO A ${v}/21`, 'var(--sop-primary)');
+            setAudioDirectorStatus(`MASTER VOLUME IMPOSTATO A ${v}%`, 'var(--sop-primary)');
         };
 
         window.sendLiveTts = function() {

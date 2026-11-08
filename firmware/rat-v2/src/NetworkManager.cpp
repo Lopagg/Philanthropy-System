@@ -123,9 +123,10 @@ void NetworkManager::begin(const char* deviceId, const char* mqttServer, uint16_
 
 void NetworkManager::publishHeartbeat() {
     if (!_mqtt.connected()) return;
-    float battV   = hardware.readBatteryVoltage();
+    float battV    = hardware.readBatteryVoltage();
     int8_t battPct = hardware.readBatteryPercentage();
-    String hb = "{\"id\":\"" + _deviceId + "\", \"type\":\"HEARTBEAT\", \"version\":\"" + String(FIRMWARE_VERSION) + "\", \"mode\":\"" + _currentModeName + "\", \"ip\":\"" + WiFi.localIP().toString() + "\", \"batt_v\":" + String(battV, 2) + ", \"batt_pct\":" + String(battPct) + "}";
+    uint8_t volPct = hardware.getVolume();
+    String hb = "{\"id\":\"" + _deviceId + "\", \"type\":\"HEARTBEAT\", \"version\":\"" + String(FIRMWARE_VERSION) + "\", \"mode\":\"" + _currentModeName + "\", \"ip\":\"" + WiFi.localIP().toString() + "\", \"batt_v\":" + String(battV, 2) + ", \"batt_pct\":" + String(battPct) + ", \"volume\":" + String(volPct) + "}";
     _mqtt.publish(_telemetryTopic.c_str(), hb.c_str());
 }
 
