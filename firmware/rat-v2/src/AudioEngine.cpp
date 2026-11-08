@@ -249,20 +249,32 @@ bool AudioEngine::playFile(const String& filename, AudioChannel channel) {
 bool AudioEngine::playUrl(const String& url, AudioChannel channel) {
     if (!_initialized || WiFi.status() != WL_CONNECTED || url.length() == 0) return false;
 
+    Serial.printf("[AUDIO-URL] Download da: %s\n", url.c_str());
+
+    WiFiClient client;
     HTTPClient http;
-    http.setTimeout(2500);
-    if (!http.begin(url)) return false;
+    http.useHTTP10(true); // Forza risposta diretta senza chunked encoding per chiusura immediata
+    http.setTimeout(3500);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+
+    if (!http.begin(client, url)) {
+        Serial.println("[AUDIO-URL] Errore http.begin()");
+        return false;
+    }
 
     int httpCode = http.GET();
     if (httpCode != HTTP_CODE_OK) {
+        Serial.printf("[AUDIO-URL] Errore HTTP GET: codice %d (%s)\n",
+                      httpCode, http.errorToString(httpCode).c_str());
         http.end();
         return false;
     }
 
     int contentLen = http.getSize();
-    size_t allocSz = (contentLen > 0 && contentLen <= (int)MAX_PSRAM_FILE_SZ) ? (size_t)contentLen : (128 * 1024);
+    size_t allocSz = (contentLen > 0 && contentLen <= (int)MAX_PSRAM_FILE_SZ) ? (size_t)contentLen : (192 * 1024);
     uint8_t* dlBuf = (uint8_t*)allocAudioMem(allocSz);
     if (!dlBuf) {
+        Serial.println("[AUDIO-URL] Errore allocazione PSRAM");
         http.end();
         return false;
     }
@@ -270,7 +282,9 @@ bool AudioEngine::playUrl(const String& url, AudioChannel channel) {
     WiFiClient* stream = http.getStreamPtr();
     size_t totalRead = 0;
     unsigned long startMs = millis();
-    while (http.connected() && (contentLen > 0 ? (totalRead < (size_t)contentLen) : true) && (millis() - startMs < 2500)) {
+    while ((http.connected() || stream->available() > 0) &&
+           (contentLen > 0 ? (totalRead < (size_t)contentLen) : (totalRead < allocSz)) &&
+           (millis() - startMs < 3500)) {
         size_t avail = stream->available();
         if (avail > 0) {
             size_t toRead = min(avail, allocSz - totalRead);
@@ -278,10 +292,13 @@ bool AudioEngine::playUrl(const String& url, AudioChannel channel) {
             int r = stream->readBytes(dlBuf + totalRead, toRead);
             if (r > 0) totalRead += r;
         } else {
-            delay(1);
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
     }
     http.end();
+
+    Serial.printf("[AUDIO-URL] Scaricati %u byte in %lu ms\n",
+                  (uint32_t)totalRead, millis() - startMs);
 
     if (totalRead <= 256) {
         free(dlBuf);

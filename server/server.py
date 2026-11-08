@@ -742,6 +742,18 @@ def handle_socket_command(data):
 # REGIA AUDIO TATTICA: TTS LIVE E INTERCOM PUSH-TO-TALK (WALKIE-TALKIE)
 # =============================================================================
 
+import glob
+import site
+
+# Aggiunge automaticamente i percorsi globali/utente di Ubuntu così il venv vede edge-tts
+for extra_path in glob.glob('/home/*/.local/lib/python3*/site-packages') + [
+    '/usr/local/lib/python3.12/dist-packages',
+    '/usr/lib/python3/dist-packages',
+    site.getusersitepackages()
+]:
+    if os.path.isdir(extra_path) and extra_path not in sys.path:
+        sys.path.append(extra_path)
+
 LIVE_VOICE_FILTER = (
     "highpass=f=220:poles=2,"
     "lowpass=f=3800:poles=2,"
@@ -759,23 +771,11 @@ VOICE_PROFILES = {
 
 def resolve_audio_base_url(target_id):
     """
-    Determina l'URL HTTP diretto (porta 5000) raggiungibile dall'ESP32-S3.
-    Se il nodo è sulla LAN locale, usa l'IP LAN del server evitando problemi di HTTPS/Reverse Proxy.
+    Costruisce l'URL HTTP sulla porta 5000 usando lo stesso host della dashboard
+    (identico al meccanismo di TRIGGER_OTA, es. http://philanthropy-dev.duckdns.org:5000).
     """
-    dev = game_engine.registry.devices.get(target_id, {})
-    dev_ip = str(dev.get("ip", ""))
-    try:
-        s = py_socket.socket(py_socket.AF_INET, py_socket.SOCK_DGRAM)
-        probe_ip = dev_ip if (dev_ip and dev_ip != "MQTT") else "8.8.8.8"
-        s.connect((probe_ip, 80))
-        lan_ip = s.getsockname()[0]
-        s.close()
-        if dev_ip.startswith(("192.168.", "10.", "172.")) or request.host.startswith(("192.168.", "10.", "localhost", "127.")):
-            return f"http://{lan_ip}:5000"
-    except Exception:
-        pass
-    host_only = request.host.split(':')[0]
-    return f"http://{host_only}:5000"
+    host_ip = request.host.split(':')[0]
+    return f"http://{host_ip}:5000"
 
 
 def publish_audio_url_to_target(target_id, filename, channel="VOICE"):
@@ -788,14 +788,16 @@ def publish_audio_url_to_target(target_id, filename, channel="VOICE"):
     elif target_id:
         targets = [target_id]
 
+    last_url = ""
     for tid in targets:
         base_url = resolve_audio_base_url(tid)
-        audio_url = f"{base_url}/static/tts/{filename}?t={ts}"
+        last_url = f"{base_url}/static/tts/{filename}?t={ts}"
         game_engine.mqtt_client.publish(f"zulu/cmd/{tid}", json.dumps({
             "cmd": "PLAY_AUDIO_URL",
-            "url": audio_url,
+            "url": last_url,
             "channel": channel
         }), qos=1)
+    return last_url
 
 
 @app.route('/api/audio/tts', methods=['POST'])
@@ -836,13 +838,13 @@ def api_audio_tts():
             "-vn", "-map_metadata", "-1",
             "-ac", "1", "-ar", "44100",
             "-af", LIVE_VOICE_FILTER,
-            "-c:a", "libmp3lame", "-b:a", "128k", "-write_xing", "0",
+            "-c:a", "libmp3lame", "-b:a", "96k", "-write_xing", "0",
             out_path
         ], check=True)
 
-        publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
-        logger.info(f"[LIVE TTS] Inviato a {target_id} ({profile_key}): '{text}'")
-        return jsonify({"status": "ok", "text": text})
+        sent_url = publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
+        logger.info(f"[LIVE TTS] Inviato a {target_id} ({sent_url}): '{text}'")
+        return jsonify({"status": "ok", "text": text, "url": sent_url})
     except Exception as e:
         logger.error(f"[LIVE TTS ERROR] {e}")
         return jsonify({"status": "error", "msg": str(e)}), 500
@@ -869,13 +871,13 @@ def api_audio_intercom():
             "-vn", "-map_metadata", "-1",
             "-ac", "1", "-ar", "44100",
             "-af", LIVE_VOICE_FILTER,
-            "-c:a", "libmp3lame", "-b:a", "128k", "-write_xing", "0",
+            "-c:a", "libmp3lame", "-b:a", "96k", "-write_xing", "0",
             out_path
         ], check=True)
 
-        publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
-        logger.info(f"[LIVE INTERCOM] Messaggio vocale PTT trasmesso a {target_id}")
-        return jsonify({"status": "ok"})
+        sent_url = publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
+        logger.info(f"[LIVE INTERCOM] Messaggio vocale PTT trasmesso a {target_id} ({sent_url})")
+        return jsonify({"status": "ok", "url": sent_url})
     except Exception as e:
         logger.error(f"[LIVE INTERCOM ERROR] {e}")
         return jsonify({"status": "error", "msg": str(e)}), 500
