@@ -143,6 +143,13 @@ public:
 
     // --- Controllo LED ed Effetti Esterni (Non bloccanti se scollegati) ---
     void setLedsColor(uint8_t r, uint8_t g, uint8_t b);
+    void updateBreathingEffect(uint8_t r, uint8_t g, uint8_t b);
+    void updateRainbowEffect();
+    void setLedsProgress(uint32_t progress, uint32_t totalDuration,
+                         uint8_t fgR, uint8_t fgG, uint8_t fgB,
+                         uint8_t bgR = 0, uint8_t bgG = 0, uint8_t bgB = 0);
+    void triggerLedFlash(uint8_t r, uint8_t g, uint8_t b, uint16_t onMs, uint16_t offMs, uint8_t count);
+    bool updateLedFlash();
     void triggerSmoke(uint8_t pwmValue);
     void setRelay(bool state);
 

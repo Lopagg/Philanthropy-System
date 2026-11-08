@@ -8,6 +8,26 @@
 
 #define DEBUG_I2C_TIMING 1
 
+// Stato interno per gli effetti dinamici della striscia LED WS2812
+static unsigned long s_breathingLastMs = 0;
+static float         s_breathingBrightness = 0.15f;
+static bool          s_breathingUp = true;
+
+static unsigned long s_rainbowLastMs = 0;
+static uint32_t      s_rainbowFirstPixelHue = 0;
+
+static int           s_lastProgressLitLeds = -1;
+static uint32_t      s_lastProgressFg = 0;
+static uint32_t      s_lastProgressBg = 0;
+
+// Stato per i flash prioritari non-bloccanti (conferma step, pressione tasto, errore)
+static bool          s_flashActive = false;
+static unsigned long s_flashStartMs = 0;
+static uint8_t       s_flashR = 0, s_flashG = 0, s_flashB = 0;
+static uint16_t      s_flashOnMs = 100;
+static uint16_t      s_flashOffMs = 100;
+static uint8_t       s_flashCount = 1;
+
 // ============================================================================
 // COSTRUTTORE E INIZIALIZZAZIONE HARDWARE
 // ============================================================================
@@ -179,10 +199,7 @@ void HardwareManager::initialize() {
             if (versiondata) {
                 _nfc->SAMConfig();
                 _nfc->setRFField(0x00, 0x01);
-                // Imposta il guadagno del ricevitore LNA al massimo: 48 dB (RxGain = 111b -> 0x78)
-                // Rif. Datasheet PN532_C1 sez. 8.6.23.36 (Tabella 244/245, registro CIU_RFCfg 0x6316)
                 _nfc->writeRegister(0x6316, 0x78);
-                // 0x01 = 2 tentativi di attivazione RF per scansione (massima affidabilità senza bloccare il bus)
                 _nfc->setPassiveActivationRetries(0x01);
                 _nfcInitialized = true;
                 Serial.println("[I2C] RFID PN532 (0x24): OK (RxGain: 48dB Max)");
@@ -196,8 +213,6 @@ void HardwareManager::initialize() {
         Wire.setClock(100000);
         xSemaphoreGive(_i2cMutex);
 
-        // Associa il mutex I2C al driver PN532_I2C in modo che acquisisca il bus
-        // solo durante i trasferimenti fisici Wire e lo lasci libero durante le attese RF
         if (_nfc_i2c) {
             _nfc_i2c->setMutex(_i2cMutex);
         }
@@ -251,7 +266,6 @@ void HardwareManager::playAudio(const String& filename, AudioChannel channel) {
     if (_sdInitialized && _audioEngine.playFile(filename, channel)) {
         return;
     }
-    // Fallback sintetizzato se la SD è assente o il file MP3 non esiste
     if (filename.indexOf("match_start") != -1)      playTone(1000, 200);
     else if (filename.indexOf("match_end") != -1)   playTone(600, 350);
     else if (filename.indexOf("armed") != -1)       playTone(1400, 250);
@@ -378,15 +392,10 @@ char HardwareManager::getKeyPressed() { if (_keyPressed != '\0') { char k = _key
 // GESTIONE DISPLAY LCD 20x4 AD ALTA VELOCITÀ (I2C NIBBLE BURSTING + DIFFING)
 // ============================================================================
 
-// Maschere bit standard del backpack I2C PCF8574 per HD44780
-#define PCF_RS  0x01 // P0: Register Select (0 = Comando, 1 = Dati)
-#define PCF_EN  0x04 // P2: Enable (fronte di discesa campiona i 4 bit)
-#define PCF_BL  0x08 // P3: Backlight ON
+#define PCF_RS  0x01
+#define PCF_EN  0x04
+#define PCF_BL  0x08
 
-/**
- * @brief Invia un singolo byte (comando o carattere) all'LCD in una sola transazione I2C da 4 byte.
- *        Richiede che _i2cMutex sia già acquisito.
- */
 void HardwareManager::lcdSendByte(uint8_t val, uint8_t mode) {
     uint8_t hi = (val & 0xF0) | mode | PCF_BL;
     uint8_t lo = ((val << 4) & 0xF0) | mode | PCF_BL;
@@ -407,10 +416,8 @@ void HardwareManager::lcdWriteBurst(uint8_t col, uint8_t row, const char* data, 
     static const uint8_t rowOffsets[4] = { 0x00, 0x40, 0x14, 0x54 };
     if (row > 3 || len == 0) return;
 
-    // 1. Comando Set DDRAM Address (posizionamento cursore in 1 sola transazione I2C)
     lcdSendByte(0x80 | (col + rowOffsets[row]), 0);
 
-    // 2. Burst dei caratteri a blocchi di max 7 caratteri (28 byte sul bus I2C)
     uint8_t idx = 0;
     while (idx < len) {
         uint8_t chunk = (len - idx > 7) ? 7 : (len - idx);
@@ -431,8 +438,6 @@ void HardwareManager::lcdWriteBurst(uint8_t col, uint8_t row, const char* data, 
 
 void HardwareManager::clearLcd() {
     if (!_lcdInitialized) return;
-    // Pulisce tutte le 4 righe tramite diffing: cancella solo i caratteri che non sono già spazi
-    // evitando il flash di spegnimento di _lcd.clear()
     for (int r = 0; r < 4; r++) {
         printLcdLine(r, "", false);
     }
@@ -545,7 +550,7 @@ void HardwareManager::drawProgressBar(int row, unsigned long progress, unsigned 
 
         lcdWriteBurst((uint8_t)(2 + startChar), (uint8_t)row, barBuf, spanLen);
         _lastBarPixels = progressPixels;
-        _lcdShadow[row][0] = '\x01'; // Marca la riga come occupata da barra grafica
+        _lcdShadow[row][0] = '\x01';
         xSemaphoreGive(_i2cMutex);
     }
 }
@@ -721,7 +726,6 @@ bool HardwareManager::syncRTCWithNTP(uint32_t timeoutMs) {
 }
 
 DateTime HardwareManager::getRTCTime() {
-    // 1. Priorità al chip RTC esterno DS3231
     if (_rtcInitialized) {
         DateTime now;
         if (xSemaphoreTake(_i2cMutex, portMAX_DELAY) == pdTRUE) {
@@ -733,7 +737,6 @@ DateTime HardwareManager::getRTCTime() {
         }
     }
 
-    // 2. Fallback sull'RTC interno dell'ESP32-S3 (sincronizzato via NTP)
     struct tm timeinfo;
     if (getLocalTime(&timeinfo, 0) && (timeinfo.tm_year + 1900) >= 2024) {
         return DateTime(
@@ -746,7 +749,6 @@ DateTime HardwareManager::getRTCTime() {
         );
     }
 
-    // 3. Fallback finale basato su millis() se offline e senza batteria RTC
     return DateTime(2026, 1, 1, 0, 0, 0) + TimeSpan(millis() / 1000);
 }
 
@@ -756,8 +758,6 @@ String HardwareManager::readRFID(uint16_t timeout) {
     uint8_t uidLength = 0;
 
     unsigned long tStart = micros();
-    // _nfc_i2c gestisce internamente _i2cMutex solo durante le letture/scritture Wire,
-    // lasciando libero il bus I2C per LCD e OLED mentre il PN532 interroga l'antenna RF
     bool success = _nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, timeout);
     unsigned long tEnd = micros();
 
@@ -831,17 +831,127 @@ void HardwareManager::printI2CProfilerStats() {
 }
 
 // ============================================================================
-// CONTROLLO LED WS2812, MACCHINA DEL FUMO E RELÈ 12V
+// CONTROLLO LED WS2812 (FISSO, BREATHING, RAINBOW, PROGRESSO, FLASH), FUMO E RELÈ
 // ============================================================================
 
 void HardwareManager::setLedsColor(uint8_t r, uint8_t g, uint8_t b) {
     if (_lastLedR == r && _lastLedG == g && _lastLedB == b) return;
     _lastLedR = r; _lastLedG = g; _lastLedB = b;
+    s_lastProgressLitLeds = -1;
 
+    uint32_t col = _leds.Color(r, g, b);
     for (uint16_t i = 0; i < _leds.numPixels(); i++) {
-        _leds.setPixelColor(i, _leds.Color(r, g, b));
+        _leds.setPixelColor(i, col);
     }
     _leds.show();
+}
+
+void HardwareManager::updateBreathingEffect(uint8_t r, uint8_t g, uint8_t b) {
+    if (updateLedFlash()) return;
+
+    unsigned long now = millis();
+    if (now - s_breathingLastMs < 25) return;
+    s_breathingLastMs = now;
+
+    // Escursione 6% <-> 42% (come il limite 80/255 del RAT-V1): rende il respiro
+    // molto più evidente e lascia il 100% di potenza ai flash di minuto/30s/errore!
+    if (s_breathingUp) {
+        s_breathingBrightness += 0.012f;
+        if (s_breathingBrightness >= 0.42f) {
+            s_breathingBrightness = 0.42f;
+            s_breathingUp = false;
+        }
+    } else {
+        s_breathingBrightness -= 0.012f;
+        if (s_breathingBrightness <= 0.06f) {
+            s_breathingBrightness = 0.06f;
+            s_breathingUp = true;
+        }
+    }
+
+    uint8_t outR = (uint8_t)(r * s_breathingBrightness);
+    uint8_t outG = (uint8_t)(g * s_breathingBrightness);
+    uint8_t outB = (uint8_t)(b * s_breathingBrightness);
+    setLedsColor(outR, outG, outB);
+}
+
+void HardwareManager::updateRainbowEffect() {
+    if (updateLedFlash()) return;
+
+    unsigned long now = millis();
+    if (now - s_rainbowLastMs < 25) return;
+    s_rainbowLastMs = now;
+
+    uint16_t numPixels = _leds.numPixels();
+    for (uint16_t i = 0; i < numPixels; i++) {
+        uint16_t pixelHue = s_rainbowFirstPixelHue + (uint32_t)i * 65536UL / numPixels;
+        uint32_t c = _leds.gamma32(_leds.ColorHSV(pixelHue, 255, 110));
+        _leds.setPixelColor(i, c);
+    }
+    _leds.show();
+    _lastLedR = -1; _lastLedG = -1; _lastLedB = -1;
+    s_lastProgressLitLeds = -1;
+    s_rainbowFirstPixelHue = (s_rainbowFirstPixelHue + 256) & 0xFFFF;
+}
+
+void HardwareManager::setLedsProgress(uint32_t progress, uint32_t totalDuration,
+                                      uint8_t fgR, uint8_t fgG, uint8_t fgB,
+                                      uint8_t bgR, uint8_t bgG, uint8_t bgB) {
+    if (totalDuration == 0) totalDuration = 1;
+    if (progress > totalDuration) progress = totalDuration;
+
+    uint16_t numPixels = _leds.numPixels();
+    int ledsToShow = (int)(((uint64_t)progress * numPixels) / totalDuration);
+
+    uint32_t fgColor = _leds.Color(fgR, fgG, fgB);
+    uint32_t bgColor = _leds.Color(bgR, bgG, bgB);
+
+    if (ledsToShow == s_lastProgressLitLeds && fgColor == s_lastProgressFg && bgColor == s_lastProgressBg) {
+        return;
+    }
+
+    s_lastProgressLitLeds = ledsToShow;
+    s_lastProgressFg = fgColor;
+    s_lastProgressBg = bgColor;
+    _lastLedR = -1; _lastLedG = -1; _lastLedB = -1;
+
+    for (uint16_t i = 0; i < numPixels; i++) {
+        _leds.setPixelColor(i, (i < ledsToShow) ? fgColor : bgColor);
+    }
+    _leds.show();
+}
+
+void HardwareManager::triggerLedFlash(uint8_t r, uint8_t g, uint8_t b, uint16_t onMs, uint16_t offMs, uint8_t count) {
+    s_flashR = r;
+    s_flashG = g;
+    s_flashB = b;
+    s_flashOnMs = (onMs > 0) ? onMs : 80;
+    s_flashOffMs = (offMs > 0) ? offMs : 80;
+    s_flashCount = (count > 0) ? count : 1;
+    s_flashStartMs = millis();
+    s_flashActive = true;
+    setLedsColor(r, g, b);
+}
+
+bool HardwareManager::updateLedFlash() {
+    if (!s_flashActive) return false;
+
+    uint32_t cycleMs = (uint32_t)s_flashOnMs + (uint32_t)s_flashOffMs;
+    uint32_t totalMs = cycleMs * s_flashCount;
+    unsigned long elapsed = millis() - s_flashStartMs;
+
+    if (elapsed >= totalMs) {
+        s_flashActive = false;
+        return false;
+    }
+
+    uint32_t inCycle = elapsed % cycleMs;
+    if (inCycle < s_flashOnMs) {
+        setLedsColor(s_flashR, s_flashG, s_flashB);
+    } else {
+        setLedsColor(0, 0, 0);
+    }
+    return true;
 }
 
 void HardwareManager::triggerSmoke(uint8_t pwmValue) {

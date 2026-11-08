@@ -34,17 +34,20 @@ void NetworkManager::setupOTA() {
         hardware.printLcdLine(0, "AGGIORNAMENTO OTA", true);
         hardware.printLcdLine(1, "Non spegnere...", true);
         hardware.clearOled();
-        hardware.setLedsColor(0, 0, 255);
+        hardware.setLedsColor(0, 0, 0);
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         static uint8_t lastPct = 255;
         uint8_t pct = (total > 0) ? ((progress * 100) / total) : 0;
         
-        if (pct != lastPct && (pct % 2 == 0 || pct == 100)) {
+        if (pct != lastPct) {
             lastPct = pct;
             hardware.drawProgressBar(2, progress, total);
-            hardware.printLcdLine(3, String(pct) + "%", true);
+            hardware.setLedsProgress(progress, total, 0, 180, 255, 0, 0, 0);
+            if (pct % 2 == 0 || pct == 100) {
+                hardware.printLcdLine(3, String(pct) + "%", true);
+            }
         }
     });
 
@@ -92,7 +95,6 @@ void NetworkManager::begin(const char* deviceId, const char* mqttServer, uint16_
     String ip   = WiFi.localIP().toString();
     Serial.println("[NET] WiFi Connesso a '" + ssid + "'! IP: " + ip);
 
-    // Schermata di riepilogo Rete + Sincronizzazione RTC su fuso orario italiano
     hardware.clearLcd();
     hardware.printLcdLine(0, "WIFI CONNESSO!", true);
     hardware.printLcdLine(1, "RETE: " + ssid, false);
@@ -108,7 +110,6 @@ void NetworkManager::begin(const char* deviceId, const char* mqttServer, uint16_
 
     setupOTA();
 
-    // Pausa di 2.5s per consentire la lettura di SSID, IP e orario all'operatore
     vTaskDelay(pdMS_TO_TICKS(2500));
     
     SystemEvent ev = {EV_WIFI_CONNECTED, '\0', false, ""};
@@ -198,7 +199,7 @@ void NetworkManager::performHttpOTA(const String& url) {
     hardware.printLcdLine(0, "OTA SERVER UPDATE", true);
     hardware.printLcdLine(1, "Download in corso...", true);
     hardware.clearOled();
-    hardware.setLedsColor(0, 0, 255);
+    hardware.setLedsColor(0, 0, 0);
 
     WiFiClient client;
     httpUpdate.rebootOnUpdate(false);
@@ -206,10 +207,13 @@ void NetworkManager::performHttpOTA(const String& url) {
     httpUpdate.onProgress([](int cur, int total) {
         static int lastPct = -1;
         int pct = (total > 0) ? ((cur * 100) / total) : 0;
-        if (pct != lastPct && (pct % 2 == 0 || pct == 100)) {
+        if (pct != lastPct) {
             lastPct = pct;
             hardware.drawProgressBar(2, cur, total);
-            hardware.printLcdLine(3, String(pct) + "%", true);
+            hardware.setLedsProgress((uint32_t)cur, (uint32_t)total, 0, 180, 255, 0, 0, 0);
+            if (pct % 2 == 0 || pct == 100) {
+                hardware.printLcdLine(3, String(pct) + "%", true);
+            }
         }
     });
 

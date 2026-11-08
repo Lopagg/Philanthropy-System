@@ -1,6 +1,7 @@
 /**
  * @file InteractionSequence.cpp
- * @brief Implementazione dell'orchestratore di sequenze modulari (HOLD, PIN, KEY, RFID).
+ * @brief Implementazione dell'orchestratore di sequenze modulari (HOLD, PIN, KEY, RFID)
+ *        con feedback LED multi-step (mantenimento colore, progresso step e lampi di conferma/errore).
  */
 
 #include "Interactions/InteractionSequence.h"
@@ -152,6 +153,7 @@ void InteractionSequence::beginWithDirectKeyEvent(const SystemEvent& event) {
             hardware.noTone();
             _result = INTERACTION_COMPLETED;
         } else {
+            hardware.triggerLedFlash(255, 255, 255, 90, 70, 2);
             startCurrentStep();
         }
     }
@@ -176,6 +178,7 @@ bool InteractionSequence::tryStartWithRfidEvent(const SystemEvent& event, const 
 
     if (!allowed) {
         hardware.playTone(250, 400);
+        hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
         return false;
     }
 
@@ -186,6 +189,7 @@ bool InteractionSequence::tryStartWithRfidEvent(const SystemEvent& event, const 
         _result = INTERACTION_COMPLETED;
     } else {
         _result = INTERACTION_RUNNING;
+        hardware.triggerLedFlash(255, 255, 255, 90, 70, 2);
         startCurrentStep();
     }
     return true;
@@ -216,7 +220,6 @@ bool InteractionSequence::checkPriorConditionsMaintained() {
         uint8_t mask = _steps[i]->getKeyMask();
         if (mask == 0) continue;
 
-        // Verifica se uno step successivo (fino a quello attivo incluso) modifica la stessa chiave
         bool overriddenByLaterStep = false;
         for (uint8_t j = i + 1; j <= _currentStep && j < _stepCount; j++) {
             if ((_steps[j]->getKeyMask() & mask) != 0) {
@@ -228,6 +231,7 @@ bool InteractionSequence::checkPriorConditionsMaintained() {
         if (!overriddenByLaterStep && !_steps[i]->isConditionMaintained()) {
             hardware.noTone();
             hardware.playTone(250, 400);
+            hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
             _result = INTERACTION_CANCELLED;
             return false;
         }
@@ -240,8 +244,6 @@ void InteractionSequence::handleEvent(const SystemEvent& event) {
 
     if (!checkPriorConditionsMaintained()) return;
 
-    // Se viene scansionata una tessera mentre lo step corrente non è RFID,
-    // invia comunque l'UID in telemetria al server per il tracciamento statistiche
     if (event.type == EV_RFID_SCANNED && !_steps[_currentStep]->isRfidStep()) {
         RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "NON_RFID_STEP");
     }
@@ -258,6 +260,7 @@ void InteractionSequence::handleEvent(const SystemEvent& event) {
             hardware.noTone();
             _result = INTERACTION_COMPLETED;
         } else {
+            hardware.triggerLedFlash(255, 255, 255, 90, 70, 2);
             startCurrentStep();
         }
     }
@@ -274,13 +277,41 @@ void InteractionSequence::update() {
     if (stepRes == INTERACTION_CANCELLED) {
         hardware.noTone();
         _result = INTERACTION_CANCELLED;
+        return;
     } else if (stepRes == INTERACTION_COMPLETED) {
         _currentStep++;
         if (_currentStep >= _stepCount) {
             hardware.noTone();
             _result = INTERACTION_COMPLETED;
         } else {
+            hardware.triggerLedFlash(255, 255, 255, 90, 70, 2);
             startCurrentStep();
+        }
+        return;
+    }
+
+    // Gestione LED durante gli step non-HOLD (PIN, KEY, RFID) o in attesa di premere HOLD:
+    // - Se c'è un flash prioritario in corso (conferma step, pressione tasto, errore), lascialo eseguire.
+    // - Se siamo in uno step HOLD e il pulsante target è premuto, HoldButtonInteraction pilota già la barra LED.
+    // - Negli altri casi: mantieni fissi i LED degli step già completati (_currentStep / _stepCount)
+    //   e fai lampeggiare a 2 Hz i LED rimanenti con il colore dell'azione (Rosso in innesco, Verde in disinnesco)!
+    if (hardware.updateLedFlash()) {
+        return;
+    }
+
+    bool isActivelyHolding = false;
+    if (_stepTypeTags[_currentStep] == 1) {
+        isActivelyHolding = (_holdButtonIndex == 1) ? hardware.isButton1Pressed() : hardware.isButton2Pressed();
+    }
+
+    if (!isActivelyHolding) {
+        bool blinkOn = ((millis() % 700) < 380);
+        if (blinkOn) {
+            hardware.setLedsColor(_ledR, _ledG, _ledB);
+        } else if (_stepCount > 1 && _currentStep > 0) {
+            hardware.setLedsProgress(_currentStep, _stepCount, _ledR, _ledG, _ledB, 0, 0, 0);
+        } else {
+            hardware.setLedsColor(0, 0, 0);
         }
     }
 }

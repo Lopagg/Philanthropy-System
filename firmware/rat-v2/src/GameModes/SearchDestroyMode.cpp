@@ -1,6 +1,7 @@
 /**
  * @file SearchDestroyMode.cpp
- * @brief Implementazione della macchina a stati e della telemetria per Search & Destroy.
+ * @brief Implementazione della macchina a stati, degli effetti LED (Breathing, Progresso,
+ *        Esplosione scenica multi-stadio) e della telemetria per Search & Destroy.
  */
 
 #include "GameModes/SearchDestroyMode.h"
@@ -9,6 +10,10 @@
 extern HardwareManager hardware;
 extern NetworkManager network;
 extern const char* DEVICE_ID;
+
+static bool          s_explosionAnimActive = false;
+static unsigned long s_explosionStartMs = 0;
+static uint8_t       s_winnerColor[3] = { 0, 255, 0 };
 
 // ============================================================================
 // COSTRUTTORE, DISTRUTTORE E INIZIALIZZAZIONE
@@ -38,6 +43,7 @@ SearchDestroyMode::~SearchDestroyMode() {
 
 void SearchDestroyMode::stopAllEffects() {
     _fxPulseActive = false;
+    s_explosionAnimActive = false;
     hardware.setRelay(false);
     hardware.triggerSmoke(0);
 }
@@ -73,7 +79,7 @@ void SearchDestroyMode::enterSafeState() {
     }
     
     setOledLabels("INNESCA", "");
-    hardware.setLedsColor(0, 0, 255);
+    hardware.updateBreathingEffect(0, 0, 255);
     sendTelemetry("SAFE");
 }
 
@@ -176,16 +182,17 @@ void SearchDestroyMode::triggerExplosion() {
     hardware.printLcdLine(2, "Attesa Arbitro...", true);
     setOledLabels("", "");
 
-    // Attiva l'impulso non-bloccante (500ms) per fumo, relè 12V e flash bianco LED
     if (_fxSmoke) hardware.triggerSmoke(255);
     if (_fxRelay) hardware.setRelay(true);
-    hardware.setLedsColor(255, 255, 255);
     _fxPulseActive = true;
     _fxPulseStartTime = millis();
 
+    s_explosionAnimActive = true;
+    s_explosionStartMs = millis();
+    hardware.setLedsColor(255, 255, 255);
+
     hardware.playAudio("/audio/sd/bomb_exploded.mp3", AUDIO_CH_SFX);
     
-    // Invia immediatamente l'evento al server (latenza zero)
     sendMatchEventToServer();
 }
 
@@ -194,7 +201,6 @@ void SearchDestroyMode::triggerExplosion() {
 // ============================================================================
 
 void SearchDestroyMode::handleEvent(const SystemEvent& event) {
-    // 1. Comandi provenienti dal Server Centrale via MQTT
     if (event.type == EV_SERVER_COMMAND) {
         JsonDocument doc;
         if (!deserializeJson(doc, event.stringData)) {
@@ -204,7 +210,9 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                     processJsonConfig(event.stringData);
                 }
                 else if (strcmp(cmd, "FORCE_WIN") == 0) {
-                    stopAllEffects();
+                    _fxPulseActive = false;
+                    hardware.setRelay(false);
+                    hardware.triggerSmoke(0);
                     hardware.noTone();
                     _bombTimer.stop();
                     _state = SD_ENDED;
@@ -221,17 +229,22 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
 
                     if (doc["winner_color"].is<JsonArray>()) {
                         JsonArray col = doc["winner_color"].as<JsonArray>();
-                        hardware.setLedsColor(col[0] | 0, col[1] | 0, col[2] | 0);
+                        s_winnerColor[0] = col[0] | 0;
+                        s_winnerColor[1] = col[1] | 0;
+                        s_winnerColor[2] = col[2] | 0;
                     } else {
                         const char* legacyWinner = doc["winner"] | "";
                         if (strstr(legacyWinner, "ALPHA") != nullptr) {
-                            hardware.setLedsColor(255, 0, 0);
+                            s_winnerColor[0] = 255; s_winnerColor[1] = 0; s_winnerColor[2] = 0;
                         } else {
-                            hardware.setLedsColor(0, 255, 0);
+                            s_winnerColor[0] = 0; s_winnerColor[1] = 255; s_winnerColor[2] = 0;
                         }
                     }
 
-                    // Riproduce il suono di fine match se il round è terminato per Tempo Scaduto o Squadra Eliminata
+                    if (!s_explosionAnimActive) {
+                        hardware.setLedsColor(s_winnerColor[0], s_winnerColor[1], s_winnerColor[2]);
+                    }
+
                     if (strcmp(reason, "TEMPO SCADUTO!") == 0 || strcmp(reason, "SQUADRA ELIMINATA!") == 0) {
                         hardware.playAudio("/audio/common/match_end.mp3", AUDIO_CH_VOICE);
                     }
@@ -255,12 +268,12 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
         return;
     }
 
-    // 2. Gestione Input Fisici in base allo stato della partita
     if (_state == SD_SAFE) {
         String keyHint;
         if (event.type == EV_BTN_1_PRESSED) {
             if (!_armSequence.areInitialKeysReady(keyHint)) {
                 hardware.playTone(250, 400);
+                hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                 hardware.printLcdLine(2, "CHIAVE FUORI POSTO", true);
                 hardware.printLcdLine(3, keyHint, true);
                 return;
@@ -284,6 +297,7 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                 if (!_armSequence.areInitialKeysReady(keyHint)) {
                     RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "SAFE_KEY_ERR");
                     hardware.playTone(250, 400);
+                    hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     hardware.printLcdLine(2, "CHIAVE FUORI POSTO", true);
                     hardware.printLcdLine(3, keyHint, true);
                     return;
@@ -299,6 +313,7 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                     }
                 } else {
                     enterSafeState();
+                    hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     hardware.printLcdLine(2, "TESSERA ERRATA!", true);
                 }
             } else {
@@ -316,6 +331,7 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
         if (event.type == EV_BTN_2_PRESSED) {
             if (!_defuseSequence.areInitialKeysReady(keyHint)) {
                 hardware.playTone(250, 400);
+                hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                 hardware.printLcdLine(1, "CHIAVE FUORI POSTO", true);
                 hardware.printLcdLine(2, keyHint, true);
                 return;
@@ -336,6 +352,7 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                 if (!_defuseSequence.areInitialKeysReady(keyHint)) {
                     RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "ARMED_KEY_ERR");
                     hardware.playTone(250, 400);
+                    hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     hardware.printLcdLine(1, "CHIAVE FUORI POSTO", true);
                     hardware.printLcdLine(2, keyHint, true);
                     return;
@@ -348,6 +365,7 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                         sendTelemetry("DEFUSING...");
                     }
                 } else {
+                    hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     hardware.printLcdLine(2, "TESSERA ERRATA!", true);
                 }
             } else {
@@ -364,36 +382,71 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
 }
 
 void SearchDestroyMode::update() {
-    // 1. Spegnimento asincrono dopo 500ms dell'impulso esplosione (fumo, relè 12V e flash bianco)
-    if (_fxPulseActive && (millis() - _fxPulseStartTime >= 500)) {
-        stopAllEffects();
-        if (_state == SD_WAITING_SERVER) {
-            hardware.setLedsColor(255, 0, 0);
+    unsigned long nowMs = millis();
+
+    // 1. Spegnimento asincrono dopo 500ms dell'impulso elettrico (fumo e relè 12V)
+    if (_fxPulseActive && (nowMs - _fxPulseStartTime >= 500)) {
+        _fxPulseActive = false;
+        hardware.setRelay(false);
+        hardware.triggerSmoke(0);
+    }
+
+    // 2. Animazione LED Scenica dell'Esplosione (ispirata al V1: cicli Bianco -> Arancione -> Rosso)
+    if (s_explosionAnimActive) {
+        unsigned long expEl = nowMs - s_explosionStartMs;
+        if (expEl < 1610) {
+            unsigned long phase = expEl % 230;
+            if (phase < 50)       hardware.setLedsColor(255, 255, 255);
+            else if (phase < 130) hardware.setLedsColor(255, 100, 0);
+            else                  hardware.setLedsColor(255, 0, 0);
+        } else if (expEl < 3000) {
+            uint8_t greenFire = ((expEl / 90) % 2 == 0) ? 75 : 0;
+            hardware.setLedsColor(255, greenFire, 0);
+        } else {
+            s_explosionAnimActive = false;
         }
     }
 
-    // 2. Retry QoS: se il RAT attende il verdetto dal server, reinvia l'evento ogni 2s
+    // 3. Gestione Breathing LED in stato di fine round o attesa verdetto server
+    if (_state == SD_ENDED && !s_explosionAnimActive) {
+        hardware.updateBreathingEffect(s_winnerColor[0], s_winnerColor[1], s_winnerColor[2]);
+    }
+
     if (_state == SD_WAITING_SERVER) {
-        if (millis() - _lastServerRetryTime >= 2000) {
-            _lastServerRetryTime = millis();
+        if (!s_explosionAnimActive) {
+            if (_pendingServerEvent == "BOMB_DEFUSED") {
+                hardware.updateBreathingEffect(0, 255, 0);
+            } else {
+                hardware.updateBreathingEffect(255, 0, 0);
+            }
+        }
+        if (nowMs - _lastServerRetryTime >= 2000) {
+            _lastServerRetryTime = nowMs;
             sendMatchEventToServer();
         }
         return;
     }
 
-    // 3. Invio telemetria periodica (10 Hz durante innesco/disinnesco, 1 Hz a riposo)
+    // 4. Effetto Breathing Blu neutro in stato SD_SAFE
+    if (_state == SD_SAFE) {
+        hardware.updateBreathingEffect(0, 0, 255);
+    }
+
+    // 5. Invio telemetria periodica (10 Hz durante innesco/disinnesco, 1 Hz a riposo)
     bool isHighAction = (_state == SD_ARMING || _state == SD_DEFUSING);
     unsigned long telemetryInterval = isHighAction ? 100 : 1000;
 
-    if (_state != SD_ENDED && (millis() - _lastTelemetryTime >= telemetryInterval)) {
-        _lastTelemetryTime = millis();
+    if (_state != SD_ENDED && (nowMs - _lastTelemetryTime >= telemetryInterval)) {
+        _lastTelemetryTime = nowMs;
         if (_state == SD_SAFE) sendTelemetry("SAFE");
         else if (_state == SD_ARMING) sendTelemetry("ARMING...");
         else if (_state == SD_ARMED) sendTelemetry("ARMED");
         else if (_state == SD_DEFUSING) sendTelemetry("DEFUSING...");
     }
 
-    // 4. Aggiornamento sequenza di innesco o disinnesco
+    // 6. Aggiornamento sequenza di innesco o disinnesco:
+    //    InteractionSequence pilota direttamente i LED per TUTTI gli step (HOLD, PIN, KEY, RFID)
+    //    senza mai tornare al colore precedente tra uno step e l'altro!
     if (_state == SD_ARMING) {
         _armSequence.update();
         if (_armSequence.getResult() == INTERACTION_CANCELLED) {
@@ -416,10 +469,12 @@ void SearchDestroyMode::update() {
         }
     }
 
-    // 5. Aggiornamento conto alla rovescia bomba (con mixer polifonico gli annunci e i beep
-    //    continuano a suonare in sottofondo anche durante SD_DEFUSING!)
+    // 7. Aggiornamento conto alla rovescia bomba:
+    //    Durante SD_DEFUSING il timer aggiorna l'LCD e riproduce gli annunci e i beep in polifonia,
+    //    mentre i LED restano sempre sotto il controllo di _defuseSequence.
     if (_state == SD_ARMED || _state == SD_DEFUSING) {
-        if (_bombTimer.update(true)) {
+        bool allowTimerLedControl = (_state == SD_ARMED && !hardware.updateLedFlash());
+        if (_bombTimer.update(allowTimerLedControl)) {
             triggerExplosion();
         }
     }

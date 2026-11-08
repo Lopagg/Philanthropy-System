@@ -1,7 +1,8 @@
 /**
  * @file HoldButtonInteraction.cpp
  * @brief Implementazione dello step di pressione prolungata pulsante (P1 o P2)
- *        con barra di progresso LCD, sweep audio I2S, lampeggio LED ed etichette OLED dinamiche.
+ *        con barra di progresso LCD, sweep audio I2S, riempimento progressivo LED
+ *        (da Blu a Rosso in innesco, da Rosso a Verde in disinnesco) ed etichette OLED.
  */
 
 #include "Interactions/HoldButtonInteraction.h"
@@ -61,14 +62,12 @@ void HoldButtonInteraction::begin() {
     hardware.printLcdLine(2, "", false);
 
     if (isTargetButtonPressed()) {
-        // Il pulsante è già premuto (es. primo step avviato dalla schermata di riposo)
         _holdingStarted = true;
         _startTime = millis();
         hardware.printLcdLine(1, "TIENI PREMUTO...", true);
         applyOledLabels(true);
         hardware.startToneSweep(_startFreq, _endFreq, _durationMs);
     } else {
-        // Step successivo (es. dopo un PIN): attende che il giocatore prema il pulsante target
         _holdingStarted = false;
         String prompt = (_buttonIndex == 1) ? "TIENI PREMUTO P1" : "TIENI PREMUTO P2";
         hardware.printLcdLine(1, prompt, true);
@@ -83,7 +82,6 @@ void HoldButtonInteraction::handleEvent(const SystemEvent& event) {
     EventType targetPressEvent = (_buttonIndex == 1) ? EV_BTN_1_PRESSED : EV_BTN_2_PRESSED;
 
     if (!_holdingStarted) {
-        // Se l'utente preme il pulsante richiesto dallo step, avvia il conteggio e lo sweep
         if (event.type == targetPressEvent) {
             _holdingStarted = true;
             _startTime = millis();
@@ -93,7 +91,6 @@ void HoldButtonInteraction::handleEvent(const SystemEvent& event) {
             return;
         }
 
-        // Annulla solo se viene premuto il pulsante opposto di annullamento
         if (_cancelEvent != EV_NONE && _cancelEvent != targetPressEvent && event.type == _cancelEvent) {
             hardware.noTone();
             _result = INTERACTION_CANCELLED;
@@ -123,18 +120,24 @@ void HoldButtonInteraction::update() {
         return;
     }
 
-    // 3. Aggiornamento barra grafica sull'LCD e lampeggio LED a 2 Hz
+    // 3. Aggiornamento barra grafica sull'LCD e riempimento progressivo dei LED:
+    //    - Innesco (target Rosso 255,0,0)    : i LED passano uno a uno da Blu (0,0,255) a Rosso (255,0,0)
+    //    - Disinnesco (target Verde 0,255,0) : i LED passano uno a uno da Rosso (255,0,0) a Verde (0,255,0)
     uint32_t elapsedMs = millis() - _startTime;
     hardware.drawProgressBar(2, elapsedMs, _durationMs);
 
-    if (millis() % 500 < 250) {
-        hardware.setLedsColor(_ledR, _ledG, _ledB);
-    } else {
-        hardware.setLedsColor(0, 0, 0);
+    uint8_t bgR = 0, bgG = 0, bgB = 0;
+    if (_ledR == 255 && _ledG == 0 && _ledB == 0) {
+        bgR = 0; bgG = 0; bgB = 255; // Da Blu a Rosso
+    } else if (_ledR == 0 && _ledG == 255 && _ledB == 0) {
+        bgR = 255; bgG = 0; bgB = 0; // Da Rosso a Verde
     }
+
+    hardware.setLedsProgress(elapsedMs, _durationMs, _ledR, _ledG, _ledB, bgR, bgG, bgB);
 
     // 4. Controllo completamento durata richiesta
     if (elapsedMs >= _durationMs) {
+        hardware.setLedsColor(_ledR, _ledG, _ledB);
         hardware.noTone();
         _result = INTERACTION_COMPLETED;
     }

@@ -1,6 +1,7 @@
 /**
  * @file PinInteraction.cpp
- * @brief Implementazione dello step di inserimento e verifica codice PIN da tastierino 4x4.
+ * @brief Implementazione dello step di inserimento e verifica codice PIN da tastierino 4x4
+ *        con feedback LED su pressione tasto ed errore.
  */
 
 #include "Interactions/PinInteraction.h"
@@ -48,7 +49,6 @@ void PinInteraction::begin() {
 void PinInteraction::handleEvent(const SystemEvent& event) {
     if (_result != INTERACTION_RUNNING) return;
 
-    // Pressione del pulsante di annullamento (P1)
     if (_cancelEvent != EV_NONE && event.type == _cancelEvent) {
         _result = INTERACTION_CANCELLED;
         return;
@@ -62,6 +62,7 @@ void PinInteraction::handleEvent(const SystemEvent& event) {
         // Tasto '*': cancella l'ultimo carattere digitato
         if (event.charValue == '*') {
             hardware.playTone(500, 35);
+            hardware.triggerLedFlash(180, 180, 255, 50, 30, 1);
             uint8_t len = strlen(_inputBuffer);
             if (len > 0) {
                 _inputBuffer[len - 1] = '\0';
@@ -70,7 +71,6 @@ void PinInteraction::handleEvent(const SystemEvent& event) {
             return;
         }
 
-        // Ignora caratteri non alfanumerici (es. '#')
         if (!isalnum(event.charValue)) return;
 
         uint8_t len = strlen(_inputBuffer);
@@ -78,20 +78,21 @@ void PinInteraction::handleEvent(const SystemEvent& event) {
             _inputBuffer[len] = event.charValue;
             _inputBuffer[len + 1] = '\0';
 
-            // Verifica automatica al raggiungimento della lunghezza del PIN atteso
             if (strlen(_inputBuffer) >= strlen(_targetPin)) {
                 if (strcmp(_inputBuffer, _targetPin) == 0) {
-                    hardware.playTone(1500, 120); // Tono acuto di conferma PIN valido
+                    hardware.playTone(1500, 120);
                     _result = INTERACTION_COMPLETED;
                 } else {
                     resetBuffer();
                     hardware.printLcdLine(2, "PIN ERRATO!", true);
-                    hardware.playTone(250, 400);  // Tono grave di errore
+                    hardware.playTone(250, 400);
+                    hardware.triggerLedFlash(255, 80, 0, 90, 90, 4);
                     _showingError = true;
                     _errorTime = millis();
                 }
             } else {
-                hardware.playTone(700, 35);       // Beep di feedback pressione tasto
+                hardware.playTone(700, 35);
+                hardware.triggerLedFlash(180, 255, 255, 55, 25, 1);
                 hardware.printLcdLine(2, String(_inputBuffer), true);
             }
         }
@@ -101,7 +102,6 @@ void PinInteraction::handleEvent(const SystemEvent& event) {
 void PinInteraction::update() {
     if (_result != INTERACTION_RUNNING) return;
 
-    // Ripristina la riga di input 1.2s dopo la comparsa di "PIN ERRATO!"
     if (_showingError && (millis() - _errorTime >= 1200)) {
         _showingError = false;
         hardware.printLcdLine(2, "", false);
