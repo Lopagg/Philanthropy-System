@@ -2,7 +2,8 @@
      base.html
      Layout principale (Master Template) del Pannello di Controllo SOP.
      Include Header di sistema, Sidebar Asset/Mini-Log, Footer Comandi Rapidi
-     e tutti i Modal globali (Profilo Operatore, Cropper, Roster, Registrazione, Fazioni).
+     e tutti i Modal globali (Profilo Operatore, Cropper, Roster, Registrazione,
+     Fazioni, Input Tattico e Dialoghi Alert/Confirm).
      ========================================================================== -->
 <!DOCTYPE html>
 <html lang="it">
@@ -344,6 +345,25 @@
                 <div style="display: flex; gap: 12px;">
                     <button type="button" class="deck-btn btn-danger full-width" onclick="closePresetNameModal()">[ ANNULLA ]</button>
                     <button type="button" class="deck-btn full-width" style="border-color: var(--sop-primary); color: var(--sop-primary);" onclick="confirmPresetNameModal()">[ CONFERMA ]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================================
+         MODALE 7: DIALOGO TATTICO DI SISTEMA (SOSTITUISCE ALERT E CONFIRM)
+         ====================================================================== -->
+    <div id="tactical-dialog-modal" class="modal-overlay hidden" style="z-index: 2200;">
+        <div id="tactical-dialog-card" class="sop-card profile-modal" style="width: 460px; border: 1px solid var(--sop-primary);">
+            <div class="panel-header" style="margin-bottom: 0;">
+                <h2 id="tactical-dialog-title" style="margin: 0; padding: 10px; color: var(--sop-primary); letter-spacing: 2px; font-size: 20px;">AVVISO DI SISTEMA</h2>
+                <button type="button" class="close-modal-btn" style="padding-right: 15px;" onclick="cancelTacticalDialog()">[X]</button>
+            </div>
+            <div class="panel-body" style="padding: 22px;">
+                <p id="tactical-dialog-msg" style="color: var(--sop-text); font-size: 15px; line-height: 1.5; margin: 0 0 24px 0; white-space: pre-line; text-align: center;"></p>
+                <div style="display: flex; gap: 12px;">
+                    <button type="button" id="tactical-dialog-cancel-btn" class="deck-btn full-width hidden" style="margin: 0;" onclick="cancelTacticalDialog()">[ ANNULLA ]</button>
+                    <button type="button" id="tactical-dialog-ok-btn" class="deck-btn full-width" style="margin: 0; border-color: var(--sop-primary); color: var(--sop-primary); font-weight: bold;" onclick="confirmTacticalDialog()">[ RICEVUTO ]</button>
                 </div>
             </div>
         </div>

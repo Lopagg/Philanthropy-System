@@ -6,7 +6,7 @@
  * - Connessione singleton Socket.IO e sincronizzazione real-time con il server Flask.
  * - Costruttore visuale delle sequenze modulari V2 (HOLD, PIN, KEY a 8 modalità, RFID a 4 modalità) per S&D e Dominio.
  * - Gestione Preset Tattici (Salvataggio/Rinomina con Modal in-page, Aggiornamento, Eliminazione, Import/Export JSON).
- * - Finestra Modale Universale (openTacticalPrompt) per eliminare tutti i prompt() nativi del browser.
+ * - Finestre Modali Universali (openTacticalPrompt, openTacticalAlert, openTacticalConfirm) senza popup nativi del browser.
  * - Blocco visibilità parametri finché non viene selezionato un terminale e validazione rigorosa pre-partita.
  * - Regia Audio Tattica (Soundboard Micro-SD, Annunciatore TTS Live e Intercom Push-To-Talk).
  */
@@ -24,8 +24,11 @@ let currentDevices = [];
 let arenaRoster = {};
 let monitoredDeviceId = null;
 let currentCropper = null;
+
 let tacticalPromptCallback = null;
 let tacticalPromptAllowEmpty = false;
+let tacticalDialogConfirmCb = null;
+let tacticalDialogCancelCb = null;
 
 window.v2ArmSequence      = window.v2ArmSequence      || [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
 window.v2DefuseSequence   = window.v2DefuseSequence   || [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
@@ -51,7 +54,7 @@ export let currentFactions = window.__zuluFactions || (window.__zuluFactions = {
 });
 
 // ============================================================================
-// FINESTRA MODALE DI INPUT TATTICO UNIVERSALE (SOSTITUISCE PROMPT DEL BROWSER)
+// SISTEMA MODALE TATTICO UNIVERSALE (PROMPT, ALERT E CONFIRM INTEGRATI)
 // ============================================================================
 
 window.openTacticalPrompt = function({ title, label, defaultValue = '', placeholder = '', allowEmpty = false, onConfirm }) {
@@ -65,6 +68,7 @@ window.openTacticalPrompt = function({ title, label, defaultValue = '', placehol
     if (labelEl) labelEl.textContent = label || 'INSERISCI VALORE';
     inputEl.value = defaultValue;
     inputEl.placeholder = placeholder;
+    inputEl.style.borderColor = '';
 
     tacticalPromptAllowEmpty = Boolean(allowEmpty);
     tacticalPromptCallback = typeof onConfirm === 'function' ? onConfirm : null;
@@ -86,13 +90,92 @@ window.confirmPresetNameModal = function() {
     const rawVal = (inputEl?.value || '').trim();
 
     if (!tacticalPromptAllowEmpty && !rawVal) {
-        alert("Inserisci un valore valido.");
+        if (inputEl) {
+            inputEl.style.borderColor = 'var(--sop-alert)';
+            inputEl.focus();
+        }
         return;
     }
 
     const cb = tacticalPromptCallback;
     window.closePresetNameModal();
     if (cb) cb(rawVal);
+};
+
+function applyDialogTheme(type) {
+    const cardEl  = document.getElementById('tactical-dialog-card');
+    const titleEl = document.getElementById('tactical-dialog-title');
+    const okBtn   = document.getElementById('tactical-dialog-ok-btn');
+
+    let colorVar = 'var(--sop-primary)';
+    if (type === 'danger')       colorVar = 'var(--sop-alert)';
+    else if (type === 'warning') colorVar = 'var(--sop-secondary)';
+    else if (type === 'success') colorVar = 'var(--sop-success)';
+
+    if (cardEl)  cardEl.style.borderColor = colorVar;
+    if (titleEl) titleEl.style.color = colorVar;
+    if (okBtn) {
+        okBtn.style.borderColor = colorVar;
+        okBtn.style.color = colorVar;
+    }
+}
+
+window.openTacticalAlert = function(msg, title = 'AVVISO DI SISTEMA', type = 'info', onOk = null) {
+    const modal     = document.getElementById('tactical-dialog-modal');
+    const titleEl   = document.getElementById('tactical-dialog-title');
+    const msgEl     = document.getElementById('tactical-dialog-msg');
+    const cancelBtn = document.getElementById('tactical-dialog-cancel-btn');
+    const okBtn     = document.getElementById('tactical-dialog-ok-btn');
+    if (!modal || !msgEl) return;
+
+    if (titleEl) titleEl.textContent = title;
+    msgEl.textContent = msg;
+    cancelBtn?.classList.add('hidden');
+    if (okBtn) okBtn.textContent = '[ RICEVUTO ]';
+
+    applyDialogTheme(type);
+    tacticalDialogConfirmCb = typeof onOk === 'function' ? onOk : null;
+    tacticalDialogCancelCb  = null;
+
+    modal.classList.remove('hidden');
+    setTimeout(() => okBtn?.focus(), 50);
+};
+
+window.openTacticalConfirm = function(msg, title = 'CONFERMA OPERAZIONE', type = 'warning', onConfirm = null, onCancel = null) {
+    const modal     = document.getElementById('tactical-dialog-modal');
+    const titleEl   = document.getElementById('tactical-dialog-title');
+    const msgEl     = document.getElementById('tactical-dialog-msg');
+    const cancelBtn = document.getElementById('tactical-dialog-cancel-btn');
+    const okBtn     = document.getElementById('tactical-dialog-ok-btn');
+    if (!modal || !msgEl) return;
+
+    if (titleEl) titleEl.textContent = title;
+    msgEl.textContent = msg;
+    cancelBtn?.classList.remove('hidden');
+    if (okBtn) okBtn.textContent = '[ CONFERMA ]';
+
+    applyDialogTheme(type);
+    tacticalDialogConfirmCb = typeof onConfirm === 'function' ? onConfirm : null;
+    tacticalDialogCancelCb  = typeof onCancel === 'function' ? onCancel : null;
+
+    modal.classList.remove('hidden');
+    setTimeout(() => okBtn?.focus(), 50);
+};
+
+window.confirmTacticalDialog = function() {
+    document.getElementById('tactical-dialog-modal')?.classList.add('hidden');
+    const cb = tacticalDialogConfirmCb;
+    tacticalDialogConfirmCb = null;
+    tacticalDialogCancelCb  = null;
+    if (cb) cb();
+};
+
+window.cancelTacticalDialog = function() {
+    document.getElementById('tactical-dialog-modal')?.classList.add('hidden');
+    const cb = tacticalDialogCancelCb;
+    tacticalDialogConfirmCb = null;
+    tacticalDialogCancelCb  = null;
+    if (cb) cb();
 };
 
 // ============================================================================
@@ -299,7 +382,7 @@ function sanitizeKeySequences() {
 window.addSequenceStep = function(type) {
     const arr = getSeqArrayByType(type);
     if (arr.length >= 5) {
-        alert("Massimo 5 step consentiti per sequenza.");
+        window.openTacticalAlert("Massimo 5 step consentiti per sequenza.", "LIMITE SEQUENZA", "warning");
         return;
     }
     const defaultHold = (type === 'arm') ? 5 : 10;
@@ -625,11 +708,28 @@ if (!window.__zuluMainInitialized) {
         renderV2Sequences();
         window.updateUIForTargetVersion();
 
+        // Supporto tastiera globale per il Dialogo Tattico (Invio = Conferma, Esc = Annulla)
+        document.addEventListener('keydown', (e) => {
+            const dlg = document.getElementById('tactical-dialog-modal');
+            if (dlg && !dlg.classList.contains('hidden')) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    window.cancelTacticalDialog();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    window.confirmTacticalDialog();
+                }
+            }
+        });
+
         window.showView = (view) => showView(view, socket);
         window.clearActiveRoster = () => {
-            if (confirm('ATTENZIONE: Rimuovere tutti gli operatori dal roster di oggi?')) {
-                socket.emit('clear_roster');
-            }
+            window.openTacticalConfirm(
+                "Rimuovere tutti gli operatori dal roster attivo di oggi?",
+                "SVUOTA ROSTER ATTIVO",
+                "danger",
+                () => socket.emit('clear_roster')
+            );
         };
 
         window.setAllPlayersInField = () => {
@@ -639,9 +739,12 @@ if (!window.__zuluMainInitialized) {
 
         window.sendEnvCommand = (envCmd) => socket.emit('send_command', { target_id: "BROADCAST_ENV", command: { cmd: envCmd } });
         window.triggerServerReset = () => {
-            if (confirm("ATTENZIONE CRITICA!\nVuoi forzare il riavvio del server Python?")) {
-                socket.emit('server_reset_request');
-            }
+            window.openTacticalConfirm(
+                "ATTENZIONE CRITICA!\nVuoi forzare il riavvio del server Python?",
+                "RIAVVIO SERVER SOP",
+                "danger",
+                () => socket.emit('server_reset_request')
+            );
         };
 
         // ====================================================================
@@ -862,19 +965,29 @@ if (!window.__zuluMainInitialized) {
         const btnOta = document.getElementById('ota-update-btn');
         if (btnOta) {
             btnOta.addEventListener('click', () => {
-                if (activeInspectorId && confirm(`Avviare l'aggiornamento firmware OTA su ${activeInspectorId}? Il terminale si riavvierà automaticamente al termine.`)) {
-                    socket.emit('send_command', { target_id: activeInspectorId, command: { cmd: "TRIGGER_OTA" } });
-                    logSystem(`OTA: Inviato comando di aggiornamento a ${activeInspectorId}`);
-                }
+                if (!activeInspectorId) return;
+                window.openTacticalConfirm(
+                    `Avviare l'aggiornamento firmware OTA su ${activeInspectorId}?\nIl terminale si riavvierà automaticamente al termine.`,
+                    "AGGIORNAMENTO FIRMWARE OTA",
+                    "warning",
+                    () => {
+                        socket.emit('send_command', { target_id: activeInspectorId, command: { cmd: "TRIGGER_OTA" } });
+                        logSystem(`OTA: Inviato comando di aggiornamento a ${activeInspectorId}`);
+                    }
+                );
             });
         }
 
         const btnHardReset = document.getElementById('hard-reset-btn');
         if (btnHardReset) {
             btnHardReset.addEventListener('click', () => {
-                if (activeInspectorId && confirm(`Forzare il riavvio hardware (RESET) di ${activeInspectorId}?`)) {
-                    socket.emit('send_command', { target_id: activeInspectorId, command: { cmd: "RESET" } });
-                }
+                if (!activeInspectorId) return;
+                window.openTacticalConfirm(
+                    `Forzare il riavvio hardware (RESET) di ${activeInspectorId}?`,
+                    "HARDWARE RESET",
+                    "danger",
+                    () => socket.emit('send_command', { target_id: activeInspectorId, command: { cmd: "RESET" } })
+                );
             });
         }
 
@@ -907,16 +1020,22 @@ if (!window.__zuluMainInitialized) {
         });
 
         socket.on('mission_start_warning', (data) => {
-            if (confirm(data.msg)) {
-                data.original_request.force = true;
-                socket.emit('request_mission_start', data.original_request);
-            } else {
-                const btnStart = document.getElementById('btn-start-mission');
-                if (btnStart) {
-                    btnStart.classList.remove('disabled');
-                    btnStart.disabled = false;
+            window.openTacticalConfirm(
+                data.msg,
+                "AVVISO SQUADRE SBILANCIATE",
+                "warning",
+                () => {
+                    data.original_request.force = true;
+                    socket.emit('request_mission_start', data.original_request);
+                },
+                () => {
+                    const btnStart = document.getElementById('btn-start-mission');
+                    if (btnStart) {
+                        btnStart.classList.remove('disabled');
+                        btnStart.disabled = false;
+                    }
                 }
-            }
+            );
         });
 
         const btnTransmit = document.getElementById('btn-transmit-setup');
@@ -924,7 +1043,11 @@ if (!window.__zuluMainInitialized) {
             btnTransmit.addEventListener('click', () => {
                 const { mode, targetId, dur, commandData } = buildMissionConfig();
                 if (mode !== 'tdm' && !targetId) {
-                    alert("ATTENZIONE: Seleziona prima un terminale valido dal menu SELECT TARGET TERMINAL.");
+                    window.openTacticalAlert(
+                        "Seleziona prima un terminale valido dal menu SELECT TARGET TERMINAL.",
+                        "TERMINALE NON SELEZIONATO",
+                        "warning"
+                    );
                     return;
                 }
 
@@ -944,19 +1067,31 @@ if (!window.__zuluMainInitialized) {
             btnStartMission.addEventListener('click', () => {
                 const { mode, targetId, dur, commandData } = buildMissionConfig();
                 if (mode !== 'tdm' && !targetId) {
-                    alert("IMPOSSIBILE AVVIARE: Nessun terminale selezionato.");
+                    window.openTacticalAlert(
+                        "Nessun terminale selezionato. Scegli un nodo target prima di avviare la missione.",
+                        "IMPOSSIBILE AVVIARE",
+                        "danger"
+                    );
                     return;
                 }
 
                 const rosterPlayers = Object.values(arenaRoster || {});
                 if (rosterPlayers.length === 0) {
-                    alert("IMPOSSIBILE AVVIARE: Il Roster attivo è vuoto. Registra i giocatori e portali IN CAMPO.");
+                    window.openTacticalAlert(
+                        "Il Roster attivo è vuoto.\nRegistra gli operatori e portali IN CAMPO prima di iniziare.",
+                        "ROSTER VUOTO",
+                        "danger"
+                    );
                     return;
                 }
 
                 const outPlayers = rosterPlayers.filter(p => p.status !== 'IN');
                 if (outPlayers.length > 0) {
-                    alert(`IMPOSSIBILE AVVIARE: Ci sono ancora ${outPlayers.length} operatori FUORI CAMPO. Tutti i giocatori devono essere 'IN CAMPO' prima di iniziare.`);
+                    window.openTacticalAlert(
+                        `Ci sono ancora ${outPlayers.length} operatori FUORI CAMPO.\nTutti i giocatori devono risultare 'IN CAMPO' prima di iniziare la partita.`,
+                        "OPERATORI FUORI CAMPO",
+                        "danger"
+                    );
                     return;
                 }
 
@@ -1222,11 +1357,16 @@ if (!window.__zuluMainInitialized) {
         const current = missionPresets.find(p => p.id === selectedPresetId);
         if (!current) return;
 
-        if (confirm(`Eliminare definitivamente il preset "${current.name}"?`)) {
-            socket.emit('delete_preset', { id: current.id });
-            selectedPresetId = null;
-            setPresetStatus("PRESET ELIMINATO", "var(--sop-alert)");
-        }
+        window.openTacticalConfirm(
+            `Eliminare definitivamente il preset "${current.name}"?`,
+            "ELIMINA PRESET",
+            "danger",
+            () => {
+                socket.emit('delete_preset', { id: current.id });
+                selectedPresetId = null;
+                setPresetStatus("PRESET ELIMINATO", "var(--sop-alert)");
+            }
+        );
     };
 
     window.exportPresetsToFile = function() {
@@ -1274,12 +1414,20 @@ if (!window.__zuluMainInitialized) {
                     list = [parsed];
                 }
                 if (list.length === 0) {
-                    alert("File JSON non valido: nessun preset trovato.");
+                    window.openTacticalAlert(
+                        "File JSON non valido: nessun preset tattico trovato all'interno.",
+                        "ERRORE IMPORTAZIONE",
+                        "danger"
+                    );
                     return;
                 }
                 socket.emit('import_presets', { presets: list });
             } catch (err) {
-                alert(`Errore nella lettura del file JSON: ${err.message}`);
+                window.openTacticalAlert(
+                    `Errore nella lettura del file JSON:\n${err.message}`,
+                    "FILE JSON CORROTTO",
+                    "danger"
+                );
             }
         };
         reader.readAsText(file);
@@ -1335,7 +1483,11 @@ if (!window.__zuluMainInitialized) {
     });
 
     socket.on('server_restarting', () => {
-        alert("IL SERVER SI STA RIAVVIANDO. Attendi qualche secondo che il pannello torni online.");
+        window.openTacticalAlert(
+            "Il server SOP si sta riavviando.\nAttendi qualche secondo che il pannello torni online.",
+            "RIAVVIO SERVER IN CORSO",
+            "warning"
+        );
     });
 
     socket.on('ota_manifest_update', (manifest) => {
@@ -1417,7 +1569,7 @@ if (!window.__zuluMainInitialized) {
     socket.on('mission_start_success', () => showView('monitor', socket));
 
     socket.on('mission_start_error', (data) => {
-        alert(data.msg);
+        window.openTacticalAlert(data.msg, "ERRORE AVVIO MISSIONE", "danger");
         const btnStart = document.getElementById('btn-start-mission');
         if (btnStart) {
             btnStart.classList.remove('disabled');
@@ -1469,14 +1621,19 @@ if (!window.__zuluMainInitialized) {
         const uid = getCurrentProfileUid();
         const notes = document.getElementById('modal-op-notes').value;
         if (uid) socket.emit('save_notes', { uid: uid, notes: notes });
-        alert("Annotazioni tattiche registrate.");
+        window.openTacticalAlert("Annotazioni tattiche registrate nel database.", "NOTE SALVATE", "info");
     };
 
     window.resetOperatorStats = function() {
-        if (confirm("ATTENZIONE CRITICA: Vuoi azzerare definitivamente le partite e le vittorie di questo operatore?")) {
-            socket.emit('update_db_player', { uid: getCurrentProfileUid(), action: 'reset_stats' });
-            window.closeModal();
-        }
+        window.openTacticalConfirm(
+            "ATTENZIONE CRITICA:\nVuoi azzerare definitivamente le partite, le vittorie, le eliminazioni e il karma di questo operatore?",
+            "AZZERA STATISTICHE",
+            "danger",
+            () => {
+                socket.emit('update_db_player', { uid: getCurrentProfileUid(), action: 'reset_stats' });
+                window.closeModal();
+            }
+        );
     };
 
     window.modKarma = function(val) {
@@ -1531,23 +1688,40 @@ if (!window.__zuluMainInitialized) {
 
     window.toggleProStatus = function() {
         const uid = getCurrentProfileUid();
-        if (confirm("Vuoi cambiare il tipo di account (PRO / GUEST) per questa tessera?")) {
-            socket.emit('update_db_player', { uid: uid, action: 'toggle_pro' });
-            setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
-        }
+        window.openTacticalConfirm(
+            "Vuoi cambiare il tipo di account (PRO / GUEST) per questa tessera?",
+            "CAMBIO TIPO ACCOUNT",
+            "warning",
+            () => {
+                socket.emit('update_db_player', { uid: uid, action: 'toggle_pro' });
+                setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
+            }
+        );
     };
 
     window.purgeGuests = function() {
-        if (confirm("ATTENZIONE: Verranno azzerate statistiche, note, karma e foto di TUTTE le tessere GUEST. Il nome tornerà quello di default (OP-X). Continuare?")) {
-            socket.emit('purge_guests');
-            alert("Operazione di pulizia completata. Le tessere GUEST sono pronte per il prossimo evento.");
-        }
+        window.openTacticalConfirm(
+            "Verranno azzerate statistiche, note, karma e foto di TUTTE le tessere GUEST.\nIl nome tornerà quello di default (OP-X). Continuare?",
+            "PURGE TESSERE GUEST",
+            "danger",
+            () => {
+                socket.emit('purge_guests');
+                window.openTacticalAlert(
+                    "Operazione di pulizia completata.\nLe tessere GUEST sono pronte per il prossimo evento.",
+                    "PURGE COMPLETATO",
+                    "success"
+                );
+            }
+        );
     };
 
     window.resetDailyWins = function() {
-        if (confirm("ATTENZIONE: Vuoi azzerare i contatori delle vittorie odierne per ENTRAMBE le Fazioni?")) {
-            socket.emit('reset_daily_wins');
-        }
+        window.openTacticalConfirm(
+            "Vuoi azzerare i contatori delle vittorie odierne per ENTRAMBE le Fazioni?",
+            "RESET VITTORIE GIORNALIERE",
+            "warning",
+            () => socket.emit('reset_daily_wins')
+        );
     };
 
     let cropTargetType = 'operator';
@@ -1604,9 +1778,13 @@ if (!window.__zuluMainInitialized) {
     };
 
     window.deleteDevicePhoto = function() {
-        if (activeInspectorId && confirm("Vuoi rimuovere la foto associata a questo dispositivo?")) {
-            socket.emit('delete_device_photo', { id: activeInspectorId });
-        }
+        if (!activeInspectorId) return;
+        window.openTacticalConfirm(
+            "Vuoi rimuovere la foto associata a questo dispositivo?",
+            "RIMUOVI FOTO PROP",
+            "danger",
+            () => socket.emit('delete_device_photo', { id: activeInspectorId })
+        );
     };
 
     window.closeCropModal = function() {
@@ -1687,7 +1865,11 @@ if (!window.__zuluMainInitialized) {
         const asdTeam = document.getElementById('reg-asd').value.trim();
 
         if (!uid || !alias) {
-            alert("Attendi la scansione dell'UID sul Kiosk e inserisci un Nome.");
+            window.openTacticalAlert(
+                "Attendi la scansione dell'UID sul Kiosk e inserisci un Nome Operatore.",
+                "DATI REGISTRAZIONE MANCANTI",
+                "warning"
+            );
             return;
         }
 
@@ -1704,10 +1886,16 @@ if (!window.__zuluMainInitialized) {
 
     window.deleteOperatorPhoto = function() {
         const uid = getCurrentProfileUid();
-        if (uid && confirm("Vuoi eliminare la foto profilo di questo operatore?")) {
-            socket.emit('update_db_player', { uid: uid, action: 'delete_photo' });
-            setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
-        }
+        if (!uid) return;
+        window.openTacticalConfirm(
+            "Vuoi eliminare la foto profilo di questo operatore?",
+            "ELIMINA FOTO PROFILO",
+            "danger",
+            () => {
+                socket.emit('update_db_player', { uid: uid, action: 'delete_photo' });
+                setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
+            }
+        );
     };
 
     socket.on('raw_tag_scanned', (data) => {
