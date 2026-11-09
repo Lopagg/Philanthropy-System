@@ -414,7 +414,8 @@ def handle_connect():
     socketio.emit('roster_update', db_manager.get_full_roster())
     emit('database_update', db_manager.get_all_players())
     emit('ota_manifest_update', get_ota_manifest())
-
+    emit('presets_update', db_manager.get_all_presets())
+    
     # Se c'è una missione attiva o già configurata (SET_READY), sincronizza subito /tv e /monitor
     mc = game_engine.mission_control
     if mc.active_mission or game_engine.mission_ready_flag:
@@ -653,6 +654,27 @@ def handle_manual_scan():
     active_devs, _ = game_engine.registry.get_active_devices()
     socketio.emit('devices_update', active_devs)
     emit('ota_manifest_update', get_ota_manifest())
+
+@socketio.on('save_preset')
+@login_required
+def handle_save_preset(data):
+    name = data.get('name')
+    mode = data.get('mode')
+    config = data.get('config')
+    preset_id = data.get('id')
+    saved_id = db_manager.save_preset(name, mode, config, preset_id=preset_id)
+    if saved_id is not None:
+        socketio.emit('presets_update', db_manager.get_all_presets())
+        emit('preset_saved_ack', {'id': saved_id, 'name': str(name).strip().upper()})
+
+
+@socketio.on('delete_preset')
+@login_required
+def handle_delete_preset(data):
+    preset_id = data.get('id')
+    if preset_id is not None:
+        db_manager.delete_preset(preset_id)
+        socketio.emit('presets_update', db_manager.get_all_presets())
 
 
 @socketio.on('send_command')

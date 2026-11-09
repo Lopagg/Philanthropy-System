@@ -1,6 +1,6 @@
 <!-- ==========================================================================
      setup.html
-     Pannello di configurazione missione (S&D V1/V2 modulare, Domination, TDM).
+     Pannello di configurazione missione (Preset Regole, S&D V1/V2, Domination, TDM).
      ========================================================================== -->
 <div id="view-setup" class="view-panel hidden">
     <div class="sop-card setup-panel">
@@ -20,6 +20,33 @@
                 <div class="setup-roster-team">
                     <div class="setup-roster-label" id="setup-label-bravo">TEAM BRAVO</div>
                     <div class="setup-roster-count setup-roster-bravo" id="setup-bravo-count">0/0</div>
+                </div>
+            </div>
+
+            <!-- Barra Gestione Preset Tattici (Load / Save / Overwrite / Delete) -->
+            <div class="input-group-tactical" style="margin-bottom: 22px; background: rgba(0, 255, 204, 0.04); border: 1px solid var(--sop-dim); padding: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label class="setup-label" for="setup-preset-select" style="margin: 0; color: var(--sop-primary); letter-spacing: 2px;">
+                        📁 TACTICAL RULE PRESETS // LOADOUT
+                    </label>
+                    <span id="preset-status-msg" style="font-size: 11px; font-family: monospace; color: #888;">SELEZIONA O SALVA UN PRESET</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                    <select id="setup-preset-select" class="tactical-select" style="flex: 1; min-width: 240px; margin-bottom: 0;" onchange="onPresetSelectChange(this.value)">
+                        <option value="">-- Configurazione Manuale / Seleziona Preset --</option>
+                    </select>
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 8px 12px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="saveNewPreset()" title="Salva le regole attuali come nuovo preset">
+                        [ + SALVA NUOVO ]
+                    </button>
+                    <button type="button" id="btn-overwrite-preset" class="deck-btn hidden" style="margin: 0; padding: 8px 12px; font-size: 12px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="overwriteCurrentPreset()" title="Sovrascrivi il preset selezionato con le modifiche attuali">
+                        [ 💾 AGGIORNA ]
+                    </button>
+                    <button type="button" id="btn-rename-preset" class="deck-btn hidden" style="margin: 0; padding: 8px 10px; font-size: 12px;" onclick="renameCurrentPreset()" title="Rinomina il preset selezionato">
+                        [ ✏️ RINOMINA ]
+                    </button>
+                    <button type="button" id="btn-delete-preset" class="deck-btn btn-danger hidden" style="margin: 0; padding: 8px 10px; font-size: 12px;" onclick="deleteCurrentPreset()" title="Elimina definitivamente il preset selezionato">
+                        [ 🗑️ ]
+                    </button>
                 </div>
             </div>
             

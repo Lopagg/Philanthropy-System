@@ -912,6 +912,244 @@ if (!window.__zuluMainInitialized) {
         refreshActiveInspector();
     });
 
+    // ========================================================================
+    // GESTIONE PRESET DI CONFIGURAZIONE MISSIONE (LOAD / SAVE / UPDATE / DEL)
+    // ========================================================================
+
+    let missionPresets = [];
+    let selectedPresetId = null;
+
+    function setPresetStatus(text, color = '#888') {
+        const el = document.getElementById('preset-status-msg');
+        if (el) {
+            el.textContent = text;
+            el.style.color = color;
+        }
+    }
+
+    function updatePresetActionButtons() {
+        const hasSelection = (selectedPresetId !== null);
+        document.getElementById('btn-overwrite-preset')?.classList.toggle('hidden', !hasSelection);
+        document.getElementById('btn-rename-preset')?.classList.toggle('hidden', !hasSelection);
+        document.getElementById('btn-delete-preset')?.classList.toggle('hidden', !hasSelection);
+    }
+
+    function renderPresetDropdown() {
+        const selectEl = document.getElementById('setup-preset-select');
+        if (!selectEl) return;
+
+        selectEl.innerHTML = '<option value="">-- Configurazione Manuale / Seleziona Preset --</option>';
+        const modeBadges = { 'sd': 'S&D', 'dom': 'DOM', 'tdm': 'TDM' };
+
+        missionPresets.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = String(p.id);
+            const badge = modeBadges[p.mode] || p.mode.toUpperCase();
+            opt.textContent = `[${badge}] ${p.name}`;
+            selectEl.appendChild(opt);
+        });
+
+        if (selectedPresetId && missionPresets.some(p => p.id === selectedPresetId)) {
+            selectEl.value = String(selectedPresetId);
+        } else {
+            selectedPresetId = null;
+            selectEl.value = "";
+        }
+        updatePresetActionButtons();
+    }
+
+    function extractCurrentSetupPreset() {
+        const mode = document.getElementById('setup-mode-select')?.value || 'sd';
+        if (mode === 'sd') {
+            return {
+                attacker:         document.getElementById('sd-attacker-team')?.value || 'ALPHA',
+                game_duration:    parseInt(document.getElementById('sd-game-dur')?.value) || 20,
+                bomb_time:        parseInt(document.getElementById('sd-bomb-time')?.value) || 10,
+                fx_smoke:         document.getElementById('sd-v2-fx-smoke')?.value === 'true',
+                fx_relay:         document.getElementById('sd-v2-fx-relay')?.value === 'true',
+                arm_fail_mode:    document.getElementById('sd-v2-arm-fail-mode')?.value || 'RETRY_STEP',
+                defuse_fail_mode: document.getElementById('sd-v2-defuse-fail-mode')?.value || 'RETRY_STEP',
+                v2_arm_seq:       JSON.parse(JSON.stringify(window.v2ArmSequence || [])),
+                v2_defuse_seq:    JSON.parse(JSON.stringify(window.v2DefuseSequence || [])),
+                arm_time:         parseInt(document.getElementById('sd-arm-time')?.value) || 5,
+                defuse_time:      parseInt(document.getElementById('sd-defuse-time')?.value) || 10,
+                use_arm_pin:      document.getElementById('sd-use-arm-pin')?.value || 'true',
+                use_defuse_pin:   document.getElementById('sd-use-defuse-pin')?.value || 'true',
+                arm_pin:          document.getElementById('sd-arm-pin')?.value || '1234',
+                defuse_pin:       document.getElementById('sd-defuse-pin')?.value || '4321'
+            };
+        } else if (mode === 'dom') {
+            return {
+                game_duration:    parseInt(document.getElementById('dom-game-dur')?.value) || 15,
+                fx_smoke:         document.getElementById('dom-v2-fx-smoke')?.value === 'true',
+                fx_relay:         document.getElementById('dom-v2-fx-relay')?.value === 'true',
+                v2_dom_alpha_seq: JSON.parse(JSON.stringify(window.v2DomAlphaSequence || [])),
+                v2_dom_bravo_seq: JSON.parse(JSON.stringify(window.v2DomBravoSequence || [])),
+                capture_time:     parseInt(document.getElementById('dom-capture-time')?.value) || 10,
+                countdown:        parseInt(document.getElementById('dom-countdown')?.value) || 10
+            };
+        } else {
+            return {
+                game_duration:    parseInt(document.getElementById('tdm-game-dur')?.value) || 15
+            };
+        }
+    }
+
+    function applyPresetToUI(preset) {
+        if (!preset || !preset.config) return;
+        const cfg = preset.config;
+        const modeSelect = document.getElementById('setup-mode-select');
+        if (modeSelect) {
+            modeSelect.value = preset.mode || 'sd';
+            modeSelect.dispatchEvent(new Event('change'));
+        }
+
+        const setVal = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && val !== undefined && val !== null) el.value = String(val);
+        };
+
+        if (preset.mode === 'sd') {
+            setVal('sd-attacker-team',       cfg.attacker || 'ALPHA');
+            setVal('sd-game-dur',            cfg.game_duration ?? 20);
+            setVal('sd-bomb-time',           cfg.bomb_time ?? 10);
+            setVal('sd-v2-fx-smoke',         cfg.fx_smoke ? 'true' : 'false');
+            setVal('sd-v2-fx-relay',         cfg.fx_relay ? 'true' : 'false');
+            setVal('sd-v2-arm-fail-mode',    cfg.arm_fail_mode || 'RETRY_STEP');
+            setVal('sd-v2-defuse-fail-mode', cfg.defuse_fail_mode || 'RETRY_STEP');
+            setVal('sd-arm-time',            cfg.arm_time ?? 5);
+            setVal('sd-defuse-time',         cfg.defuse_time ?? 10);
+            setVal('sd-use-arm-pin',         cfg.use_arm_pin ?? 'true');
+            setVal('sd-use-defuse-pin',      cfg.use_defuse_pin ?? 'true');
+            setVal('sd-arm-pin',             cfg.arm_pin ?? '1234');
+            setVal('sd-defuse-pin',          cfg.defuse_pin ?? '4321');
+
+            if (Array.isArray(cfg.v2_arm_seq) && cfg.v2_arm_seq.length > 0) {
+                window.v2ArmSequence = JSON.parse(JSON.stringify(cfg.v2_arm_seq));
+            }
+            if (Array.isArray(cfg.v2_defuse_seq) && cfg.v2_defuse_seq.length > 0) {
+                window.v2DefuseSequence = JSON.parse(JSON.stringify(cfg.v2_defuse_seq));
+            }
+        } else if (preset.mode === 'dom') {
+            setVal('dom-game-dur',       cfg.game_duration ?? 15);
+            setVal('dom-v2-fx-smoke',    cfg.fx_smoke ? 'true' : 'false');
+            setVal('dom-v2-fx-relay',    cfg.fx_relay ? 'true' : 'false');
+            setVal('dom-capture-time',   cfg.capture_time ?? 10);
+            setVal('dom-countdown',      cfg.countdown ?? 10);
+
+            if (Array.isArray(cfg.v2_dom_alpha_seq) && cfg.v2_dom_alpha_seq.length > 0) {
+                window.v2DomAlphaSequence = JSON.parse(JSON.stringify(cfg.v2_dom_alpha_seq));
+            }
+            if (Array.isArray(cfg.v2_dom_bravo_seq) && cfg.v2_dom_bravo_seq.length > 0) {
+                window.v2DomBravoSequence = JSON.parse(JSON.stringify(cfg.v2_dom_bravo_seq));
+            }
+        } else if (preset.mode === 'tdm') {
+            setVal('tdm-game-dur', cfg.game_duration ?? 15);
+        }
+
+        renderV2Sequences();
+
+        // Richiede nuovamente [1. TRANSMIT CONFIG] quando si cambia preset per sicurezza operativa
+        const btnStart = document.getElementById('btn-start-mission');
+        if (btnStart) {
+            btnStart.disabled = true;
+            btnStart.classList.add('disabled');
+        }
+    }
+
+    window.onPresetSelectChange = function(val) {
+        if (!val) {
+            selectedPresetId = null;
+            updatePresetActionButtons();
+            setPresetStatus("MODALITÀ CONFIGURAZIONE MANUALE", "#888");
+            return;
+        }
+        const idNum = parseInt(val);
+        const found = missionPresets.find(p => p.id === idNum);
+        if (found) {
+            selectedPresetId = found.id;
+            applyPresetToUI(found);
+            updatePresetActionButtons();
+            setPresetStatus(`PRESET CARICATO: ${found.name}`, "var(--sop-primary)");
+            logSystem(`PRESET CARICATO: [${found.mode.toUpperCase()}] ${found.name}`);
+        }
+    };
+
+    window.saveNewPreset = function() {
+        const mode = document.getElementById('setup-mode-select')?.value || 'sd';
+        const defaultName = mode === 'sd' ? 'S&D CUSTOM' : (mode === 'dom' ? 'DOMINIO CUSTOM' : 'TDM CUSTOM');
+        const name = prompt("Inserisci il nome per il nuovo Preset di Regole:", defaultName);
+        if (!name || name.trim() === '') return;
+
+        const cfg = extractCurrentSetupPreset();
+        socket.emit('save_preset', {
+            id: null,
+            name: name.trim().toUpperCase(),
+            mode: mode,
+            config: cfg
+        });
+    };
+
+    window.overwriteCurrentPreset = function() {
+        if (!selectedPresetId) return;
+        const current = missionPresets.find(p => p.id === selectedPresetId);
+        if (!current) return;
+
+        if (!confirm(`Vuoi sovrascrivere il preset "${current.name}" con le regole attuali?`)) return;
+        const mode = document.getElementById('setup-mode-select')?.value || current.mode;
+        const cfg = extractCurrentSetupPreset();
+        socket.emit('save_preset', {
+            id: current.id,
+            name: current.name,
+            mode: mode,
+            config: cfg
+        });
+    };
+
+    window.renameCurrentPreset = function() {
+        if (!selectedPresetId) return;
+        const current = missionPresets.find(p => p.id === selectedPresetId);
+        if (!current) return;
+
+        const newName = prompt("Inserisci il nuovo nome del Preset:", current.name);
+        if (!newName || newName.trim() === '') return;
+
+        const mode = document.getElementById('setup-mode-select')?.value || current.mode;
+        const cfg = extractCurrentSetupPreset();
+        socket.emit('save_preset', {
+            id: current.id,
+            name: newName.trim().toUpperCase(),
+            mode: mode,
+            config: cfg
+        });
+    };
+
+    window.deleteCurrentPreset = function() {
+        if (!selectedPresetId) return;
+        const current = missionPresets.find(p => p.id === selectedPresetId);
+        if (!current) return;
+
+        if (confirm(`Eliminare definitivamente il preset "${current.name}"?`)) {
+            socket.emit('delete_preset', { id: current.id });
+            selectedPresetId = null;
+            setPresetStatus("PRESET ELIMINATO", "var(--sop-alert)");
+        }
+    };
+
+    socket.on('presets_update', (presetsList) => {
+        missionPresets = Array.isArray(presetsList) ? presetsList : [];
+        renderPresetDropdown();
+    });
+
+    socket.on('preset_saved_ack', (data) => {
+        if (data && data.id) {
+            selectedPresetId = data.id;
+            renderPresetDropdown();
+            setPresetStatus(`SALVATO: ${data.name}`, "var(--sop-success)");
+            logSystem(`PRESET SALVATO: ${data.name}`);
+        }
+    });
+
     socket.on('factions_update', (factions) => {
         Object.assign(currentFactions, factions);
         applyFactionStyles(currentFactions);

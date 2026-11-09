@@ -123,6 +123,76 @@ def init_db():
         c.execute("UPDATE factions_config SET hex_color = '#ff3333' WHERE team_id = 'ALPHA' AND hex_color IS NULL")
         c.execute("UPDATE factions_config SET hex_color = '#55ff55' WHERE team_id = 'BRAVO' AND hex_color IS NULL")
         c.execute("UPDATE factions_config SET daily_wins = 0 WHERE daily_wins IS NULL")
+
+        # 3. Tabella Preset di Configurazione Missione
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS mission_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                mode TEXT,
+                config_json TEXT,
+                updated_at TEXT
+            )
+        ''')
+
+        # Se non esistono ancora preset, inserisce 3 preset tattici di base
+        c.execute("SELECT COUNT(*) FROM mission_presets")
+        if (c.fetchone()[0] or 0) == 0:
+            import json as _json
+            default_presets = [
+                (
+                    "S&D - CLASSICO (SOLO HOLD)",
+                    "sd",
+                    _json.dumps({
+                        "attacker": "ALPHA", "game_duration": 20, "bomb_time": 10,
+                        "fx_smoke": False, "fx_relay": False,
+                        "arm_fail_mode": "RETRY_STEP", "defuse_fail_mode": "RETRY_STEP",
+                        "v2_arm_seq": [{"type": "HOLD", "val": 5, "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""}],
+                        "v2_defuse_seq": [{"type": "HOLD", "val": 10, "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""}],
+                        "arm_time": 5, "defuse_time": 10, "use_arm_pin": "false", "use_defuse_pin": "false",
+                        "arm_pin": "1234", "defuse_pin": "4321"
+                    })
+                ),
+                (
+                    "S&D - HARDCORE (CHIAVE + PIN + ESPLOSIONE)",
+                    "sd",
+                    _json.dumps({
+                        "attacker": "ALPHA", "game_duration": 20, "bomb_time": 8,
+                        "fx_smoke": True, "fx_relay": True,
+                        "arm_fail_mode": "RESTART_SEQ", "defuse_fail_mode": "EXPLODE",
+                        "v2_arm_seq": [
+                            {"type": "KEY", "val": "K1_ON", "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""},
+                            {"type": "PIN", "val": "7355", "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""},
+                            {"type": "HOLD", "val": 5, "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""}
+                        ],
+                        "v2_defuse_seq": [
+                            {"type": "RFID", "val": "", "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""},
+                            {"type": "KEY", "val": "K1_OFF", "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""},
+                            {"type": "PIN", "val": "7355", "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""},
+                            {"type": "HOLD", "val": 10, "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""}
+                        ],
+                        "arm_time": 5, "defuse_time": 10, "use_arm_pin": "true", "use_defuse_pin": "true",
+                        "arm_pin": "7355", "defuse_pin": "7355"
+                    })
+                ),
+                (
+                    "DOMINIO - CONQUISTA STANDARD (10s)",
+                    "dom",
+                    _json.dumps({
+                        "game_duration": 15, "fx_smoke": False, "fx_relay": False,
+                        "v2_dom_alpha_seq": [{"type": "HOLD", "val": 10, "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""}],
+                        "v2_dom_bravo_seq": [{"type": "HOLD", "val": 10, "rfidMode": "TEAM", "rfidPlayers": [], "rfidCustomUid": ""}],
+                        "capture_time": 10, "countdown": 10
+                    })
+                )
+            ]
+            now_str = get_current_time()
+            for p_name, p_mode, p_cfg in default_presets:
+                c.execute(
+                    "INSERT OR IGNORE INTO mission_presets (name, mode, config_json, updated_at) VALUES (?, ?, ?, ?)",
+                    (p_name, p_mode, p_cfg, now_str)
+                )
+
         conn.commit()
 
 
@@ -580,3 +650,79 @@ def process_match_stats(winner_state, game_mode=None):
                 logger.info(f"[STATS SALVATE] PAREGGIO: +1 Partita aggiunta a {p_count} giocatori.")
     except Exception as e:
         logger.error(f"[ERROR STATS] {e}")
+
+# =============================================================================
+# GESTIONE PRESET DI CONFIGURAZIONE MISSIONE
+# =============================================================================
+
+def get_all_presets():
+    """Restituisce la lista di tutti i preset salvati ordinati per modalità e nome."""
+    import json as _json
+    with get_db_connection(use_row_factory=True) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, name, mode, config_json, updated_at FROM mission_presets ORDER BY mode, name")
+        rows = c.fetchall()
+        presets = []
+        for r in rows:
+            try:
+                cfg = _json.loads(r['config_json']) if r['config_json'] else {}
+            except Exception:
+                cfg = {}
+            presets.append({
+                'id': r['id'],
+                'name': r['name'],
+                'mode': r['mode'],
+                'config': cfg,
+                'updated_at': r['updated_at']
+            })
+        return presets
+
+
+def save_preset(name, mode, config_dict, preset_id=None):
+    """Crea un nuovo preset o aggiorna uno esistente (per id o per nome)."""
+    import json as _json
+    clean_name = str(name or "").strip().upper()
+    clean_mode = str(mode or "sd").strip().lower()
+    if not clean_name:
+        return None
+
+    cfg_str = _json.dumps(config_dict or {})
+    now_str = get_current_time()
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if preset_id is not None:
+            c.execute("SELECT id FROM mission_presets WHERE id = ?", (int(preset_id),))
+            if c.fetchone():
+                c.execute(
+                    "UPDATE mission_presets SET name = ?, mode = ?, config_json = ?, updated_at = ? WHERE id = ?",
+                    (clean_name, clean_mode, cfg_str, now_str, int(preset_id))
+                )
+                conn.commit()
+                return int(preset_id)
+
+        # Se esiste già un preset con lo stesso identico nome, lo aggiorna
+        c.execute("SELECT id FROM mission_presets WHERE name = ?", (clean_name,))
+        existing = c.fetchone()
+        if existing:
+            c.execute(
+                "UPDATE mission_presets SET mode = ?, config_json = ?, updated_at = ? WHERE id = ?",
+                (clean_mode, cfg_str, now_str, existing[0])
+            )
+            conn.commit()
+            return existing[0]
+
+        c.execute(
+            "INSERT INTO mission_presets (name, mode, config_json, updated_at) VALUES (?, ?, ?, ?)",
+            (clean_name, clean_mode, cfg_str, now_str)
+        )
+        new_id = c.lastrowid
+        conn.commit()
+        return new_id
+
+
+def delete_preset(preset_id):
+    """Elimina un preset dal database tramite il suo ID."""
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM mission_presets WHERE id = ?", (int(preset_id),))
+        conn.commit()
