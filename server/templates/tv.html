@@ -1,8 +1,9 @@
 <!-- ==========================================================================
      tv.html
      Dashboard pubblica a tutto schermo per la Sala d'Attesa / Spettatori (16:9).
-     Sincronizza in tempo reale timer, stato bomba/dominio, roster in campo con
-     ridimensionamento dinamico del font e regole di missione (V1 e V2).
+     Sincronizza in tempo reale timer, meteo tattico, stato bomba/dominio,
+     roster in campo (con stato check-in Kiosk e ridimensionamento dinamico del font)
+     e regole complete di missione (sequenze modulari V2, penalità errore ed effetti).
      ========================================================================== -->
 <!DOCTYPE html>
 <html lang="it">
@@ -41,7 +42,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 30px;
+            padding: 12px 30px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
         }
 
@@ -52,11 +53,12 @@
             letter-spacing: 6px; 
             text-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
             font-weight: 700;
+            text-align: center;
         }
         
         .tv-grid {
             display: grid;
-            grid-template-columns: 1.3fr 1.6fr 0.9fr; 
+            grid-template-columns: 1.3fr 1.6fr 0.95fr; 
             gap: 25px;
             height: 100%;
             min-height: 0;
@@ -87,6 +89,11 @@
             padding: 10px 40px;
             margin-top: 15px;
             box-shadow: 0 0 10px rgba(255, 51, 51, 0.2), inset 0 0 10px rgba(255, 51, 51, 0.15);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .tv-bomb-box.critical {
+            box-shadow: 0 0 28px rgba(255, 51, 51, 0.65), inset 0 0 18px rgba(255, 51, 51, 0.35);
         }
         
         .tv-bomb-huge { 
@@ -130,8 +137,9 @@
             padding-bottom: 5px;
             margin-bottom: 10px;
         }
-        .tv-roster-name  { font-size: 3.5rem; color: #ccc; font-weight: bold; }
-        .tv-roster-count { font-size: 6.5rem; font-weight: bold; line-height: 1; }
+        .tv-roster-name  { font-size: 3.2rem; color: #ccc; font-weight: bold; }
+        .tv-roster-sub   { font-size: 1.1rem; color: #888; letter-spacing: 1px; font-family: monospace; display: block; margin-top: 2px; }
+        .tv-roster-count { font-size: 6rem; font-weight: bold; line-height: 1; }
         
         .tv-roster-list {
             list-style: none;
@@ -162,7 +170,7 @@
             align-items: center;
             padding: 15px 0;
             border-bottom: 1px solid #333;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         .daily-team  { text-align: center; }
         .daily-score { font-size: 4.5rem; font-weight: bold; line-height: 1; }
@@ -173,16 +181,16 @@
             align-items: center;
             gap: 12px;
             border-bottom: 1px solid #333;
-            padding: 10px 0;
-            font-size: 1.3rem;
+            padding: 9px 0;
+            font-size: 1.25rem;
         }
         .tv-rule-label { color: #888; flex-shrink: 0; }
-        .tv-rule-val   { color: var(--sop-primary); font-weight: bold; font-size: 1.4rem; text-align: right; word-break: break-word; }
+        .tv-rule-val   { color: var(--sop-primary); font-weight: bold; font-size: 1.35rem; text-align: right; word-break: break-word; }
         
         #tv-log {
             font-size: 1.1rem;
             color: var(--sop-dim); 
-            height: 140px;
+            height: 135px;
             overflow: hidden; 
             display: flex;
             flex-direction: column;
@@ -212,15 +220,30 @@
     </div>
 
     <div class="tv-container">
-        <!-- Header Superiore -->
+        <!-- Header Superiore con Logo, Modalità, Meteo Locale e Orologio/Data -->
         <header class="tv-header sop-card">
             <div class="logo-box">
                 <span class="logo-text">PHILANTHROPY</span>
                 <span class="logo-sub">SPECTATOR DISPLAY</span>
             </div>
+
             <h1 class="tv-title" id="tv-mode-title">STANDBY</h1>
-            <div class="hud-center-group" style="margin: 0;">
-                <div id="tv-clock" class="hud-text" style="font-size: 3.2rem; font-weight: bold; color: var(--sop-primary); text-shadow: 0 0 15px rgba(0, 255, 204, 0.4); letter-spacing: 3px; line-height: 1;">00:00:00</div>
+
+            <div style="display: flex; align-items: center; gap: 28px;">
+                <!-- Widget Meteo Locale -->
+                <div style="display: flex; align-items: center; gap: 10px; border-right: 2px solid rgba(0, 255, 204, 0.25); padding-right: 25px;">
+                    <img id="tv-weather-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDBmZmNjIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEyIDJ2MiIvPjxwYXRoIGQ9Ik0xMiAyMHYyIi8+PHBhdGggZD0ibTQuOTMgNC45MyAxLjQxIDEuNDEiLz48cGF0aCBkPSJtMTcuNjYgMTcuNjYgMS40MSAxLjQxIi8+PHBhdGggZD0iTTIgMTJoMiIvPjxwYXRoIGQ9Ik0yMCAxMmgyIi8+PHBhdGggZD0ibTYuMzQgMTcuNjYtMS40MSAxLjQxIi8+PHBhdGggZD0ibTE5LjA3 NC45My0xLjQxIDEuNDEiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0Ii8+PC9zdmc+" alt="Meteo" style="width: 36px; height: 36px; filter: drop-shadow(0 0 6px var(--sop-primary));">
+                    <div>
+                        <span style="font-size: 11px; color: #888; letter-spacing: 2px; display: block;">METEO CAMPO</span>
+                        <div id="tv-weather-display" style="font-size: 1.35rem; color: var(--sop-secondary); text-shadow: 0 0 8px var(--sop-secondary); font-weight: bold;">--°C // SCANNING...</div>
+                    </div>
+                </div>
+
+                <!-- Orologio e Data -->
+                <div class="hud-center-group" style="margin: 0; text-align: right;">
+                    <div id="tv-clock" class="hud-text" style="font-size: 3rem; font-weight: bold; color: var(--sop-primary); text-shadow: 0 0 15px rgba(0, 255, 204, 0.4); letter-spacing: 3px; line-height: 1;">00:00:00</div>
+                    <div id="tv-date" style="font-size: 0.9rem; color: #aaa; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px;">CARICAMENTO DATA...</div>
+                </div>
             </div>
         </header>
 
@@ -235,12 +258,18 @@
                 </div>
                 
                 <div class="sop-card tv-widget" style="flex: 1.2;">
-                    <div class="widget-header">ACTIVE OPERATORS IN FIELD</div>
+                    <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>ACTIVE OPERATORS IN FIELD</span>
+                        <span id="tv-checkin-badge" style="font-size: 1.1rem; color: var(--sop-dim); font-family: monospace;">ROSTER: 0/0</span>
+                    </div>
                     <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 15px 10px 0 10px; min-height: 0;">
                         
                         <div class="tv-roster-row alpha" style="margin-bottom: 0; min-height: 0;">
                             <div class="tv-roster-header">
-                                <span class="tv-roster-name" id="tv-name-alpha">TEAM ALPHA</span>
+                                <div>
+                                    <span class="tv-roster-name" id="tv-name-alpha">TEAM ALPHA</span>
+                                    <span class="tv-roster-sub" id="tv-sub-alpha">IN CAMPO: 0 / 0</span>
+                                </div>
                                 <span id="tv-op-alpha" class="tv-roster-count count-alpha">0</span>
                             </div>
                             <ul id="tv-list-alpha" class="tv-roster-list alpha"></ul>
@@ -248,7 +277,10 @@
                         
                         <div class="tv-roster-row bravo" style="margin-bottom: 0; min-height: 0;">
                             <div class="tv-roster-header">
-                                <span class="tv-roster-name" id="tv-name-bravo">TEAM BRAVO</span>
+                                <div>
+                                    <span class="tv-roster-name" id="tv-name-bravo">TEAM BRAVO</span>
+                                    <span class="tv-roster-sub" id="tv-sub-bravo">IN CAMPO: 0 / 0</span>
+                                </div>
                                 <span id="tv-op-bravo" class="tv-roster-count count-bravo">0</span>
                             </div>
                             <ul id="tv-list-bravo" class="tv-roster-list bravo"></ul>
@@ -262,18 +294,18 @@
             <div class="sop-card tv-widget">
                 <div class="widget-header" style="text-align: center; font-size: 1.6rem; border-bottom: 2px solid var(--sop-primary);">TACTICAL FEED</div>
                 
-                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 20px;">
                     <div style="font-size: 1.8rem; color: #888; letter-spacing: 2px;">CURRENT STATUS</div>
                     <div id="tv-tac-status" class="tv-status-huge" style="color: var(--sop-primary);">WAITING FOR DATA</div>
                     
-                    <div id="tv-bomb-container" style="display: none; width: 100%; text-align: center; margin-top: 30px;">
+                    <div id="tv-bomb-container" style="display: none; width: 100%; text-align: center; margin-top: 25px;">
                         <div style="font-size: 1.8rem; color: var(--sop-alert); letter-spacing: 3px;">DETONATION SEQUENCE</div>
-                        <div class="tv-bomb-box">
+                        <div id="tv-bomb-box" class="tv-bomb-box">
                             <div id="tv-bomb-timer" class="tv-bomb-huge">--:--</div>
                         </div>
                     </div>
 
-                    <div id="tv-dom-container" style="display: none; width: 100%; margin-top: 40px;">
+                    <div id="tv-dom-container" style="display: none; width: 100%; margin-top: 35px;">
                         <div style="display: flex; justify-content: space-around; align-items: center; width: 100%;">
                             <div style="text-align: center;">
                                 <div style="font-size: 1.8rem; color: var(--team-a-color); letter-spacing: 2px;" id="tv-dom-lbl-a">ALPHA SCORE</div>
@@ -294,7 +326,7 @@
                             <span id="tv-lbl-prog-1" style="color: var(--sop-alert); font-weight: bold; font-size: 1.5rem; letter-spacing: 1px;">ARMING PROGRESS</span>
                         </div>
                         <div class="progress-track" style="height: 30px; background: #111; border-radius: 15px; overflow: hidden; border: 1px solid #333;">
-                            <div id="tv-prog-1" class="progress-fill fill-red" style="width: 0%; height: 100%; transition: width 0.2s;"></div>
+                            <div id="tv-prog-1" class="progress-fill fill-red" style="width: 0%; height: 100%; transition: width 0.15s;"></div>
                         </div>
                     </div>
                     <div>
@@ -302,7 +334,7 @@
                             <span id="tv-lbl-prog-2" style="color: var(--sop-success); font-weight: bold; font-size: 1.5rem; letter-spacing: 1px;">DEFUSING PROGRESS</span>
                         </div>
                         <div class="progress-track" style="height: 30px; background: #111; border-radius: 15px; overflow: hidden; border: 1px solid #333;">
-                            <div id="tv-prog-2" class="progress-fill fill-green" style="width: 0%; height: 100%; transition: width 0.2s;"></div>
+                            <div id="tv-prog-2" class="progress-fill fill-green" style="width: 0%; height: 100%; transition: width 0.15s;"></div>
                         </div>
                     </div>
                 </div>
@@ -342,15 +374,35 @@
 
     <script>
         let currentFactions = { 
-            ALPHA: { name: 'ALPHA', color: '#ff3333' }, 
-            BRAVO: { name: 'BRAVO', color: '#55ff55' } 
+            ALPHA: { name: 'ALPHA', color: '#ff3333', daily_wins: 0 }, 
+            BRAVO: { name: 'BRAVO', color: '#55ff55', daily_wins: 0 } 
         };
         let currentTvMode = null;
+        let lastRulesPayload = null;
+        let lastLoggedState = null;
         let renderedRoster = new Set();
+        let progDebounce1 = null;
+        let progDebounce2 = null;
+
+        const tacticalWeatherIcons = {
+            "CLEAR": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4.2'/><line x1='12' y1='2.5' x2='12' y2='4.5'/><line x1='12' y1='19.5' x2='12' y2='21.5'/><line x1='5.28' y1='5.28' x2='6.7' y2='6.7'/><line x1='17.3' y1='17.3' x2='18.72' y2='18.72'/><line x1='2.5' y1='12' x2='4.5' y2='12'/><line x1='19.5' y1='12' x2='21.5' y2='12'/><line x1='5.28' y1='18.72' x2='6.7' y2='17.3'/><line x1='17.3' y1='6.7' x2='18.72' y2='5.28'/></svg>",
+            "CLEAR_NIGHT": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M19 15.5A7.5 7.5 0 0 1 8.5 5a8.5 8.5 0 1 0 10.5 10.5Z'/><line x1='13' y1='2.5' x2='13' y2='6.5'/><line x1='11' y1='4.5' x2='15' y2='4.5'/><line x1='18.5' y1='7' x2='18.5' y2='11'/><line x1='16.5' y1='9' x2='20.5' y2='9'/></svg>",
+            "CLOUDS": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M7 18a4.2 4.2 0 0 1-.8-8.32A5.8 5.8 0 0 1 17.6 9.5 4.25 4.25 0 0 1 17.5 18H7Z'/></svg>",
+            "CLOUDS_NIGHT": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 20a3.5 3.5 0 0 1-.65-6.94 4.8 4.8 0 0 1 9.5-.16A3.5 3.5 0 0 1 14.8 20H6Z'/><path d='M12.2 7.2A6.5 6.5 0 0 1 20.8 3.8a6.5 6.5 0 0 0 0 11.8'/></svg>",
+            "FOG": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M7 15a4 4 0 0 1-.75-7.93A5.5 5.5 0 0 1 17.1 6.9 4 4 0 0 1 17 15H7Z'/><line x1='3' y1='18' x2='7' y2='18'/><line x1='9.5' y1='18' x2='21' y2='18'/><line x1='5' y1='21' x2='12' y2='21'/><line x1='15.5' y1='21' x2='19.5' y2='21'/></svg>",
+            "RAIN": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M7 15a4 4 0 0 1-.75-7.93A5.5 5.5 0 0 1 17.1 6.9 4 4 0 0 1 17 15H7Z'/><line x1='8' y1='18' x2='6.2' y2='21.5'/><line x1='12' y1='18' x2='10.2' y2='21.5'/><line x1='16' y1='18' x2='14.2' y2='21.5'/></svg>",
+            "SHOWERS": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 15.2A4.2 4.2 0 0 1 6.2 7.3a5.8 5.8 0 0 1 11.4-.2 4.25 4.25 0 0 1 1.4 8.1'/><line x1='8' y1='11.5' x2='8' y2='14.5'/><line x1='8' y1='17.5' x2='8' y2='20.5'/><line x1='12' y1='12.5' x2='12' y2='15.5'/><line x1='12' y1='18.5' x2='12' y2='21.5'/><line x1='16' y1='11.5' x2='16' y2='14.5'/><line x1='16' y1='17.5' x2='16' y2='20.5'/></svg>",
+            "STORM": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 16.2A4.2 4.2 0 0 1 6.2 7.8a5.8 5.8 0 0 1 11.4-.2 4.25 4.25 0 0 1 .4 8.6'/><polyline points='13 11 9.5 16.5 14.5 16.5 11 22'/></svg>",
+            "SNOW": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><line x1='12' y1='2.5' x2='12' y2='21.5'/><line x1='2.5' y1='12' x2='21.5' y2='12'/><polyline points='8 4 12 8 16 4'/><polyline points='8 20 12 16 16 20'/><polyline points='4 8 8 12 4 16'/><polyline points='20 8 16 12 20 16'/></svg>",
+            "DEFAULT": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/></svg>"
+        };
         
-        // Orologio in tempo reale
+        // Orologio e Data in tempo reale
+        const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         const updateTvClock = () => {
-            document.getElementById('tv-clock').textContent = new Date().toLocaleTimeString('it-IT', { hour12: false });
+            const now = new Date();
+            document.getElementById('tv-clock').textContent = now.toLocaleTimeString('it-IT', { hour12: false });
+            document.getElementById('tv-date').textContent = now.toLocaleDateString('it-IT', dateOptions).toUpperCase();
         };
         updateTvClock();
         setInterval(updateTvClock, 1000);
@@ -372,6 +424,23 @@
             const s = seconds % 60;
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         };
+
+        function setTvProgressBar(barId, widthPct, isActive, slotIndex) {
+            const barEl = document.getElementById(barId);
+            if (!barEl) return;
+
+            if (isActive) {
+                if (slotIndex === 1 && progDebounce1) { clearTimeout(progDebounce1); progDebounce1 = null; }
+                if (slotIndex === 2 && progDebounce2) { clearTimeout(progDebounce2); progDebounce2 = null; }
+                barEl.style.width = `${widthPct}%`;
+            } else if (barEl.style.width !== '0%') {
+                if (slotIndex === 1 && !progDebounce1) {
+                    progDebounce1 = setTimeout(() => { barEl.style.width = '0%'; progDebounce1 = null; }, 200);
+                } else if (slotIndex === 2 && !progDebounce2) {
+                    progDebounce2 = setTimeout(() => { barEl.style.width = '0%'; progDebounce2 = null; }, 200);
+                }
+            }
+        }
 
         // Ridimensionamento dinamico dei nomi operatori per non uscire mai dallo schermo TV
         function adjustFontSize(listId) {
@@ -406,6 +475,9 @@
         }
 
         function renderTvRules(payload) {
+            if (!payload) return;
+            lastRulesPayload = payload;
+
             const list = document.getElementById('tv-rules-list');
             if (!list) return;
             list.innerHTML = '';
@@ -414,29 +486,29 @@
                 const isAlpha = payload.attacker === 'ALPHA';
                 const teamName = isAlpha ? currentFactions.ALPHA.name : currentFactions.BRAVO.name;
                 const teamColor = isAlpha ? currentFactions.ALPHA.color : currentFactions.BRAVO.color;
-                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">ATTACCANTI</span><span class="tv-rule-val" style="color:${teamColor};">${teamName}</span></div>`;
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">ATTACCANTI (BOMBA)</span><span class="tv-rule-val" style="color:${teamColor}; text-shadow: 0 0 10px ${teamColor}66;">${teamName}</span></div>`;
             }
 
             const keysMap = { 
+                'game_duration': 'DURATA ROUND',
                 'bomb_time':     'TIMER BOMBA',
                 'arm_time':      'TEMPO INNESCO',
                 'defuse_time':   'TEMPO DISINNESCO',
-                'game_duration': 'DURATA ROUND',
                 'use_arm_pin':   'PIN ATTACCANTI',
                 'use_defuse_pin':'PIN DIFENSORI',
                 'capture_time':  'TEMPO CATTURA',
                 'countdown':     'START DELAY'
             };
 
-            for (const [key, val] of Object.entries(payload)) {
-                if (keysMap[key]) {
-                    let v = val;
-                    if (v === true) v = "SÌ";
-                    if (v === false) v = "NO";
-                    if (key.includes('time') || key.includes('duration') || key.includes('countdown')) {
+            for (const [key, label] of Object.entries(keysMap)) {
+                if (payload[key] !== undefined && payload[key] !== null) {
+                    let v = payload[key];
+                    if (v === true || v === 'YES') v = "SÌ";
+                    else if (v === false || v === 'NO') v = "NO";
+                    else if (key.includes('time') || key.includes('duration') || key.includes('countdown')) {
                         v += (key === 'game_duration' || key === 'bomb_time') ? ' Min' : ' Sec';
                     }
-                    list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">${keysMap[key]}</span><span class="tv-rule-val">${v}</span></div>`;
+                    list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">${label}</span><span class="tv-rule-val">${v}</span></div>`;
                 }
             }
 
@@ -450,8 +522,8 @@
                         const names = (Array.isArray(s.player_names) && s.player_names.length > 0) ? s.player_names.join(', ') : 'NESSUNO';
                         return `RFID(${names})`;
                     }
-                    if (s.rfid_mode === 'CUSTOM') return `RFID(UID)`;
-                    return `RFID(ANY)`;
+                    if (s.rfid_mode === 'CUSTOM') return `RFID(UID: ${s.val_str || '?'})`;
+                    return `RFID(QUALSIASI)`;
                 }
                 return s.type;
             }).join(' → ');
@@ -463,11 +535,32 @@
                 list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">SEQ. DISINNESCO</span><span class="tv-rule-val">${formatSeq(payload.defuse_seq)}</span></div>`;
             }
 
+            const failLabels = {
+                'RETRY_STEP':  'RIPETI STEP',
+                'RESTART_SEQ': 'DA CAPO',
+                'EXPLODE':     'ESPLOSIONE BOMBA!'
+            };
+            if (payload.arm_fail_mode) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">ERRORE INNESCO</span><span class="tv-rule-val">${failLabels[payload.arm_fail_mode] || payload.arm_fail_mode}</span></div>`;
+            }
+            if (payload.defuse_fail_mode) {
+                const isExplode = payload.defuse_fail_mode === 'EXPLODE';
+                const valStyle = isExplode ? 'color: var(--sop-alert); text-shadow: 0 0 10px rgba(255,51,51,0.5);' : '';
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">ERRORE DISINNESCO</span><span class="tv-rule-val" style="${valStyle}">${failLabels[payload.defuse_fail_mode] || payload.defuse_fail_mode}</span></div>`;
+            }
+
             if (Array.isArray(payload.alpha_seq)) {
-                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">SEQ. ${currentFactions.ALPHA.name}</span><span class="tv-rule-val">${formatSeq(payload.alpha_seq)}</span></div>`;
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">CONQUISTA ${currentFactions.ALPHA.name}</span><span class="tv-rule-val" style="color: var(--team-a-color);">${formatSeq(payload.alpha_seq)}</span></div>`;
             }
             if (Array.isArray(payload.bravo_seq)) {
-                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">SEQ. ${currentFactions.BRAVO.name}</span><span class="tv-rule-val">${formatSeq(payload.bravo_seq)}</span></div>`;
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">CONQUISTA ${currentFactions.BRAVO.name}</span><span class="tv-rule-val" style="color: var(--team-b-color);">${formatSeq(payload.bravo_seq)}</span></div>`;
+            }
+
+            const activeFx = [];
+            if (payload.fx_smoke) activeFx.push('FUMO');
+            if (payload.fx_relay) activeFx.push('RELÈ 12V');
+            if (activeFx.length > 0) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">EFFETTI SCENICI</span><span class="tv-rule-val" style="color: var(--sop-secondary);">${activeFx.join(' + ')}</span></div>`;
             }
         }
 
@@ -477,6 +570,22 @@
             socket.emit('request_roster');
         });
         socket.on('disconnect', () => log("CRITICAL: CONNECTION LOST."));
+
+        socket.on('weather_update', (data) => {
+            if (!data || !data.weather) return;
+            const elDisplay = document.getElementById('tv-weather-display');
+            const elIcon = document.getElementById('tv-weather-icon');
+
+            const parts = data.weather.split(' // ');
+            if (parts.length === 2) {
+                const temp = parts[0].trim();
+                const condition = parts[1].trim();
+                if (elIcon) elIcon.src = tacticalWeatherIcons[condition] || tacticalWeatherIcons["DEFAULT"];
+                if (elDisplay) elDisplay.textContent = `${temp} // ${condition.replace('_NIGHT', '')}`;
+            } else if (elDisplay) {
+                elDisplay.textContent = data.weather.replace('_NIGHT', '');
+            }
+        });
         
         socket.on('factions_update', (factions) => {
             currentFactions = factions;
@@ -508,20 +617,27 @@
             setEl('tv-wins-lbl-b', factions.BRAVO.name);
             setEl('tv-wins-alpha', factions.ALPHA.daily_wins || 0);
             setEl('tv-wins-bravo', factions.BRAVO.daily_wins || 0);
+
+            if (lastRulesPayload) {
+                renderTvRules(lastRulesPayload);
+            }
         });
 
         socket.on('roster_update', (roster) => {
-            let a = 0, b = 0;
+            let aIn = 0, bIn = 0, aTot = 0, bTot = 0;
             const listAlpha = document.getElementById('tv-list-alpha');
             const listBravo = document.getElementById('tv-list-bravo');
             const currentRoster = new Set();
 
             Object.entries(roster).forEach(([uid, op]) => {
+                if (op.team === 'ALPHA') aTot++;
+                if (op.team === 'BRAVO') bTot++;
+
                 if (op.status === 'IN') {
                     currentRoster.add(uid);
                     const targetList = (op.team === 'ALPHA') ? listAlpha : listBravo;
-                    if (op.team === 'ALPHA') a++;
-                    if (op.team === 'BRAVO') b++;
+                    if (op.team === 'ALPHA') aIn++;
+                    if (op.team === 'BRAVO') bIn++;
 
                     let li = document.getElementById('tv-op-' + uid);
                     if (!li) {
@@ -557,8 +673,26 @@
             });
 
             renderedRoster = currentRoster;
-            document.getElementById('tv-op-alpha').textContent = a;
-            document.getElementById('tv-op-bravo').textContent = b;
+            document.getElementById('tv-op-alpha').textContent = aIn;
+            document.getElementById('tv-op-bravo').textContent = bIn;
+            document.getElementById('tv-sub-alpha').textContent = `IN CAMPO: ${aIn} / ${aTot}`;
+            document.getElementById('tv-sub-bravo').textContent = `IN CAMPO: ${bIn} / ${bTot}`;
+
+            const totIn = aIn + bIn;
+            const totAll = aTot + bTot;
+            const badgeEl = document.getElementById('tv-checkin-badge');
+            if (badgeEl) {
+                if (totAll === 0) {
+                    badgeEl.textContent = "ROSTER VUOTO";
+                    badgeEl.style.color = "var(--sop-dim)";
+                } else if (totIn === totAll) {
+                    badgeEl.textContent = `TUTTI IN CAMPO (${totIn}/${totAll})`;
+                    badgeEl.style.color = "var(--sop-success)";
+                } else {
+                    badgeEl.textContent = `CHECK-IN KIOSK: ${totIn}/${totAll} (${totAll - totIn} FUORI)`;
+                    badgeEl.style.color = "var(--sop-secondary)";
+                }
+            }
 
             setTimeout(() => {
                 adjustFontSize('tv-list-alpha');
@@ -572,13 +706,31 @@
             const payload = raw.payload || {};
 
             if (type === 'RFID_SCAN') {
-                const statusStr = payload.accepted ? 'OK' : 'NEGATA';
-                log(`RFID [${ payload.alias || payload.uid }]: ${statusStr}`);
+                const statusStr = payload.accepted ? 'AUTORIZZATA' : 'RIFIUTATA';
+                log(`RFID [${payload.alias || payload.uid}]: ${statusStr}`);
+                return;
+            }
+
+            // Aggiornamento rapido a 1 Hz del solo timer globale (senza alterare barre o stato)
+            if (type === 'TIME_UPDATE') {
+                if (payload.game_time !== undefined) {
+                    const globalTimerEl = document.getElementById('tv-global-timer');
+                    globalTimerEl.textContent = formatTime(payload.game_time);
+                    if (payload.game_time <= 30 && payload.game_time > 0) {
+                        globalTimerEl.style.color = "var(--sop-alert)";
+                        globalTimerEl.style.textShadow = "0 0 20px rgba(255,51,51,0.4)";
+                    } else {
+                        globalTimerEl.style.color = "var(--sop-primary)";
+                        globalTimerEl.style.textShadow = "0 0 20px rgba(0,255,204,0.3)";
+                    }
+                }
                 return;
             }
             
             if (type === 'MODE_EXIT') {
                 currentTvMode = null;
+                lastRulesPayload = null;
+                lastLoggedState = null;
                 document.getElementById('tv-mode-title').textContent = "STANDBY";
                 document.getElementById('tv-global-timer').textContent = "--:--";
                 document.getElementById('tv-global-timer').style.color = "var(--sop-primary)";
@@ -586,11 +738,13 @@
                 document.getElementById('tv-tac-status').textContent = "WAITING FOR DATA";
                 document.getElementById('tv-tac-status').style.color = "var(--sop-primary)";
                 document.getElementById('tv-bomb-timer').textContent = "--:--";
+                document.getElementById('tv-bomb-box')?.classList.remove('critical');
                 document.getElementById('tv-rules-list').innerHTML = '<div style="color: var(--sop-dim); text-align: center; margin-top: 10px; font-size: 1.4rem;">Nessun parametro caricato...</div>';
                 
                 document.getElementById('tv-bomb-container').style.display = 'none';
                 document.getElementById('tv-dom-container').style.display = 'none';
                 document.getElementById('tv-progress-container').style.display = 'none';
+                log("MISSIONE CHIUSA. TERMINALE IN STANDBY.");
                 return;
             }
             
@@ -605,14 +759,25 @@
                 document.getElementById('tv-mode-title').textContent = "OPERATION: " + currentTvMode.replace(/_/g, ' ').toUpperCase();
             }
 
+            if (type === 'SETTINGS_UPDATE' || type === 'MODE_ENTER') {
+                log("MISSION INTEL CARICATA.");
+                renderTvRules(payload);
+                const statusEl = document.getElementById('tv-tac-status');
+                if (type === 'SETTINGS_UPDATE' && statusEl && statusEl.textContent === 'WAITING FOR DATA') {
+                    statusEl.textContent = "MISSION READY";
+                    statusEl.style.color = "var(--sop-secondary)";
+                }
+            }
+
             if (payload.game_time !== undefined) {
-                document.getElementById('tv-global-timer').textContent = formatTime(payload.game_time);
+                const globalTimerEl = document.getElementById('tv-global-timer');
+                globalTimerEl.textContent = formatTime(payload.game_time);
                 if (payload.game_time <= 30 && payload.game_time > 0) {
-                    document.getElementById('tv-global-timer').style.color = "var(--sop-alert)";
-                    document.getElementById('tv-global-timer').style.textShadow = "0 0 20px rgba(255,51,51,0.4)";
+                    globalTimerEl.style.color = "var(--sop-alert)";
+                    globalTimerEl.style.textShadow = "0 0 20px rgba(255,51,51,0.4)";
                 } else {
-                    document.getElementById('tv-global-timer').style.color = "var(--sop-primary)";
-                    document.getElementById('tv-global-timer').style.textShadow = "0 0 20px rgba(0,255,204,0.3)";
+                    globalTimerEl.style.color = "var(--sop-primary)";
+                    globalTimerEl.style.textShadow = "0 0 20px rgba(0,255,204,0.3)";
                 }
             }
 
@@ -623,6 +788,11 @@
                 
                 const statusEl = document.getElementById('tv-tac-status');
                 statusEl.textContent = s;
+
+                if (s !== lastLoggedState) {
+                    lastLoggedState = s;
+                    log(`STATUS -> ${s}`);
+                }
                 
                 if (s.includes('WINS') || s.includes('OWNED')) {
                     if (s.includes('CT WINS') || s.includes('BRAVO WINS') || s.includes('OWNED BRAVO') || s.includes(currentFactions.BRAVO.name)) {
@@ -634,7 +804,7 @@
                     statusEl.style.color = '#55ff55'; 
                 } else if (s.includes('ARM') || s.includes('EXPLODED') || s.includes('CAPTURING A')) {
                     statusEl.style.color = '#ff3333'; 
-                } else if (s === 'STANDBY' || s === 'PREPARING' || s === 'DRAW') {
+                } else if (s === 'STANDBY' || s === 'PREPARING' || s === 'DRAW' || s === 'MISSION READY') {
                     statusEl.style.color = '#ff9900'; 
                 } else {
                     statusEl.style.color = 'var(--sop-primary)';
@@ -654,13 +824,20 @@
                 document.getElementById('tv-lbl-prog-2').textContent = "DEFUSING PROGRESS";
                 document.getElementById('tv-lbl-prog-2').style.color = "#55ff55";
                 
-                if (payload.arm_prog !== undefined) document.getElementById('tv-prog-1').style.width = payload.arm_prog + '%';
-                if (payload.def_prog !== undefined) document.getElementById('tv-prog-2').style.width = payload.def_prog + '%';
+                if (type === 'SD_UPDATE') {
+                    const armP = payload.arm_prog || 0;
+                    const defP = payload.def_prog || 0;
+                    setTvProgressBar('tv-prog-1', armP, armP > 0, 1);
+                    setTvProgressBar('tv-prog-2', defP, defP > 0, 2);
 
-                if (payload.state === 'SAFE' || payload.state === 'ARMING...' || payload.bomb_time === null || payload.bomb_time < 0) {
-                    document.getElementById('tv-bomb-timer').textContent = "--:--";
-                } else if (payload.bomb_time !== undefined) {
-                    document.getElementById('tv-bomb-timer').textContent = formatTime(payload.bomb_time);
+                    const bombBoxEl = document.getElementById('tv-bomb-box');
+                    if (payload.state === 'SAFE' || payload.state === 'ARMING...' || payload.bomb_time === null || payload.bomb_time < 0) {
+                        document.getElementById('tv-bomb-timer').textContent = "--:--";
+                        bombBoxEl?.classList.remove('critical');
+                    } else if (payload.bomb_time !== undefined) {
+                        document.getElementById('tv-bomb-timer').textContent = formatTime(payload.bomb_time);
+                        bombBoxEl?.classList.toggle('critical', payload.bomb_time <= 30 && payload.bomb_time > 0);
+                    }
                 }
             } else if (isDom) {
                 document.getElementById('tv-bomb-container').style.display = 'none';
@@ -672,30 +849,21 @@
                 document.getElementById('tv-lbl-prog-2').textContent = `${currentFactions.BRAVO.name} ACTION`;
                 document.getElementById('tv-lbl-prog-2').style.color = "var(--team-b-color)";
                 
-                if (payload.score_a !== undefined) document.getElementById('tv-dom-a').textContent = formatTime(payload.score_a);
-                if (payload.score_b !== undefined) document.getElementById('tv-dom-b').textContent = formatTime(payload.score_b);
-                
-                const prog = payload.capture_prog || 0;
-                const state = payload.state || '';
-                if (state.includes('CAPTURING A')) {
-                    document.getElementById('tv-prog-1').style.width = prog + '%';
-                    document.getElementById('tv-prog-2').style.width = '0%';
-                } else if (state.includes('CAPTURING B')) {
-                    document.getElementById('tv-prog-1').style.width = '0%';
-                    document.getElementById('tv-prog-2').style.width = prog + '%';
-                } else {
-                    document.getElementById('tv-prog-1').style.width = '0%';
-                    document.getElementById('tv-prog-2').style.width = '0%';
+                if (type === 'DOM_UPDATE') {
+                    if (payload.score_a !== undefined) document.getElementById('tv-dom-a').textContent = formatTime(payload.score_a);
+                    if (payload.score_b !== undefined) document.getElementById('tv-dom-b').textContent = formatTime(payload.score_b);
+                    
+                    const prog = payload.capture_prog || 0;
+                    const state = payload.state || '';
+                    const capA = state.includes('CAPTURING A') && prog > 0;
+                    const capB = state.includes('CAPTURING B') && prog > 0;
+                    setTvProgressBar('tv-prog-1', capA ? prog : 0, capA, 1);
+                    setTvProgressBar('tv-prog-2', capB ? prog : 0, capB, 2);
                 }
             } else {
                 document.getElementById('tv-bomb-container').style.display = 'none';
                 document.getElementById('tv-dom-container').style.display = 'none';
                 document.getElementById('tv-progress-container').style.display = 'none';
-            }
-
-            if (type === 'SETTINGS_UPDATE' || type === 'MODE_ENTER') {
-                log("MISSION INTEL CARICATA.");
-                renderTvRules(payload);
             }
         });
     </script>
