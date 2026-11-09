@@ -326,5 +326,28 @@
         </div>
     </div>
 
+    <!-- ======================================================================
+         MODALE 6: FINESTRA DI INPUT TATTICO UNIVERSALE (PRESET, RINOMINA, ASD)
+         ====================================================================== -->
+    <div id="preset-name-modal" class="modal-overlay hidden" style="z-index: 2100;">
+        <div class="sop-card profile-modal" style="width: 440px;">
+            <div class="panel-header" style="margin-bottom: 0;">
+                <h2 id="preset-modal-title" style="margin: 0; padding: 10px; color: var(--sop-primary); letter-spacing: 2px;">INPUT TATTICO</h2>
+                <button type="button" class="close-modal-btn" style="padding-right: 15px;" onclick="closePresetNameModal()">[X]</button>
+            </div>
+            <div class="panel-body" style="padding: 20px;">
+                <input type="hidden" id="preset-modal-action" value="new">
+                <div class="input-group-tactical" style="margin-bottom: 20px;">
+                    <label id="preset-modal-label" class="setup-label" for="preset-modal-input">INSERISCI VALORE</label>
+                    <input type="text" id="preset-modal-input" class="setup-input" placeholder="" maxlength="50" onkeydown="if(event.key==='Enter') confirmPresetNameModal(); else if(event.key==='Escape') closePresetNameModal();">
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button type="button" class="deck-btn btn-danger full-width" onclick="closePresetNameModal()">[ ANNULLA ]</button>
+                    <button type="button" class="deck-btn full-width" style="border-color: var(--sop-primary); color: var(--sop-primary);" onclick="confirmPresetNameModal()">[ CONFERMA ]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

@@ -585,30 +585,38 @@ def handle_update_karma(data):
 @socketio.on('request_mission_start')
 def handle_request_mission_start(data):
     mode = data.get('mode')
-    target_id = data.get('target_id')
+    target_id = str(data.get('target_id') or '').strip()
     dur = int(data.get('duration', 15))
     force = data.get('force', False)
     settings = data.get('settings')
 
-    if mode in ['sd', 'dom'] and isinstance(settings, dict):
-        game_engine.mission_control.sd_settings = settings
-    
+    # 1. Blocco rigoroso: terminale obbligatorio e online per S&D e Domination
+    if mode in ['sd', 'dom']:
+        active_devs, _ = game_engine.registry.get_active_devices()
+        if not target_id or not any(d['id'] == target_id for d in active_devs):
+            emit('mission_start_error', {'msg': "ERRORE: Devi selezionare un terminale RAT online prima di iniziare la partita."})
+            return
+        if isinstance(settings, dict):
+            game_engine.mission_control.sd_settings = settings
+
+    # 2. Blocco rigoroso: il roster non può essere vuoto e TUTTI i giocatori devono essere IN CAMPO
     players = db_manager.get_active_roster_status()
     players_out = sum(1 for p in players if p[2] != 'IN')
     alpha_in = sum(1 for p in players if p[1] == 'ALPHA' and p[2] == 'IN')
     bravo_in = sum(1 for p in players if p[1] == 'BRAVO' and p[2] == 'IN')
-    
-    if not force:
-        if len(players) == 0:
-            emit('mission_start_warning', {'msg': "Il Roster è vuoto. Vuoi avviare la missione comunque?", 'original_request': data})
-            return
-        if players_out > 0:
-            emit('mission_start_error', {'msg': f"Ci sono {players_out} operatori fuori dal campo. Tutti devono risultare 'IN CAMPO'."})
-            return
-        if alpha_in == 0 or bravo_in == 0:
-            emit('mission_start_warning', {'msg': f"Squadre sbilanciate (A:{alpha_in} B:{bravo_in}). Avviare comunque?", 'original_request': data})
-            return
-            
+
+    if len(players) == 0:
+        emit('mission_start_error', {'msg': "IMPOSSIBILE AVVIARE: Il Roster attivo è vuoto. Registra i giocatori e portali IN CAMPO."})
+        return
+
+    if players_out > 0:
+        emit('mission_start_error', {'msg': f"IMPOSSIBILE AVVIARE: Ci sono ancora {players_out} operatori FUORI CAMPO. Tutti i giocatori devono risultare 'IN CAMPO'."})
+        return
+
+    if not force and (alpha_in == 0 or bravo_in == 0):
+        emit('mission_start_warning', {'msg': f"Squadre sbilanciate (A:{alpha_in} B:{bravo_in}). Avviare comunque?", 'original_request': data})
+        return
+
     game_engine.mission_control.start_mission(mode, target_id, duration=dur)
     socketio.emit('mission_start_success')
 
@@ -677,6 +685,24 @@ def handle_delete_preset(data):
         socketio.emit('presets_update', db_manager.get_all_presets())
 
 
+@socketio.on('import_presets')
+@login_required
+def handle_import_presets(data):
+    items = data.get('presets', [])
+    if isinstance(items, dict):
+        items = [items]
+    imported_count = 0
+    last_id = None
+    for item in items:
+        if isinstance(item, dict) and item.get('name') and item.get('mode') and isinstance(item.get('config'), dict):
+            res_id = db_manager.save_preset(item['name'], item['mode'], item['config'])
+            if res_id is not None:
+                imported_count += 1
+                last_id = res_id
+    if imported_count > 0:
+        socketio.emit('presets_update', db_manager.get_all_presets())
+        emit('presets_imported_ack', {'count': imported_count, 'last_id': last_id})
+
 @socketio.on('send_command')
 def handle_socket_command(data):
     try:
@@ -687,20 +713,30 @@ def handle_socket_command(data):
         if isinstance(cmd_obj, dict):
             c = cmd_obj.get("cmd", "")
             if c == "SET_READY":
+                req_mode = cmd_obj.get("mode")
+                req_target = str(cmd_obj.get("target_id") or "").strip()
+
+                # Blocco di sicurezza: per S&D e Dominio il terminale deve essere selezionato e online
+                if req_mode in ['sd', 'dom']:
+                    active_devs, _ = game_engine.registry.get_active_devices()
+                    if not req_target or not any(d['id'] == req_target for d in active_devs):
+                        emit('mission_start_error', {'msg': "ERRORE: Seleziona un terminale RAT online prima di trasmettere la configurazione."})
+                        return
+
                 game_engine.mission_ready_flag = True
-                game_engine.mission_control.mode = cmd_obj.get("mode")
-                game_engine.mission_control.target_id = cmd_obj.get("target_id")
+                game_engine.mission_control.mode = req_mode
+                game_engine.mission_control.target_id = req_target
                 dur_min = int(cmd_obj.get("duration", 15))
                 game_engine.mission_control.global_duration = dur_min * 60
 
                 # Invia subito le regole alla TV e al Monitor appena viene premuto [1. TRANSMIT CONFIG]
                 mode_map = {'sd': 'SEARCH_AND_DESTROY', 'dom': 'DOMINATION', 'tdm': 'TEAM_DEATHMATCH'}
-                mode_name = mode_map.get(cmd_obj.get("mode"), 'SEARCH_AND_DESTROY')
+                mode_name = mode_map.get(req_mode, 'SEARCH_AND_DESTROY')
                 rules_payload = dict(game_engine.mission_control.sd_settings) if isinstance(game_engine.mission_control.sd_settings, dict) else {}
                 rules_payload["mode"] = mode_name
                 rules_payload["game_duration"] = dur_min
                 socketio.emit('esp_event', {"parsed_data": {
-                    "id": cmd_obj.get("target_id") or "SERVER",
+                    "id": req_target or "SERVER",
                     "type": "SETTINGS_UPDATE",
                     "payload": rules_payload
                 }})

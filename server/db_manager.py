@@ -683,7 +683,7 @@ def save_preset(name, mode, config_dict, preset_id=None):
     import json as _json
     clean_name = str(name or "").strip().upper()
     clean_mode = str(mode or "sd").strip().lower()
-    if not clean_name:
+    if clean_mode not in ("sd", "dom", "tdm") or not clean_name:
         return None
 
     cfg_str = _json.dumps(config_dict or {})

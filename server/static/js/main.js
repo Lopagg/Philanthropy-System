@@ -5,9 +5,10 @@
  * Gestisce:
  * - Connessione singleton Socket.IO e sincronizzazione real-time con il server Flask.
  * - Costruttore visuale delle sequenze modulari V2 (HOLD, PIN, KEY a 8 modalità, RFID a 4 modalità) per S&D e Dominio.
- * - Validazione automatica di coerenza per lo stato delle chiavi K1/K2.
+ * - Gestione Preset Tattici (Salvataggio/Rinomina con Modal in-page, Aggiornamento, Eliminazione, Import/Export JSON).
+ * - Finestra Modale Universale (openTacticalPrompt) per eliminare tutti i prompt() nativi del browser.
+ * - Blocco visibilità parametri finché non viene selezionato un terminale e validazione rigorosa pre-partita.
  * - Regia Audio Tattica (Soundboard Micro-SD, Annunciatore TTS Live e Intercom Push-To-Talk).
- * - Gestione fazioni, meteo tattico, ritaglio foto profilo/prop (Cropper.js), OTA e registrazione tessere.
  */
 
 import { showView, logSystem, updateDeviceList, refreshActiveInspector, updateClock, activeInspectorId } from './ui_core.js';
@@ -23,6 +24,8 @@ let currentDevices = [];
 let arenaRoster = {};
 let monitoredDeviceId = null;
 let currentCropper = null;
+let tacticalPromptCallback = null;
+let tacticalPromptAllowEmpty = false;
 
 window.v2ArmSequence      = window.v2ArmSequence      || [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
 window.v2DefuseSequence   = window.v2DefuseSequence   || [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
@@ -46,6 +49,51 @@ export let currentFactions = window.__zuluFactions || (window.__zuluFactions = {
     ALPHA: { name: 'ALPHA', color: '#ff3333', daily_wins: 0 },
     BRAVO: { name: 'BRAVO', color: '#55ff55', daily_wins: 0 }
 });
+
+// ============================================================================
+// FINESTRA MODALE DI INPUT TATTICO UNIVERSALE (SOSTITUISCE PROMPT DEL BROWSER)
+// ============================================================================
+
+window.openTacticalPrompt = function({ title, label, defaultValue = '', placeholder = '', allowEmpty = false, onConfirm }) {
+    const modal   = document.getElementById('preset-name-modal');
+    const titleEl = document.getElementById('preset-modal-title');
+    const labelEl = document.getElementById('preset-modal-label');
+    const inputEl = document.getElementById('preset-modal-input');
+    if (!modal || !inputEl) return;
+
+    if (titleEl) titleEl.textContent = title || 'INPUT TATTICO';
+    if (labelEl) labelEl.textContent = label || 'INSERISCI VALORE';
+    inputEl.value = defaultValue;
+    inputEl.placeholder = placeholder;
+
+    tacticalPromptAllowEmpty = Boolean(allowEmpty);
+    tacticalPromptCallback = typeof onConfirm === 'function' ? onConfirm : null;
+
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        inputEl.focus();
+        inputEl.select();
+    }, 50);
+};
+
+window.closePresetNameModal = function() {
+    document.getElementById('preset-name-modal')?.classList.add('hidden');
+    tacticalPromptCallback = null;
+};
+
+window.confirmPresetNameModal = function() {
+    const inputEl = document.getElementById('preset-modal-input');
+    const rawVal = (inputEl?.value || '').trim();
+
+    if (!tacticalPromptAllowEmpty && !rawVal) {
+        alert("Inserisci un valore valido.");
+        return;
+    }
+
+    const cb = tacticalPromptCallback;
+    window.closePresetNameModal();
+    if (cb) cb(rawVal);
+};
 
 // ============================================================================
 // STILI DINAMICI FAZIONI E SELEZIONE TERMINALE TARGET
@@ -104,8 +152,8 @@ export function updateSetupDropdown() {
 
     if (currentSelection && availableNodes.some(d => d.id === currentSelection)) {
         elSetupTargetSelect.value = currentSelection;
-    } else if (availableNodes.length > 0) {
-        elSetupTargetSelect.value = availableNodes[0].id;
+    } else {
+        elSetupTargetSelect.value = "";
     }
 
     if (typeof window.updateUIForTargetVersion === 'function') {
@@ -114,18 +162,72 @@ export function updateSetupDropdown() {
 }
 
 window.updateUIForTargetVersion = function() {
-    const targetSelect = document.getElementById('setup-target-select');
-    const modeSelect = document.getElementById('setup-mode-select');
+    const targetSelect  = document.getElementById('setup-target-select');
+    const modeSelect    = document.getElementById('setup-mode-select');
+    const targetRow     = document.getElementById('target-selection-row');
+    const noTermMsg     = document.getElementById('setup-no-terminal-msg');
+    const sdParams      = document.getElementById('setup-sd-params');
+    const domParams     = document.getElementById('setup-dom-params');
+    const tdmParams     = document.getElementById('setup-tdm-params');
+    const btnTransmit   = document.getElementById('btn-transmit-setup');
+    const btnStart      = document.getElementById('btn-start-mission');
+
     if (!targetSelect || !modeSelect) return;
 
+    const mode = modeSelect.value;
     const targetId = targetSelect.value;
-    let isV2 = false;
-    if (targetId) {
-        const device = currentDevices.find(d => d.id === targetId);
-        if ((device && device.version && device.version.includes("V2")) || targetId.includes("V2")) {
-            isV2 = true;
+
+    // 1. Modalità TDM: non usa terminali fisici
+    if (mode === 'tdm') {
+        targetRow?.classList.add('hidden');
+        noTermMsg?.classList.add('hidden');
+        sdParams?.classList.add('hidden');
+        domParams?.classList.add('hidden');
+        tdmParams?.classList.remove('hidden');
+        if (btnTransmit) {
+            btnTransmit.disabled = false;
+            btnTransmit.classList.remove('disabled');
         }
+        return;
     }
+
+    // 2. Modalità S&D o Domination: richiede obbligatoriamente la selezione di un terminale
+    targetRow?.classList.remove('hidden');
+    tdmParams?.classList.add('hidden');
+
+    if (!targetId) {
+        sdParams?.classList.add('hidden');
+        domParams?.classList.add('hidden');
+        noTermMsg?.classList.remove('hidden');
+        if (btnTransmit) {
+            btnTransmit.disabled = true;
+            btnTransmit.classList.add('disabled');
+        }
+        if (btnStart) {
+            btnStart.disabled = true;
+            btnStart.classList.add('disabled');
+        }
+        return;
+    }
+
+    // 3. Terminale selezionato: mostra il pannello della modalità (default V2 modulare)
+    noTermMsg?.classList.add('hidden');
+    if (mode === 'sd') {
+        sdParams?.classList.remove('hidden');
+        domParams?.classList.add('hidden');
+    } else if (mode === 'dom') {
+        sdParams?.classList.add('hidden');
+        domParams?.classList.remove('hidden');
+    }
+
+    if (btnTransmit) {
+        btnTransmit.disabled = false;
+        btnTransmit.classList.remove('disabled');
+    }
+
+    const device = currentDevices.find(d => d.id === targetId);
+    const isLegacyV1 = device && device.version && device.version.includes("V1") && !device.version.includes("V2") && !targetId.includes("V2");
+    const isV2 = !isLegacyV1;
 
     const sdV1  = document.getElementById('sd-v1-legacy-params');
     const sdV2  = document.getElementById('sd-v2-modular-params');
@@ -439,13 +541,9 @@ function buildMissionConfig() {
     let commandData = {};
     let dur = 15;
 
-    let isV2 = false;
-    if (targetId) {
-        const device = currentDevices.find(d => d.id === targetId);
-        if ((device && device.version && device.version.includes("V2")) || targetId.includes("V2")) {
-            isV2 = true;
-        }
-    }
+    const device = currentDevices.find(d => d.id === targetId);
+    const isLegacyV1 = device && device.version && device.version.includes("V1") && !device.version.includes("V2") && !targetId.includes("V2");
+    const isV2 = !isLegacyV1;
 
     if (mode === 'sd') {
         dur = parseInt(document.getElementById('sd-game-dur').value) || 20;
@@ -525,6 +623,7 @@ if (!window.__zuluMainInitialized) {
         updateClock();
         resetMonitorLayout();
         renderV2Sequences();
+        window.updateUIForTargetVersion();
 
         window.showView = (view) => showView(view, socket);
         window.clearActiveRoster = () => {
@@ -824,6 +923,11 @@ if (!window.__zuluMainInitialized) {
         if (btnTransmit) {
             btnTransmit.addEventListener('click', () => {
                 const { mode, targetId, dur, commandData } = buildMissionConfig();
+                if (mode !== 'tdm' && !targetId) {
+                    alert("ATTENZIONE: Seleziona prima un terminale valido dal menu SELECT TARGET TERMINAL.");
+                    return;
+                }
+
                 socket.emit('send_command', { target_id: targetId, command: commandData });
                 socket.emit('send_command', { target_id: "broadcast", command: { cmd: "SET_READY", mode: mode, target_id: targetId, duration: dur } });
 
@@ -839,6 +943,23 @@ if (!window.__zuluMainInitialized) {
         if (btnStartMission) {
             btnStartMission.addEventListener('click', () => {
                 const { mode, targetId, dur, commandData } = buildMissionConfig();
+                if (mode !== 'tdm' && !targetId) {
+                    alert("IMPOSSIBILE AVVIARE: Nessun terminale selezionato.");
+                    return;
+                }
+
+                const rosterPlayers = Object.values(arenaRoster || {});
+                if (rosterPlayers.length === 0) {
+                    alert("IMPOSSIBILE AVVIARE: Il Roster attivo è vuoto. Registra i giocatori e portali IN CAMPO.");
+                    return;
+                }
+
+                const outPlayers = rosterPlayers.filter(p => p.status !== 'IN');
+                if (outPlayers.length > 0) {
+                    alert(`IMPOSSIBILE AVVIARE: Ci sono ancora ${outPlayers.length} operatori FUORI CAMPO. Tutti i giocatori devono essere 'IN CAMPO' prima di iniziare.`);
+                    return;
+                }
+
                 socket.emit('request_mission_start', {
                     mode: mode,
                     target_id: targetId,
@@ -853,17 +974,14 @@ if (!window.__zuluMainInitialized) {
 
         const modeSelectEl = document.getElementById('setup-mode-select');
         if (modeSelectEl) {
-            modeSelectEl.addEventListener('change', (e) => {
-                ['setup-sd-params', 'setup-dom-params', 'setup-tdm-params', 'target-selection-row'].forEach(id => {
-                    document.getElementById(id)?.classList.add('hidden');
-                });
-                if (e.target.value === 'sd') document.getElementById('setup-sd-params')?.classList.remove('hidden');
-                else if (e.target.value === 'dom') document.getElementById('setup-dom-params')?.classList.remove('hidden');
-                else if (e.target.value === 'tdm') document.getElementById('setup-tdm-params')?.classList.remove('hidden');
-
-                if (e.target.value !== 'tdm') {
-                    document.getElementById('target-selection-row')?.classList.remove('hidden');
-                    if (typeof window.updateUIForTargetVersion === 'function') window.updateUIForTargetVersion();
+            modeSelectEl.addEventListener('change', () => {
+                const btnStart = document.getElementById('btn-start-mission');
+                if (btnStart) {
+                    btnStart.disabled = true;
+                    btnStart.classList.add('disabled');
+                }
+                if (typeof window.updateUIForTargetVersion === 'function') {
+                    window.updateUIForTargetVersion();
                 }
             });
         }
@@ -881,39 +999,7 @@ if (!window.__zuluMainInitialized) {
     });
 
     // ========================================================================
-    // HANDLER EVENTI SOCKET.IO DAL SERVER
-    // ========================================================================
-
-    socket.on('connect', () => {
-        logSystem("LINK ESTABLISHED WITH SOP SERVER.");
-        const elGlobalStatus = document.getElementById('global-status');
-        if (elGlobalStatus) {
-            elGlobalStatus.textContent = "ONLINE";
-            elGlobalStatus.className = "status-value status-normal";
-        }
-        socket.emit('request_roster');
-    });
-
-    socket.on('disconnect', () => {
-        logSystem("CONNECTION LOST - RETRYING...");
-        const elGlobalStatus = document.getElementById('global-status');
-        if (elGlobalStatus) {
-            elGlobalStatus.textContent = "OFFLINE";
-            elGlobalStatus.className = "status-value status-alert";
-        }
-    });
-
-    socket.on('server_restarting', () => {
-        alert("IL SERVER SI STA RIAVVIANDO. Attendi qualche secondo che il pannello torni online.");
-    });
-
-    socket.on('ota_manifest_update', (manifest) => {
-        window.__zuluOtaManifest = manifest || {};
-        refreshActiveInspector();
-    });
-
-    // ========================================================================
-    // GESTIONE PRESET DI CONFIGURAZIONE MISSIONE (LOAD / SAVE / UPDATE / DEL)
+    // GESTIONE PRESET DI CONFIGURAZIONE MISSIONE (MODAL, DB, IMPORT/EXPORT)
     // ========================================================================
 
     let missionPresets = [];
@@ -1001,7 +1087,6 @@ if (!window.__zuluMainInitialized) {
         const modeSelect = document.getElementById('setup-mode-select');
         if (modeSelect) {
             modeSelect.value = preset.mode || 'sd';
-            modeSelect.dispatchEvent(new Event('change'));
         }
 
         const setVal = (id, val) => {
@@ -1048,8 +1133,8 @@ if (!window.__zuluMainInitialized) {
         }
 
         renderV2Sequences();
+        window.updateUIForTargetVersion();
 
-        // Richiede nuovamente [1. TRANSMIT CONFIG] quando si cambia preset per sicurezza operativa
         const btnStart = document.getElementById('btn-start-mission');
         if (btnStart) {
             btnStart.disabled = true;
@@ -1075,19 +1160,46 @@ if (!window.__zuluMainInitialized) {
         }
     };
 
-    window.saveNewPreset = function() {
-        const mode = document.getElementById('setup-mode-select')?.value || 'sd';
-        const defaultName = mode === 'sd' ? 'S&D CUSTOM' : (mode === 'dom' ? 'DOMINIO CUSTOM' : 'TDM CUSTOM');
-        const name = prompt("Inserisci il nome per il nuovo Preset di Regole:", defaultName);
-        if (!name || name.trim() === '') return;
-
-        const cfg = extractCurrentSetupPreset();
-        socket.emit('save_preset', {
-            id: null,
-            name: name.trim().toUpperCase(),
-            mode: mode,
-            config: cfg
-        });
+    window.openPresetNameModal = function(actionType) {
+        if (actionType === 'rename') {
+            if (!selectedPresetId) return;
+            const current = missionPresets.find(p => p.id === selectedPresetId);
+            if (!current) return;
+            window.openTacticalPrompt({
+                title: "RINOMINA PRESET",
+                label: "NUOVO NOME PRESET TATTICO",
+                defaultValue: current.name,
+                placeholder: "Es. S&D TORNEO DOMENICA",
+                allowEmpty: false,
+                onConfirm: (val) => {
+                    const mode = document.getElementById('setup-mode-select')?.value || current.mode;
+                    socket.emit('save_preset', {
+                        id: selectedPresetId,
+                        name: val.toUpperCase(),
+                        mode: mode,
+                        config: extractCurrentSetupPreset()
+                    });
+                }
+            });
+        } else {
+            const mode = document.getElementById('setup-mode-select')?.value || 'sd';
+            const defaultName = mode === 'sd' ? 'S&D CUSTOM' : (mode === 'dom' ? 'DOMINIO CUSTOM' : 'TDM CUSTOM');
+            window.openTacticalPrompt({
+                title: "SALVA NUOVO PRESET",
+                label: "NOME PRESET TATTICO",
+                defaultValue: defaultName,
+                placeholder: "Es. S&D TORNEO DOMENICA",
+                allowEmpty: false,
+                onConfirm: (val) => {
+                    socket.emit('save_preset', {
+                        id: null,
+                        name: val.toUpperCase(),
+                        mode: mode,
+                        config: extractCurrentSetupPreset()
+                    });
+                }
+            });
+        }
     };
 
     window.overwriteCurrentPreset = function() {
@@ -1095,30 +1207,11 @@ if (!window.__zuluMainInitialized) {
         const current = missionPresets.find(p => p.id === selectedPresetId);
         if (!current) return;
 
-        if (!confirm(`Vuoi sovrascrivere il preset "${current.name}" con le regole attuali?`)) return;
         const mode = document.getElementById('setup-mode-select')?.value || current.mode;
         const cfg = extractCurrentSetupPreset();
         socket.emit('save_preset', {
             id: current.id,
             name: current.name,
-            mode: mode,
-            config: cfg
-        });
-    };
-
-    window.renameCurrentPreset = function() {
-        if (!selectedPresetId) return;
-        const current = missionPresets.find(p => p.id === selectedPresetId);
-        if (!current) return;
-
-        const newName = prompt("Inserisci il nuovo nome del Preset:", current.name);
-        if (!newName || newName.trim() === '') return;
-
-        const mode = document.getElementById('setup-mode-select')?.value || current.mode;
-        const cfg = extractCurrentSetupPreset();
-        socket.emit('save_preset', {
-            id: current.id,
-            name: newName.trim().toUpperCase(),
             mode: mode,
             config: cfg
         });
@@ -1136,6 +1229,63 @@ if (!window.__zuluMainInitialized) {
         }
     };
 
+    window.exportPresetsToFile = function() {
+        let exportData = [];
+        let filename = "zulu_mission_presets.json";
+
+        if (selectedPresetId) {
+            const current = missionPresets.find(p => p.id === selectedPresetId);
+            if (current) {
+                exportData = [{ name: current.name, mode: current.mode, config: extractCurrentSetupPreset() }];
+                filename = `preset_${current.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.json`;
+            }
+        } else if (missionPresets.length > 0) {
+            exportData = missionPresets.map(p => ({ name: p.name, mode: p.mode, config: p.config }));
+        } else {
+            const mode = document.getElementById('setup-mode-select')?.value || 'sd';
+            exportData = [{ name: `${mode.toUpperCase()} EXPORT`, mode: mode, config: extractCurrentSetupPreset() }];
+        }
+
+        const blob = new Blob([JSON.stringify({ zulu_presets: exportData }, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setPresetStatus(`ESPORTATO: ${filename}`, "var(--sop-primary)");
+    };
+
+    window.importPresetsFromFile = function(input) {
+        if (!input.files || !input.files[0]) return;
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const parsed = JSON.parse(e.target.result);
+                let list = [];
+                if (Array.isArray(parsed)) {
+                    list = parsed;
+                } else if (parsed && Array.isArray(parsed.zulu_presets)) {
+                    list = parsed.zulu_presets;
+                } else if (parsed && parsed.name && parsed.mode && parsed.config) {
+                    list = [parsed];
+                }
+                if (list.length === 0) {
+                    alert("File JSON non valido: nessun preset trovato.");
+                    return;
+                }
+                socket.emit('import_presets', { presets: list });
+            } catch (err) {
+                alert(`Errore nella lettura del file JSON: ${err.message}`);
+            }
+        };
+        reader.readAsText(file);
+        input.value = '';
+    };
+
     socket.on('presets_update', (presetsList) => {
         missionPresets = Array.isArray(presetsList) ? presetsList : [];
         renderPresetDropdown();
@@ -1148,6 +1298,49 @@ if (!window.__zuluMainInitialized) {
             setPresetStatus(`SALVATO: ${data.name}`, "var(--sop-success)");
             logSystem(`PRESET SALVATO: ${data.name}`);
         }
+    });
+
+    socket.on('presets_imported_ack', (data) => {
+        if (data && data.last_id) {
+            selectedPresetId = data.last_id;
+            renderPresetDropdown();
+            const found = missionPresets.find(p => p.id === selectedPresetId);
+            if (found) applyPresetToUI(found);
+            setPresetStatus(`IMPORTATI ${data.count} PRESET!`, "var(--sop-success)");
+            logSystem(`PRESET: Importati ${data.count} preset da file JSON.`);
+        }
+    });
+
+    // ========================================================================
+    // HANDLER EVENTI SOCKET.IO DAL SERVER
+    // ========================================================================
+
+    socket.on('connect', () => {
+        logSystem("LINK ESTABLISHED WITH SOP SERVER.");
+        const elGlobalStatus = document.getElementById('global-status');
+        if (elGlobalStatus) {
+            elGlobalStatus.textContent = "ONLINE";
+            elGlobalStatus.className = "status-value status-normal";
+        }
+        socket.emit('request_roster');
+    });
+
+    socket.on('disconnect', () => {
+        logSystem("CONNECTION LOST - RETRYING...");
+        const elGlobalStatus = document.getElementById('global-status');
+        if (elGlobalStatus) {
+            elGlobalStatus.textContent = "OFFLINE";
+            elGlobalStatus.className = "status-value status-alert";
+        }
+    });
+
+    socket.on('server_restarting', () => {
+        alert("IL SERVER SI STA RIAVVIANDO. Attendi qualche secondo che il pannello torni online.");
+    });
+
+    socket.on('ota_manifest_update', (manifest) => {
+        window.__zuluOtaManifest = manifest || {};
+        refreshActiveInspector();
     });
 
     socket.on('factions_update', (factions) => {
@@ -1304,24 +1497,36 @@ if (!window.__zuluMainInitialized) {
         const uid = getCurrentProfileUid();
         const currentNameText = document.getElementById('modal-op-name-text').innerText;
         const currentName = currentNameText.replace('PROFILE // ', '');
-        const newName = prompt("Inserisci nuovo nome operatore:", currentName);
 
-        if (newName && newName.trim() !== '') {
-            socket.emit('update_db_player', { uid: uid, action: 'rename', value: newName.trim().toUpperCase() });
-            setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
-        }
+        window.openTacticalPrompt({
+            title: "RINOMINA OPERATORE",
+            label: "NUOVO CALLSIGN / ALIAS OPERATORE",
+            defaultValue: currentName,
+            placeholder: "Es. VIPER",
+            allowEmpty: false,
+            onConfirm: (newName) => {
+                socket.emit('update_db_player', { uid: uid, action: 'rename', value: newName.toUpperCase() });
+                setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
+            }
+        });
     };
 
     window.editAsdFromProfile = function() {
         const uid = getCurrentProfileUid();
         const currentAsd = document.getElementById('modal-op-asd').innerText;
-        const newAsd = prompt("Inserisci il nome della SQUADRA o dell'ASD (lascia vuoto per 'NESSUNA'):", currentAsd === 'NESSUNA' ? '' : currentAsd);
 
-        if (newAsd !== null) {
-            const finalAsd = newAsd.trim() === '' ? 'NESSUNA' : newAsd.trim().toUpperCase();
-            socket.emit('update_db_player', { uid: uid, action: 'edit_asd', value: finalAsd });
-            setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
-        }
+        window.openTacticalPrompt({
+            title: "MODIFICA SQUADRA (ASD)",
+            label: "NOME SQUADRA O ASD (VUOTO = NESSUNA)",
+            defaultValue: currentAsd === 'NESSUNA' ? '' : currentAsd,
+            placeholder: "Lascia vuoto per 'NESSUNA'",
+            allowEmpty: true,
+            onConfirm: (newAsd) => {
+                const finalAsd = newAsd === '' ? 'NESSUNA' : newAsd.toUpperCase();
+                socket.emit('update_db_player', { uid: uid, action: 'edit_asd', value: finalAsd });
+                setTimeout(() => socket.emit('request_profile', { uid: uid }), 100);
+            }
+        });
     };
 
     window.toggleProStatus = function() {

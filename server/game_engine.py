@@ -927,15 +927,20 @@ def on_mqtt_message(client, userdata, msg):
                         target = mission_control.target_id
                         mode = mission_control.mode
                         dur = int(mission_control.global_duration / 60) if mission_control.global_duration > 0 else 15
-                        if target and mode:
+                        roster_rows = db_manager.get_active_roster_status()
+                        players_out = sum(1 for p in roster_rows if p[2] != 'IN')
+                        terminal_ok = (mode == 'tdm') or (target and target in registry.devices)
+
+                        if terminal_ok and len(roster_rows) > 0 and players_out == 0 and mode:
                             logger.info(f"[KIOSK OVERRIDE] Avvio Hardware Missione: {mode} su {target}")
                             mission_control.start_mission(mode, target, duration=dur)
                             socketio.emit('mission_start_success')
+                        else:
+                            logger.warning("[KIOSK OVERRIDE BLOCKED] Tentativo di avvio rifiutato: terminale non valido o giocatori fuori campo.")
                 elif cmd_str == "FORCE_END_GAME":
-                     mission_control.force_stop_mission()
+                    mission_control.force_stop_mission()
                 elif cmd_str == "CLOSE_MISSION":
-                     mission_control.close_and_dismiss_mission()
-                
+                    mission_control.close_and_dismiss_mission()
 
                 socketio.emit('kiosk_hardware_cmd', {'cmd': cmd_str})
             return

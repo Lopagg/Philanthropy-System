@@ -1,6 +1,6 @@
 <!-- ==========================================================================
      setup.html
-     Pannello di configurazione missione (Preset Regole, S&D V1/V2, Domination, TDM).
+     Pannello di configurazione missione (Preset Regole, S&D V2, Domination, TDM).
      ========================================================================== -->
 <div id="view-setup" class="view-panel hidden">
     <div class="sop-card setup-panel">
@@ -23,25 +23,30 @@
                 </div>
             </div>
 
-            <!-- Barra Gestione Preset Tattici (Load / Save / Overwrite / Delete) -->
+            <!-- Barra Gestione Preset Tattici (Load / Save / Overwrite / Rename / Delete / Import / Export) -->
             <div class="input-group-tactical" style="margin-bottom: 22px; background: rgba(0, 255, 204, 0.04); border: 1px solid var(--sop-dim); padding: 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
                     <label class="setup-label" for="setup-preset-select" style="margin: 0; color: var(--sop-primary); letter-spacing: 2px;">
                         📁 TACTICAL RULE PRESETS // LOADOUT
                     </label>
-                    <span id="preset-status-msg" style="font-size: 11px; font-family: monospace; color: #888;">SELEZIONA O SALVA UN PRESET</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="preset-status-msg" style="font-size: 11px; font-family: monospace; color: #888; margin-right: 6px;">SELEZIONA O SALVA UN PRESET</span>
+                        <input type="file" id="preset-import-input" accept=".json,application/json" class="hidden" onchange="importPresetsFromFile(this)">
+                        <button type="button" class="deck-btn" style="margin: 0; padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('preset-import-input').click()" title="Importa Preset da file .json">[ 📥 IMPORTA ]</button>
+                        <button type="button" class="deck-btn" style="margin: 0; padding: 4px 10px; font-size: 11px;" onclick="exportPresetsToFile()" title="Esporta Preset in un file .json">[ 📤 ESPORTA ]</button>
+                    </div>
                 </div>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
                     <select id="setup-preset-select" class="tactical-select" style="flex: 1; min-width: 240px; margin-bottom: 0;" onchange="onPresetSelectChange(this.value)">
                         <option value="">-- Configurazione Manuale / Seleziona Preset --</option>
                     </select>
-                    <button type="button" class="deck-btn" style="margin: 0; padding: 8px 12px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="saveNewPreset()" title="Salva le regole attuali come nuovo preset">
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 8px 12px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="openPresetNameModal('new')" title="Salva le regole attuali come nuovo preset">
                         [ + SALVA NUOVO ]
                     </button>
                     <button type="button" id="btn-overwrite-preset" class="deck-btn hidden" style="margin: 0; padding: 8px 12px; font-size: 12px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="overwriteCurrentPreset()" title="Sovrascrivi il preset selezionato con le modifiche attuali">
                         [ 💾 AGGIORNA ]
                     </button>
-                    <button type="button" id="btn-rename-preset" class="deck-btn hidden" style="margin: 0; padding: 8px 10px; font-size: 12px;" onclick="renameCurrentPreset()" title="Rinomina il preset selezionato">
+                    <button type="button" id="btn-rename-preset" class="deck-btn hidden" style="margin: 0; padding: 8px 10px; font-size: 12px;" onclick="openPresetNameModal('rename')" title="Rinomina il preset selezionato">
                         [ ✏️ RINOMINA ]
                     </button>
                     <button type="button" id="btn-delete-preset" class="deck-btn btn-danger hidden" style="margin: 0; padding: 8px 10px; font-size: 12px;" onclick="deleteCurrentPreset()" title="Elimina definitivamente il preset selezionato">
@@ -63,11 +68,18 @@
             <div id="target-selection-row" class="input-group-tactical" style="margin-bottom: 25px;">
                 <label class="setup-label" for="setup-target-select">SELECT TARGET TERMINAL:</label>
                 <select id="setup-target-select" class="tactical-select" onchange="updateUIForTargetVersion()">
-                    <option value="">-- Seleziona un nodo nel Menu Principale --</option>
+                    <option value="">-- Seleziona nodo target --</option>
                 </select>
             </div>
 
             <hr class="separator">
+
+            <!-- Avviso quando nessun terminale è selezionato -->
+            <div id="setup-no-terminal-msg" style="text-align: center; padding: 35px 20px; border: 1px dashed var(--sop-dim); background: rgba(0,0,0,0.35); margin-bottom: 20px;">
+                <div style="font-size: 28px; margin-bottom: 10px;">📡</div>
+                <h4 style="color: var(--sop-secondary); letter-spacing: 2px; margin: 0 0 8px 0;">IN ATTESA DI SELEZIONE TERMINALE</h4>
+                <p style="color: #888; font-size: 13px; margin: 0;">Seleziona un nodo operativo dal menu <b>SELECT TARGET TERMINAL</b> qui sopra per sbloccare la configurazione dei parametri e l'invio alla rete.</p>
+            </div>
 
             <!-- Parametri Team Deathmatch -->
             <div id="setup-tdm-params" class="setup-params-group hidden">
@@ -81,8 +93,8 @@
                 <p style="color: #888; font-size: 12px; margin-top: 10px;">* Team Deathmatch non richiede un terminale fisico. Il server calcolerà il tempo e le eliminazioni in automatico.</p>
             </div>
 
-            <!-- Parametri Search & Destroy -->
-            <div id="setup-sd-params" class="setup-params-group">
+            <!-- Parametri Search & Destroy (nascosti finché non si seleziona un terminale) -->
+            <div id="setup-sd-params" class="setup-params-group hidden">
                 <h3 style="color: var(--sop-primary); margin-bottom: 20px;">S&amp;D PARAMETERS</h3>
                 <div class="row-inputs" style="margin-bottom: 20px;">
                     <div style="flex: 1;">
@@ -105,7 +117,7 @@
                 </div>
                 
                 <!-- Blocco Parametri Legacy RAT-V1 -->
-                <div id="sd-v1-legacy-params">
+                <div id="sd-v1-legacy-params" class="hidden">
                     <div class="row-inputs" style="margin-bottom: 15px;">
                         <div style="flex: 1;">
                             <label class="setup-label" for="sd-arm-time">ARM TIME (SEC)</label>
@@ -139,7 +151,7 @@
                 </div>
 
                 <!-- Blocco Sequenze Modulari RAT-V2 -->
-                <div id="sd-v2-modular-params" class="hidden" style="background: rgba(0, 0, 0, 0.2); padding: 15px; border: 1px dashed var(--sop-dim);">
+                <div id="sd-v2-modular-params" style="background: rgba(0, 0, 0, 0.2); padding: 15px; border: 1px dashed var(--sop-dim);">
                     <h4 style="color: var(--sop-text); margin-bottom: 15px; letter-spacing: 2px;">V2 MODULAR SEQUENCE</h4>
                     
                     <label class="setup-label">ARMING SEQUENCE (ATTACKERS)</label>
@@ -183,7 +195,7 @@
                 </div>
             </div>
 
-            <!-- Parametri Domination -->
+            <!-- Parametri Domination (nascosti finché non si seleziona un terminale) -->
             <div id="setup-dom-params" class="setup-params-group hidden">
                 <h3 style="color: var(--sop-primary); margin-bottom: 20px;">DOMINATION PARAMETERS</h3>
                 <div class="row-inputs" style="margin-bottom: 15px;">
@@ -194,7 +206,7 @@
                 </div>
 
                 <!-- Blocco Legacy RAT-V1 -->
-                <div id="dom-v1-legacy-params">
+                <div id="dom-v1-legacy-params" class="hidden">
                     <div class="row-inputs" style="margin-bottom: 15px;">
                         <div style="flex: 1;">
                             <label class="setup-label" for="dom-capture-time">CAPTURE TIME (SEC)</label>
@@ -208,7 +220,7 @@
                 </div>
 
                 <!-- Blocco Sequenze Modulari RAT-V2 -->
-                <div id="dom-v2-modular-params" class="hidden" style="background: rgba(0, 0, 0, 0.2); padding: 15px; border: 1px dashed var(--sop-dim);">
+                <div id="dom-v2-modular-params" style="background: rgba(0, 0, 0, 0.2); padding: 15px; border: 1px dashed var(--sop-dim);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h4 style="color: var(--sop-text); margin: 0; letter-spacing: 2px;">V2 ZONE CAPTURE SEQUENCES</h4>
                         <button type="button" class="deck-btn" style="padding: 4px 10px; font-size: 11px; color: var(--sop-secondary); border-color: var(--sop-secondary);" onclick="copyDomAlphaToBravo()">[ COPIA ALPHA → BRAVO ]</button>
@@ -238,7 +250,7 @@
 
             <!-- Azioni di Trasmissione e Avvio -->
             <div class="setup-actions" style="margin-top: 30px; text-align: right;">
-                <button type="button" id="btn-transmit-setup" class="deck-btn" style="border-color: var(--sop-secondary); color: var(--sop-secondary);">[ 1. TRANSMIT CONFIG ]</button>
+                <button type="button" id="btn-transmit-setup" class="deck-btn disabled" disabled style="border-color: var(--sop-secondary); color: var(--sop-secondary);">[ 1. TRANSMIT CONFIG ]</button>
                 <button type="button" id="btn-start-mission" class="deck-btn disabled" disabled style="border-color: var(--sop-primary); color: var(--sop-primary); font-weight: bold; font-size: 16px; padding: 10px 20px; margin-left: 10px;">[ 2. START MISSION ]</button>
             </div>
         </div>
