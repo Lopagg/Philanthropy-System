@@ -41,6 +41,8 @@ public:
     // --- Configurazione degli Step ---
     void clearSteps();
     void setHoldActionLabel(const String& label);
+    void setLedColors(uint8_t fgR, uint8_t fgG, uint8_t fgB,
+                  uint8_t bgR = 0, uint8_t bgG = 0, uint8_t bgB = 0);
     void setDefaultHoldStep(uint32_t seconds);
     void loadFromJson(JsonArray arr, uint32_t fallbackHoldSec);
 
@@ -70,6 +72,7 @@ private:
     uint16_t _sweepStartFreq;
     uint16_t _sweepEndFreq;
     uint8_t _ledR, _ledG, _ledB;
+    uint8_t _bgR, _bgG, _bgB;
     EventType _cancelEvent;
     String _holdActionLabel;
 

@@ -11,6 +11,7 @@
 
 extern HardwareManager hardware;
 
+// Stato interno non-bloccante per i lampeggi LED e i doppi beep ai minuti / 30s
 enum MilestoneFlashType : uint8_t {
     FLASH_NONE = 0,
     FLASH_MINUTE_LONG, // > 60s : 2 flash lunghi al 100% con stacco di buio prima/durante/dopo
@@ -113,6 +114,7 @@ bool CountdownTimer::update(bool enableEffects) {
 
         if (!isFirstDraw && remaining > 0 && remaining < _durationSec) {
             if (remaining > 60 && (remaining % 60 == 0)) {
+                // Minuti > 1: Voce + Beep singolo 1500Hz (150ms) + Doppio lampeggio lungo
                 if (minutes <= 15) {
                     hardware.playAudio("/audio/sd/min_" + String(minutes) + ".mp3", AUDIO_CH_VOICE);
                 }
@@ -120,6 +122,7 @@ bool CountdownTimer::update(bool enableEffects) {
                 s_flashType = FLASH_MINUTE_LONG;
                 s_flashStartMs = nowMs;
             } else if (remaining == 60) {
+                // 1 Minuto: Voce + Doppio Beep 1600Hz + Triplo lampeggio rapido
                 hardware.playAudio("/audio/sd/min_1.mp3", AUDIO_CH_VOICE);
                 hardware.playTone(1600, 80);
                 s_secondBeepPending = true;
@@ -127,6 +130,7 @@ bool CountdownTimer::update(bool enableEffects) {
                 s_flashType = FLASH_FAST_TRIPLE;
                 s_flashStartMs = nowMs;
             } else if (remaining == 30) {
+                // 30 Secondi: Voce + Doppio Beep 1600Hz + Triplo lampeggio rapido
                 hardware.playAudio("/audio/sd/sec_30.mp3", AUDIO_CH_VOICE);
                 hardware.playTone(1600, 80);
                 s_secondBeepPending = true;
@@ -134,12 +138,16 @@ bool CountdownTimer::update(bool enableEffects) {
                 s_flashType = FLASH_FAST_TRIPLE;
                 s_flashStartMs = nowMs;
             } else if (remaining == 10) {
+                // 10 Secondi: Voce countdown (i beep e lampeggi accelerati partono nel blocco sottostante)
                 hardware.playAudio("/audio/sd/sec_10.mp3", AUDIO_CH_VOICE);
             }
         }
     }
 
     // 4. Gestione Effetti LED (Breathing Rosso, Flash ad alta intensità Minuto/30s e Ultimi 10s)
+    //    Nota: durante la sequenza di disinnesco enableEffects viene messo a false
+    //    così i LED sono pilotati da InteractionSequence senza conflitti, mentre i beep negli
+    //    ultimi 10s continuano comunque a suonare!
     if (remaining > 0) {
         if (remaining <= 10) {
             uint32_t interval = map(remaining, 10, 1, 900, 180);
@@ -183,6 +191,7 @@ bool CountdownTimer::update(bool enableEffects) {
                 else if (el < 1180)  hardware.setLedsColor(0, 0, 0);
                 else                 s_flashType = FLASH_NONE;
             } else {
+                // Effetto Breathing Rosso continuo (stile RAT-V1)
                 hardware.updateBreathingEffect(255, 0, 0);
             }
         }

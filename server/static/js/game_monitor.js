@@ -381,4 +381,14 @@ export function renderRules(payload) {
         li.innerHTML = `<span class="rule-key">CONQUISTA ${currentFactions.BRAVO.name}</span> <span class="rule-val">${formatSeq(payload.bravo_seq)}</span>`;
         elSdRulesList.appendChild(li);
     }
+    if (payload.alpha_fail_mode) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="rule-key">ERRORE ${currentFactions.ALPHA.name}</span> <span class="rule-val">${failLabels[payload.alpha_fail_mode] || payload.alpha_fail_mode}</span>`;
+        elSdRulesList.appendChild(li);
+    }
+    if (payload.bravo_fail_mode) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="rule-key">ERRORE ${currentFactions.BRAVO.name}</span> <span class="rule-val">${failLabels[payload.bravo_fail_mode] || payload.bravo_fail_mode}</span>`;
+        elSdRulesList.appendChild(li);
+    }
 }

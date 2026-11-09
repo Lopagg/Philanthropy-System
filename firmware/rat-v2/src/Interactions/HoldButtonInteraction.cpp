@@ -23,11 +23,18 @@ HoldButtonInteraction::HoldButtonInteraction(uint8_t buttonIndex, uint32_t durat
       _startFreq(startFreq),
       _endFreq(endFreq),
       _ledR(ledR), _ledG(ledG), _ledB(ledB),
+      _bgR(0), _bgG(0), _bgB(0),
       _cancelEvent(cancelEvent),
       _actionLabel(actionLabel.length() > 0 ? actionLabel : (buttonIndex == 1 ? "INNESCA" : "DISINNESCA")),
       _holdingStarted(false),
       _startTime(0),
-      _result(INTERACTION_RUNNING) {}
+      _result(INTERACTION_RUNNING) {
+    if (_ledR == 255 && _ledG == 0 && _ledB == 0) {
+        _bgR = 0; _bgG = 0; _bgB = 255; // Da Blu a Rosso
+    } else if (_ledR == 0 && _ledG == 255 && _ledB == 0) {
+        _bgR = 255; _bgG = 0; _bgB = 0; // Da Rosso a Verde
+    }
+}
 
 HoldButtonInteraction::~HoldButtonInteraction() {
     hardware.noTone();
@@ -37,6 +44,12 @@ void HoldButtonInteraction::setActionLabel(const String& label) {
     if (label.length() > 0) {
         _actionLabel = label;
     }
+}
+
+void HoldButtonInteraction::setLedColors(uint8_t fgR, uint8_t fgG, uint8_t fgB,
+                                         uint8_t bgR, uint8_t bgG, uint8_t bgB) {
+    _ledR = fgR; _ledG = fgG; _ledB = fgB;
+    _bgR  = bgR; _bgG  = bgG; _bgB  = bgB;
 }
 
 // ============================================================================
@@ -125,17 +138,11 @@ void HoldButtonInteraction::update() {
     // 3. Aggiornamento barra grafica sull'LCD e riempimento progressivo dei LED:
     //    - Innesco (target Rosso 255,0,0)    : i LED passano uno a uno da Blu (0,0,255) a Rosso (255,0,0)
     //    - Disinnesco (target Verde 0,255,0) : i LED passano uno a uno da Rosso (255,0,0) a Verde (0,255,0)
+    //    - Dominio                           : i LED passano dal colore attuale della zona al colore del conquistatore
     uint32_t elapsedMs = millis() - _startTime;
     hardware.drawProgressBar(2, elapsedMs, _durationMs);
 
-    uint8_t bgR = 0, bgG = 0, bgB = 0;
-    if (_ledR == 255 && _ledG == 0 && _ledB == 0) {
-        bgR = 0; bgG = 0; bgB = 255; // Da Blu a Rosso
-    } else if (_ledR == 0 && _ledG == 255 && _ledB == 0) {
-        bgR = 255; bgG = 0; bgB = 0; // Da Rosso a Verde
-    }
-
-    hardware.setLedsProgress(elapsedMs, _durationMs, _ledR, _ledG, _ledB, bgR, bgG, bgB);
+    hardware.setLedsProgress(elapsedMs, _durationMs, _ledR, _ledG, _ledB, _bgR, _bgG, _bgB);
 
     // 4. Controllo completamento durata richiesta
     if (elapsedMs >= _durationMs) {

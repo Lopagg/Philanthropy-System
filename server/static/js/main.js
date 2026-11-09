@@ -45,6 +45,11 @@ function getSeqArrayByType(type) {
 
 window.copyDomAlphaToBravo = function() {
     window.v2DomBravoSequence = JSON.parse(JSON.stringify(window.v2DomAlphaSequence));
+    const alphaFailEl = document.getElementById('dom-v2-alpha-fail-mode');
+    const bravoFailEl = document.getElementById('dom-v2-bravo-fail-mode');
+    if (alphaFailEl && bravoFailEl) {
+        bravoFailEl.value = alphaFailEl.value;
+    }
     renderV2Sequences();
 };
 
@@ -674,6 +679,8 @@ function buildMissionConfig() {
                 game_duration: dur,
                 fx_smoke: document.getElementById('dom-v2-fx-smoke')?.value === 'true',
                 fx_relay: document.getElementById('dom-v2-fx-relay')?.value === 'true',
+                alpha_fail_mode: document.getElementById('dom-v2-alpha-fail-mode')?.value || 'RETRY_STEP',
+                bravo_fail_mode: document.getElementById('dom-v2-bravo-fail-mode')?.value || 'RETRY_STEP',
                 alpha_seq: alphaSeqPayload,
                 bravo_seq: bravoSeqPayload
             };
@@ -1204,6 +1211,8 @@ if (!window.__zuluMainInitialized) {
                 game_duration:    parseInt(document.getElementById('dom-game-dur')?.value) || 15,
                 fx_smoke:         document.getElementById('dom-v2-fx-smoke')?.value === 'true',
                 fx_relay:         document.getElementById('dom-v2-fx-relay')?.value === 'true',
+                alpha_fail_mode:  document.getElementById('dom-v2-alpha-fail-mode')?.value || 'RETRY_STEP',
+                bravo_fail_mode:  document.getElementById('dom-v2-bravo-fail-mode')?.value || 'RETRY_STEP',
                 v2_dom_alpha_seq: JSON.parse(JSON.stringify(window.v2DomAlphaSequence || [])),
                 v2_dom_bravo_seq: JSON.parse(JSON.stringify(window.v2DomBravoSequence || [])),
                 capture_time:     parseInt(document.getElementById('dom-capture-time')?.value) || 10,
@@ -1251,11 +1260,13 @@ if (!window.__zuluMainInitialized) {
                 window.v2DefuseSequence = JSON.parse(JSON.stringify(cfg.v2_defuse_seq));
             }
         } else if (preset.mode === 'dom') {
-            setVal('dom-game-dur',       cfg.game_duration ?? 15);
-            setVal('dom-v2-fx-smoke',    cfg.fx_smoke ? 'true' : 'false');
-            setVal('dom-v2-fx-relay',    cfg.fx_relay ? 'true' : 'false');
-            setVal('dom-capture-time',   cfg.capture_time ?? 10);
-            setVal('dom-countdown',      cfg.countdown ?? 10);
+            setVal('dom-game-dur',            cfg.game_duration ?? 15);
+            setVal('dom-v2-fx-smoke',         cfg.fx_smoke ? 'true' : 'false');
+            setVal('dom-v2-fx-relay',         cfg.fx_relay ? 'true' : 'false');
+            setVal('dom-v2-alpha-fail-mode',  cfg.alpha_fail_mode || 'RETRY_STEP');
+            setVal('dom-v2-bravo-fail-mode',  cfg.bravo_fail_mode || 'RETRY_STEP');
+            setVal('dom-capture-time',        cfg.capture_time ?? 10);
+            setVal('dom-countdown',           cfg.countdown ?? 10);
 
             if (Array.isArray(cfg.v2_dom_alpha_seq) && cfg.v2_dom_alpha_seq.length > 0) {
                 window.v2DomAlphaSequence = JSON.parse(JSON.stringify(cfg.v2_dom_alpha_seq));

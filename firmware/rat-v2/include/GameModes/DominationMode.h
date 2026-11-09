@@ -6,7 +6,7 @@
  * - Pulsante P1 (OLED 1) associato alla conquista della Squadra ALPHA.
  * - Pulsante P2 (OLED 2) associato alla conquista della Squadra BRAVO.
  * - Due istanze indipendenti di InteractionSequence (_alphaSequence e _bravoSequence)
- *   con default impostato a HOLD 10 secondi sul rispettivo pulsante di squadra.
+ *   con feedback LED progressivo, suoni polifonici e penalità errore step configurabili.
  */
 
 #ifndef DOMINATION_MODE_H
@@ -33,7 +33,7 @@ enum DomState {
 
 /**
  * @enum DomOwner
- * @brief Fazione che detiene attualmente il possesso della zona (anche durante un tentativo di riconquista).
+ * @brief Proprietario della zona di dominio.
  */
 enum DomOwner {
     OWNER_NONE,
@@ -46,7 +46,6 @@ public:
     DominationMode();
     ~DominationMode() override;
 
-    // --- Interfaccia GameMode ---
     void begin() override;
     void handleEvent(const SystemEvent& event) override;
     void update() override;
@@ -61,24 +60,23 @@ private:
     uint32_t _scoreAlphaSec;
     uint32_t _scoreBravoSec;
 
-    // Nomi e colori RGB delle due fazioni (aggiornabili da SET_FACTIONS)
     String _team1Name;
     String _team2Name;
     uint8_t _t1Color[3];
     uint8_t _t2Color[3];
+    uint8_t _endColor[3];
+    bool _hasEndWinnerColor;
 
-    // Sequenze di conquista componibili (P1 per Alpha, P2 per Bravo)
     InteractionSequence _alphaSequence;
     InteractionSequence _bravoSequence;
 
-    // Effetti fisici opzionali (impulso alla conquista)
     bool _fxSmoke;
     bool _fxRelay;
     bool _fxPulseActive;
     unsigned long _fxPulseStartTime;
 
-    // Metodi privati di gestione stati, display e telemetria
     void processJsonConfig(const char* jsonStr);
+    void updateSequenceColors();
     void enterCurrentOwnerIdleState(bool playCaptureSound);
     void startAlphaCapture();
     void startBravoCapture();

@@ -26,6 +26,9 @@ InteractionSequence::InteractionSequence(const char* headerTitle, uint8_t holdBu
       _sweepStartFreq(sweepStartFreq),
       _sweepEndFreq(sweepEndFreq),
       _ledR(ledR), _ledG(ledG), _ledB(ledB),
+      _bgR((ledR == 0 && ledG == 255 && ledB == 0) ? 255 : 0),
+      _bgG(0),
+      _bgB((ledR == 255 && ledG == 0 && ledB == 0) ? 255 : 0),
       _cancelEvent(cancelEvent),
       _holdActionLabel(holdActionLabel ? String(holdActionLabel) : (holdButtonIndex == 1 ? "INNESCA" : "DISINNESCA")),
       _stepCount(0),
@@ -71,12 +74,25 @@ void InteractionSequence::setHoldActionLabel(const String& label) {
     }
 }
 
+void InteractionSequence::setLedColors(uint8_t fgR, uint8_t fgG, uint8_t fgB,
+                                       uint8_t bgR, uint8_t bgG, uint8_t bgB) {
+    _ledR = fgR; _ledG = fgG; _ledB = fgB;
+    _bgR  = bgR; _bgG  = bgG; _bgB  = bgB;
+    for (uint8_t i = 0; i < _stepCount; i++) {
+        if (_steps[i] != nullptr && _stepTypeTags[i] == 1) {
+            static_cast<HoldButtonInteraction*>(_steps[i])->setLedColors(_ledR, _ledG, _ledB, _bgR, _bgG, _bgB);
+        }
+    }
+}
+
 void InteractionSequence::setDefaultHoldStep(uint32_t seconds) {
     clearSteps();
-    _steps[0] = new HoldButtonInteraction(_holdButtonIndex, seconds,
-                                          _sweepStartFreq, _sweepEndFreq,
-                                          _ledR, _ledG, _ledB,
-                                          _cancelEvent, _holdActionLabel);
+    HoldButtonInteraction* holdStep = new HoldButtonInteraction(_holdButtonIndex, seconds,
+                                                                _sweepStartFreq, _sweepEndFreq,
+                                                                _ledR, _ledG, _ledB,
+                                                                _cancelEvent, _holdActionLabel);
+    holdStep->setLedColors(_ledR, _ledG, _ledB, _bgR, _bgG, _bgB);
+    _steps[0] = holdStep;
     _stepTypeTags[0] = 1;
     _stepCount = 1;
 }
@@ -89,10 +105,12 @@ void InteractionSequence::loadFromJson(JsonArray arr, uint32_t fallbackHoldSec) 
 
         if (strcmp(type, "HOLD") == 0) {
             uint32_t sec = stepObj["val_num"] | fallbackHoldSec;
-            _steps[_stepCount] = new HoldButtonInteraction(_holdButtonIndex, sec,
-                                                           _sweepStartFreq, _sweepEndFreq,
-                                                           _ledR, _ledG, _ledB,
-                                                           _cancelEvent, _holdActionLabel);
+            HoldButtonInteraction* holdStep = new HoldButtonInteraction(_holdButtonIndex, sec,
+                                                                        _sweepStartFreq, _sweepEndFreq,
+                                                                        _ledR, _ledG, _ledB,
+                                                                        _cancelEvent, _holdActionLabel);
+            holdStep->setLedColors(_ledR, _ledG, _ledB, _bgR, _bgG, _bgB);
+            _steps[_stepCount] = holdStep;
             _stepTypeTags[_stepCount] = 1;
             _stepCount++;
         } else if (strcmp(type, "PIN") == 0) {
@@ -234,6 +252,7 @@ bool InteractionSequence::checkPriorConditionsMaintained() {
         uint8_t mask = _steps[i]->getKeyMask();
         if (mask == 0) continue;
 
+        // Verifica se uno step successivo (fino a quello attivo incluso) modifica la stessa chiave
         bool overriddenByLaterStep = false;
         for (uint8_t j = i + 1; j <= _currentStep && j < _stepCount; j++) {
             if ((_steps[j]->getKeyMask() & mask) != 0) {
@@ -297,6 +316,8 @@ void InteractionSequence::handleEvent(const SystemEvent& event) {
 
     if (!checkPriorConditionsMaintained()) return;
 
+    // Se viene scansionata una tessera mentre lo step corrente non è RFID,
+    // invia comunque l'UID in telemetria al server per il tracciamento statistiche
     if (event.type == EV_RFID_SCANNED && !_steps[_currentStep]->isRfidStep()) {
         RfidInteraction::sendRfidTelemetry(String(event.stringData), false, "NON_RFID_STEP");
     }
@@ -362,6 +383,11 @@ void InteractionSequence::update() {
         return;
     }
 
+    // Gestione LED durante gli step non-HOLD (PIN, KEY, RFID) o in attesa di premere HOLD:
+    // - Se c'è un flash prioritario in corso (conferma step, pressione tasto, errore), lascialo eseguire.
+    // - Se siamo in uno step HOLD e il pulsante target è premuto, HoldButtonInteraction pilota già la barra LED.
+    // - Negli altri casi: mantieni fissi i LED degli step già completati (_currentStep / _stepCount)
+    //   e fai lampeggiare a 2 Hz i LED rimanenti con il colore dell'azione!
     if (hardware.updateLedFlash()) {
         return;
     }

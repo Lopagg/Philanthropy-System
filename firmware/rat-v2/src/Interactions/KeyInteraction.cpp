@@ -255,6 +255,7 @@ void KeyInteraction::beginFromDirectEvent(const SystemEvent& event) {
         _syncPhase = SYNC_FIRST_TURNED;
         _syncTimerMs = millis();
         hardware.playTone(900, 40);
+        hardware.triggerLedFlash(180, 255, 255, 60, 30, 1);
         renderPrompt();
         return;
     }
@@ -321,6 +322,7 @@ void KeyInteraction::update() {
                 _syncPhase = SYNC_FIRST_TURNED;
                 _syncTimerMs = millis();
                 hardware.playTone(900, 40);
+                hardware.triggerLedFlash(180, 255, 255, 60, 30, 1);
                 renderPrompt();
             }
             return;

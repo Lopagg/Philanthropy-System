@@ -234,6 +234,24 @@
                     <div id="v2-dom-bravo-sequence-container" style="margin-bottom: 10px;"></div>
                     <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('dom_bravo')">+ ADD BRAVO STEP</button>
 
+                    <h5 style="color: var(--sop-secondary); margin-top: 15px; margin-bottom: 10px; letter-spacing: 1px;">STEP FAILURE PENALTY RULES (SE SI SBAGLIA UNO STEP)</h5>
+                    <div class="row-inputs" style="margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="dom-v2-alpha-fail-mode" style="color: var(--team-a-color);">ON ALPHA STEP ERROR</label>
+                            <select id="dom-v2-alpha-fail-mode" class="tactical-select">
+                                <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
+                                <option value="RESTART_SEQ">ANNULLA E RIPETI DA CAPO</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1;">
+                            <label class="setup-label" for="dom-v2-bravo-fail-mode" style="color: var(--team-b-color);">ON BRAVO STEP ERROR</label>
+                            <select id="dom-v2-bravo-fail-mode" class="tactical-select">
+                                <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
+                                <option value="RESTART_SEQ">ANNULLA E RIPETI DA CAPO</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <h5 style="color: var(--sop-dim); margin-top: 15px; margin-bottom: 10px; letter-spacing: 1px;">EXTRA EFFECTS ON CAPTURE</h5>
                     <div class="row-inputs" style="margin-bottom: 15px;">
                         <div style="flex: 1;">

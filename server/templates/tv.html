@@ -555,6 +555,12 @@
             if (Array.isArray(payload.bravo_seq)) {
                 list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">CONQUISTA ${currentFactions.BRAVO.name}</span><span class="tv-rule-val" style="color: var(--team-b-color);">${formatSeq(payload.bravo_seq)}</span></div>`;
             }
+            if (payload.alpha_fail_mode) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">ERRORE ${currentFactions.ALPHA.name}</span><span class="tv-rule-val">${failLabels[payload.alpha_fail_mode] || payload.alpha_fail_mode}</span></div>`;
+            }
+            if (payload.bravo_fail_mode) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">ERRORE ${currentFactions.BRAVO.name}</span><span class="tv-rule-val">${failLabels[payload.bravo_fail_mode] || payload.bravo_fail_mode}</span></div>`;
+            }
 
             const activeFx = [];
             if (payload.fx_smoke) activeFx.push('FUMO');

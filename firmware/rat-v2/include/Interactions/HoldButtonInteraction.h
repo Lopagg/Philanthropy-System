@@ -45,12 +45,16 @@ public:
 
     void setActionLabel(const String& label);
 
+    void setLedColors(uint8_t fgR, uint8_t fgG, uint8_t fgB,
+                  uint8_t bgR, uint8_t bgG, uint8_t bgB);
+
 private:
     uint8_t _buttonIndex;       // Pulsante monitorato: 1 = P1, 2 = P2
     uint32_t _durationMs;       // Durata richiesta in millisecondi
     uint16_t _startFreq;        // Frequenza di partenza dello sweep (Hz)
     uint16_t _endFreq;          // Frequenza finale dello sweep (Hz)
     uint8_t _ledR, _ledG, _ledB;// Colore lampeggio LED
+    uint8_t _bgR, _bgG, _bgB;
     EventType _cancelEvent;     // Evento per annullare prima dell'inizio pressione
     String _actionLabel;        // Etichetta OLED associata all'azione
 

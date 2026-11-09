@@ -112,7 +112,10 @@ def trigger_victory_voice_announcement(mc, winner_team_id, reason_str):
         reason_clean += "!"
 
     if winner_team_id == "DRAW":
-        speech_text = f"Fine partita! {reason_clean} Pareggio!"
+        if "pareggio" in reason_clean.lower():
+            speech_text = "Tempo scaduto! Partita terminata in pareggio!"
+        else:
+            speech_text = f"Fine partita! {reason_clean} Partita in pareggio!"
     else:
         config = db_manager.get_factions_config()
         winner_name = config.get(winner_team_id, {}).get('name', winner_team_id)
@@ -202,6 +205,7 @@ def publish_dom_settings_to_target(target_id, cmd_obj):
     if not target_id or target_id in ["SERVER-ROUTER", "SERVER-TDM"]:
         return
     if "alpha_seq" in cmd_obj or "bravo_seq" in cmd_obj:
+        config = db_manager.get_factions_config()
         a_seq = cmd_obj.get("alpha_seq", [{"type": "HOLD", "val_num": 10}])
         b_seq = cmd_obj.get("bravo_seq", a_seq)
         v2_payload = {
@@ -209,6 +213,12 @@ def publish_dom_settings_to_target(target_id, cmd_obj):
             "duration": int(cmd_obj.get("duration", cmd_obj.get("game_duration", 15))),
             "fx_smoke": bool(cmd_obj.get("fx_smoke", False)),
             "fx_relay": bool(cmd_obj.get("fx_relay", False)),
+            "alpha_fail_mode": str(cmd_obj.get("alpha_fail_mode", "RETRY_STEP")),
+            "bravo_fail_mode": str(cmd_obj.get("bravo_fail_mode", "RETRY_STEP")),
+            "t1": config.get('ALPHA', {}).get('name', 'ALPHA'),
+            "t1_c": get_pure_rgb(config.get('ALPHA', {}).get('color', '#ff3333')),
+            "t2": config.get('BRAVO', {}).get('name', 'BRAVO'),
+            "t2_c": get_pure_rgb(config.get('BRAVO', {}).get('color', '#55ff55')),
             "alpha_seq": resolve_rfid_sequence_for_rat(a_seq, "ALPHA"),
             "bravo_seq": resolve_rfid_sequence_for_rat(b_seq, "BRAVO")
         }
@@ -657,6 +667,12 @@ class MissionController:
                     start_payload["duration"] = int(duration)
                     start_payload["fx_smoke"] = bool(self.sd_settings.get("fx_smoke", False))
                     start_payload["fx_relay"] = bool(self.sd_settings.get("fx_relay", False))
+                    start_payload["alpha_fail_mode"] = str(self.sd_settings.get("alpha_fail_mode", "RETRY_STEP"))
+                    start_payload["bravo_fail_mode"] = str(self.sd_settings.get("bravo_fail_mode", "RETRY_STEP"))
+                    start_payload["t1"] = config.get('ALPHA', {}).get('name', 'ALPHA')
+                    start_payload["t1_c"] = get_pure_rgb(config.get('ALPHA', {}).get('color', '#ff3333'))
+                    start_payload["t2"] = config.get('BRAVO', {}).get('name', 'BRAVO')
+                    start_payload["t2_c"] = get_pure_rgb(config.get('BRAVO', {}).get('color', '#55ff55'))
                     if "alpha_seq" in self.sd_settings:
                         a_seq = self.sd_settings.get("alpha_seq", [{"type": "HOLD", "val_num": 10}])
                         b_seq = self.sd_settings.get("bravo_seq", a_seq)

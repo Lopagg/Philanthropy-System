@@ -51,14 +51,17 @@ bool RfidInteraction::isUidAllowed(const String& rawUid) const {
     String cleanUid = normalizeUid(rawUid);
     if (cleanUid.length() == 0) return false;
 
+    // Wildcard "*" o stringa vuota: accetta qualsiasi tessera valida
     if (_allowedUids.length() == 0 || _allowedUids == "*") {
         return true;
     }
 
+    // Sentinella inviata dal server quando la squadra o la lista giocatori è vuota
     if (_allowedUids.startsWith("__EMPTY")) {
         return false;
     }
 
+    // Ricerca dell'UID nella lista separata da virgole (es. "04863EB76F6180,04112233445566")
     int start = 0;
     while (start < (int)_allowedUids.length()) {
         int comma = _allowedUids.indexOf(',', start);
@@ -99,6 +102,7 @@ void RfidInteraction::handleEvent(const SystemEvent& event) {
         String scanned = String(event.stringData);
         bool allowed = isUidAllowed(scanned);
 
+        // Invia sempre al server l'UID scansionato e l'esito della verifica
         sendRfidTelemetry(scanned, allowed, "STEP");
 
         if (allowed) {
