@@ -193,6 +193,39 @@ def init_db():
                     (p_name, p_mode, p_cfg, now_str)
                 )
 
+        # 4. Tabelle Gestionale Giornate di Gioco (Calendario Eventi e Partecipanti/Bozza Squadre)
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS game_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                event_date TEXT,
+                start_time TEXT DEFAULT '08:30',
+                status TEXT DEFAULT 'PLANNED',
+                max_players INTEGER DEFAULT 30,
+                alpha_name TEXT DEFAULT 'ALPHA',
+                alpha_color TEXT DEFAULT '#ff3333',
+                bravo_name TEXT DEFAULT 'BRAVO',
+                bravo_color TEXT DEFAULT '#55ff55',
+                schedule_json TEXT DEFAULT '[]',
+                notes TEXT DEFAULT '',
+                created_at TEXT
+            )
+        ''')
+
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS event_participants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER,
+                uid TEXT,
+                guest_name TEXT,
+                team TEXT DEFAULT 'UNASSIGNED',
+                needs_rental INTEGER DEFAULT 0,
+                paid INTEGER DEFAULT 0,
+                notes TEXT DEFAULT '',
+                FOREIGN KEY(event_id) REFERENCES game_events(id)
+            )
+        ''')
+
         conn.commit()
 
 
@@ -726,3 +759,315 @@ def delete_preset(preset_id):
     with get_db_connection() as conn:
         conn.execute("DELETE FROM mission_presets WHERE id = ?", (int(preset_id),))
         conn.commit()
+
+# =============================================================================
+# GESTIONALE GIORNATE DI GIOCO (CALENDARIO, PARTECIPANTI, SCALETTA E DEPLOY)
+# =============================================================================
+
+def get_all_events():
+    """Restituisce la lista di tutte le giornate programmate con i contatori logistici."""
+    import json as _json
+    with get_db_connection(use_row_factory=True) as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT e.*,
+                   COUNT(ep.id) AS total_registered,
+                   SUM(CASE WHEN ep.team = 'ALPHA' THEN 1 ELSE 0 END) AS alpha_count,
+                   SUM(CASE WHEN ep.team = 'BRAVO' THEN 1 ELSE 0 END) AS bravo_count,
+                   SUM(CASE WHEN ep.needs_rental = 1 THEN 1 ELSE 0 END) AS rental_count,
+                   SUM(CASE WHEN ep.paid = 1 THEN 1 ELSE 0 END) AS paid_count
+            FROM game_events e
+            LEFT JOIN event_participants ep ON e.id = ep.event_id
+            GROUP BY e.id
+            ORDER BY e.event_date DESC, e.start_time DESC
+        ''')
+        rows = c.fetchall()
+        events = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d['schedule'] = _json.loads(d.get('schedule_json') or '[]')
+            except Exception:
+                d['schedule'] = []
+            d.pop('schedule_json', None)
+            d['total_registered'] = d['total_registered'] or 0
+            d['alpha_count']      = d['alpha_count'] or 0
+            d['bravo_count']      = d['bravo_count'] or 0
+            d['rental_count']     = d['rental_count'] or 0
+            d['paid_count']       = d['paid_count'] or 0
+            events.append(d)
+        return events
+
+
+def get_event_details(event_id):
+    """Restituisce i dettagli completi di una giornata, inclusa la lista partecipanti arricchita dal DB."""
+    import json as _json
+    with get_db_connection(use_row_factory=True) as conn:
+        c = conn.cursor()
+        c.execute("SELECT * FROM game_events WHERE id = ?", (int(event_id),))
+        ev_row = c.fetchone()
+        if not ev_row:
+            return None
+
+        ev = dict(ev_row)
+        try:
+            ev['schedule'] = _json.loads(ev.get('schedule_json') or '[]')
+        except Exception:
+            ev['schedule'] = []
+        ev.pop('schedule_json', None)
+
+        c.execute('''
+            SELECT ep.id, ep.event_id, ep.uid, ep.guest_name, ep.team,
+                   ep.needs_rental, ep.paid, ep.notes,
+                   p.alias AS db_alias, p.is_pro, p.asd_team,
+                   p.games_played, p.wins
+            FROM event_participants ep
+            LEFT JOIN players p ON ep.uid = p.uid
+            WHERE ep.event_id = ?
+            ORDER BY CASE ep.team WHEN 'ALPHA' THEN 1 WHEN 'BRAVO' THEN 2 ELSE 3 END,
+                     COALESCE(p.alias, ep.guest_name)
+        ''', (int(event_id),))
+
+        participants = []
+        for pr in c.fetchall():
+            pd = dict(pr)
+            games = pd.get('games_played') or 0
+            wins  = pd.get('wins') or 0
+            pd['display_name'] = pd.get('db_alias') or pd.get('guest_name') or pd.get('uid') or 'OSPITE'
+            pd['is_pro']       = pd.get('is_pro') or 0
+            pd['asd_team']     = pd.get('asd_team') or 'NESSUNA'
+            pd['win_rate']     = round((wins / games) * 100) if games > 0 else 50
+            participants.append(pd)
+
+        ev['participants'] = participants
+        return ev
+
+
+def save_game_event(data):
+    """Crea o aggiorna una giornata di gioco nel calendario."""
+    import json as _json
+    event_id    = data.get('id')
+    title       = str(data.get('title') or 'GIOCATA DOMENICALE').strip().upper()
+    event_date  = str(data.get('event_date') or datetime.date.today().strftime("%Y-%m-%d")).strip()
+    start_time  = str(data.get('start_time') or '08:30').strip()
+    max_players = int(data.get('max_players') or 30)
+    alpha_name  = str(data.get('alpha_name') or 'ALPHA').strip().upper()
+    alpha_color = str(data.get('alpha_color') or '#ff3333').strip()
+    bravo_name  = str(data.get('bravo_name') or 'BRAVO').strip().upper()
+    bravo_color = str(data.get('bravo_color') or '#55ff55').strip()
+    notes       = str(data.get('notes') or '').strip()
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if event_id:
+            c.execute('''
+                UPDATE game_events
+                SET title = ?, event_date = ?, start_time = ?, max_players = ?,
+                    alpha_name = ?, alpha_color = ?, bravo_name = ?, bravo_color = ?, notes = ?
+                WHERE id = ?
+            ''', (title, event_date, start_time, max_players,
+                  alpha_name, alpha_color, bravo_name, bravo_color, notes, int(event_id)))
+            conn.commit()
+            return int(event_id)
+        else:
+            c.execute('''
+                INSERT INTO game_events
+                (title, event_date, start_time, status, max_players,
+                 alpha_name, alpha_color, bravo_name, bravo_color, schedule_json, notes, created_at)
+                VALUES (?, ?, ?, 'PLANNED', ?, ?, ?, ?, ?, '[]', ?, ?)
+            ''', (title, event_date, start_time, max_players,
+                  alpha_name, alpha_color, bravo_name, bravo_color, notes, get_current_time()))
+            new_id = c.lastrowid
+            conn.commit()
+            return new_id
+
+
+def delete_game_event(event_id):
+    """Elimina una giornata di gioco e tutti i suoi partecipanti associati."""
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM event_participants WHERE event_id = ?", (int(event_id),))
+        conn.execute("DELETE FROM game_events WHERE id = ?", (int(event_id),))
+        conn.commit()
+
+
+def save_event_schedule(event_id, schedule_list, notes=None):
+    """Salva la scaletta delle modalità (Mission Playlist) ed eventuali note della giornata."""
+    import json as _json
+    sched_str = _json.dumps(schedule_list if isinstance(schedule_list, list) else [])
+    with get_db_connection() as conn:
+        if notes is not None:
+            conn.execute("UPDATE game_events SET schedule_json = ?, notes = ? WHERE id = ?",
+                         (sched_str, str(notes), int(event_id)))
+        else:
+            conn.execute("UPDATE game_events SET schedule_json = ? WHERE id = ?",
+                         (sched_str, int(event_id)))
+        conn.commit()
+
+
+def add_event_participant(event_id, uid=None, guest_name=None, team='UNASSIGNED', needs_rental=0):
+    """
+    Aggiunge un partecipante alla giornata.
+    Se uid == 'AUTO_GUEST', cerca automaticamente la prima tessera GUEST libera nel DB
+    e le assegna l'alias dell'ospite prenotato.
+    """
+    ev_id = int(event_id)
+    clean_team = str(team or 'UNASSIGNED').upper()
+    if clean_team not in ('ALPHA', 'BRAVO', 'UNASSIGNED'):
+        clean_team = 'UNASSIGNED'
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+
+        if uid == 'AUTO_GUEST':
+            c.execute('''
+                SELECT uid, alias FROM players
+                WHERE is_pro = 0
+                  AND uid NOT IN (SELECT COALESCE(uid, '') FROM event_participants WHERE event_id = ?)
+                ORDER BY alias
+            ''', (ev_id,))
+            free_guest = c.fetchone()
+            if free_guest:
+                uid = free_guest[0]
+                if guest_name and guest_name.strip():
+                    clean_gname = guest_name.strip().upper()
+                    c.execute("UPDATE players SET alias = ? WHERE uid = ?", (clean_gname, uid))
+            else:
+                uid = None
+
+        if uid:
+            c.execute("SELECT id FROM event_participants WHERE event_id = ? AND uid = ?", (ev_id, uid))
+            if c.fetchone():
+                return False
+
+        c.execute('''
+            INSERT INTO event_participants (event_id, uid, guest_name, team, needs_rental, paid)
+            VALUES (?, ?, ?, ?, ?, 0)
+        ''', (ev_id, uid, (guest_name or '').strip().upper(), clean_team, 1 if needs_rental else 0))
+        conn.commit()
+        return True
+
+
+def update_event_participant(participant_id, action, value=None):
+    """Aggiorna squadra bozza, flag noleggio o stato pagamento di un iscritto."""
+    pid = int(participant_id)
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if action == 'set_team' and value in ('ALPHA', 'BRAVO', 'UNASSIGNED'):
+            c.execute("UPDATE event_participants SET team = ? WHERE id = ?", (value, pid))
+        elif action == 'toggle_rental':
+            c.execute("UPDATE event_participants SET needs_rental = CASE WHEN needs_rental = 1 THEN 0 ELSE 1 END WHERE id = ?", (pid,))
+        elif action == 'toggle_paid':
+            c.execute("UPDATE event_participants SET paid = CASE WHEN paid = 1 THEN 0 ELSE 1 END WHERE id = ?", (pid,))
+        conn.commit()
+
+
+def remove_event_participant(participant_id):
+    """Rimuove un partecipante dalla giornata programmata."""
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM event_participants WHERE id = ?", (int(participant_id),))
+        conn.commit()
+
+
+def auto_balance_event_teams(event_id):
+    """
+    Suddivide automaticamente i partecipanti tra ALPHA e BRAVO:
+    1. Raggruppa gli operatori appartenenti alla stessa ASD/Squadra per non separare i compagni di club.
+    2. Ordina i gruppi per dimensione/esperienza e li assegna bilanciando il numero di operatori e il Win-Rate.
+    """
+    details = get_event_details(event_id)
+    if not details or not details.get('participants'):
+        return
+
+    participants = details['participants']
+    groups = {}
+    solos = []
+
+    for p in participants:
+        asd = (p.get('asd_team') or 'NESSUNA').strip().upper()
+        if asd and asd != 'NESSUNA':
+            groups.setdefault(asd, []).append(p)
+        else:
+            solos.append(p)
+
+    # Ordina i gruppi ASD dal più numeroso al meno numeroso
+    sorted_groups = sorted(groups.values(), key=lambda g: len(g), reverse=True)
+    # Ordina i singoli per win_rate decrescente (serpentina equilibrata)
+    sorted_solos = sorted(solos, key=lambda x: (x.get('is_pro', 0), x.get('win_rate', 50)), reverse=True)
+
+    alpha_list = []
+    bravo_list = []
+    alpha_score = 0.0
+    bravo_score = 0.0
+
+    for grp in sorted_groups:
+        grp_score = sum(x.get('win_rate', 50) for x in grp)
+        if len(alpha_list) < len(bravo_list) or (len(alpha_list) == len(bravo_list) and alpha_score <= bravo_score):
+            alpha_list.extend(grp)
+            alpha_score += grp_score
+        else:
+            bravo_list.extend(grp)
+            bravo_score += grp_score
+
+    for p in sorted_solos:
+        w = p.get('win_rate', 50)
+        if len(alpha_list) < len(bravo_list) or (len(alpha_list) == len(bravo_list) and alpha_score <= bravo_score):
+            alpha_list.append(p)
+            alpha_score += w
+        else:
+            bravo_list.append(p)
+            bravo_score += w
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        for p in alpha_list:
+            c.execute("UPDATE event_participants SET team = 'ALPHA' WHERE id = ?", (p['id'],))
+        for p in bravo_list:
+            c.execute("UPDATE event_participants SET team = 'BRAVO' WHERE id = ?", (p['id'],))
+        conn.commit()
+
+
+def deploy_event_to_active_roster(event_id, clear_existing=True):
+    """
+    Importa la bozza squadre della giornata nel Roster attivo di gioco (active_roster),
+    applica i nomi/colori fazione dell'evento e imposta lo stato dell'evento su ACTIVE.
+    """
+    details = get_event_details(event_id)
+    if not details:
+        return 0
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        if clear_existing:
+            c.execute("DELETE FROM active_roster")
+
+        # Applica nomi e colori fazione personalizzati dell'evento
+        if details.get('alpha_name') and details.get('alpha_color'):
+            c.execute("UPDATE factions_config SET display_name = ?, hex_color = ? WHERE team_id = 'ALPHA'",
+                      (details['alpha_name'], details['alpha_color']))
+        if details.get('bravo_name') and details.get('bravo_color'):
+            c.execute("UPDATE factions_config SET display_name = ?, hex_color = ? WHERE team_id = 'BRAVO'",
+                      (details['bravo_name'], details['bravo_color']))
+
+        a_count = sum(1 for p in details['participants'] if p.get('team') == 'ALPHA' and p.get('uid'))
+        b_count = sum(1 for p in details['participants'] if p.get('team') == 'BRAVO' and p.get('uid'))
+
+        imported = 0
+        for p in details['participants']:
+            uid = p.get('uid')
+            if not uid:
+                continue
+            team = p.get('team')
+            if team not in ('ALPHA', 'BRAVO'):
+                team = 'ALPHA' if a_count <= b_count else 'BRAVO'
+                if team == 'ALPHA':
+                    a_count += 1
+                else:
+                    b_count += 1
+                c.execute("UPDATE event_participants SET team = ? WHERE id = ?", (team, p['id']))
+
+            c.execute("INSERT OR REPLACE INTO active_roster (uid, team, status) VALUES (?, ?, 'FUORI')", (uid, team))
+            imported += 1
+
+        c.execute("UPDATE game_events SET status = 'ACTIVE' WHERE id = ?", (int(event_id),))
+        conn.commit()
+        return imported

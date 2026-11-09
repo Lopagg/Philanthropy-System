@@ -17,7 +17,8 @@ const VIEW_IDS = {
     'arena-menu':     'view-arena-menu',
     'arena-manage':   'view-arena-manage',
     'arena-tracking': 'view-arena-tracking',
-    'arena-db':       'view-arena-db'
+    'arena-db':       'view-arena-db',
+    'arena-planner':  'view-arena-planner'
 };
 
 // ============================================================================
@@ -26,6 +27,9 @@ const VIEW_IDS = {
 
 export function showView(viewName, socket) {
     if (viewName === 'arena-db' && socket) {
+        socket.emit('request_database');
+    } else if (viewName === 'arena-planner' && socket) {
+        socket.emit('request_events');
         socket.emit('request_database');
     }
 

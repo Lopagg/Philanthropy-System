@@ -415,6 +415,7 @@ def handle_connect():
     emit('database_update', db_manager.get_all_players())
     emit('ota_manifest_update', get_ota_manifest())
     emit('presets_update', db_manager.get_all_presets())
+    emit('events_update', db_manager.get_all_events())
     
     # Se c'è una missione attiva o già configurata (SET_READY), sincronizza subito /tv e /monitor
     mc = game_engine.mission_control
@@ -702,6 +703,117 @@ def handle_import_presets(data):
     if imported_count > 0:
         socketio.emit('presets_update', db_manager.get_all_presets())
         emit('presets_imported_ack', {'count': imported_count, 'last_id': last_id})
+
+# =============================================================================
+# GESTIONALE GIORNATE DI GIOCO (SOCKET.IO HANDLERS)
+# =============================================================================
+
+@socketio.on('request_events')
+@login_required
+def handle_request_events():
+    emit('events_update', db_manager.get_all_events())
+
+
+@socketio.on('request_event_details')
+@login_required
+def handle_request_event_details(data):
+    ev_id = data.get('id')
+    if ev_id:
+        details = db_manager.get_event_details(ev_id)
+        if details:
+            emit('event_details_data', details)
+
+
+@socketio.on('save_game_event')
+@login_required
+def handle_save_game_event(data):
+    saved_id = db_manager.save_game_event(data)
+    socketio.emit('events_update', db_manager.get_all_events())
+    if saved_id:
+        emit('event_details_data', db_manager.get_event_details(saved_id))
+
+
+@socketio.on('delete_game_event')
+@login_required
+def handle_delete_game_event(data):
+    ev_id = data.get('id')
+    if ev_id:
+        db_manager.delete_game_event(ev_id)
+        socketio.emit('events_update', db_manager.get_all_events())
+
+
+@socketio.on('save_event_schedule')
+@login_required
+def handle_save_event_schedule(data):
+    ev_id = data.get('id')
+    if ev_id:
+        db_manager.save_event_schedule(ev_id, data.get('schedule', []), data.get('notes'))
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+
+
+@socketio.on('add_event_participant')
+@login_required
+def handle_add_event_participant(data):
+    ev_id = data.get('event_id')
+    if ev_id:
+        db_manager.add_event_participant(
+            event_id=ev_id,
+            uid=data.get('uid'),
+            guest_name=data.get('guest_name'),
+            team=data.get('team', 'UNASSIGNED'),
+            needs_rental=data.get('needs_rental', 0)
+        )
+        socketio.emit('database_update', db_manager.get_all_players())
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+
+
+@socketio.on('update_event_participant')
+@login_required
+def handle_update_event_participant(data):
+    ev_id = data.get('event_id')
+    pid   = data.get('participant_id')
+    if ev_id and pid:
+        db_manager.update_event_participant(pid, data.get('action'), data.get('value'))
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+
+
+@socketio.on('remove_event_participant')
+@login_required
+def handle_remove_event_participant(data):
+    ev_id = data.get('event_id')
+    pid   = data.get('participant_id')
+    if ev_id and pid:
+        db_manager.remove_event_participant(pid)
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+
+
+@socketio.on('auto_balance_event')
+@login_required
+def handle_auto_balance_event(data):
+    ev_id = data.get('event_id')
+    if ev_id:
+        db_manager.auto_balance_event_teams(ev_id)
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+
+
+@socketio.on('deploy_event_roster')
+@login_required
+def handle_deploy_event_roster(data):
+    ev_id = data.get('event_id')
+    clear_existing = bool(data.get('clear_existing', True))
+    if ev_id:
+        count = db_manager.deploy_event_to_active_roster(ev_id, clear_existing=clear_existing)
+        new_factions = db_manager.get_factions_config()
+        socketio.emit('factions_update', new_factions)
+        socketio.emit('roster_update', db_manager.get_full_roster())
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+        emit('event_deployed_ack', {'count': count})
 
 @socketio.on('send_command')
 def handle_socket_command(data):

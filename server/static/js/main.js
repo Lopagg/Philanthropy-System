@@ -1471,6 +1471,434 @@ if (!window.__zuluMainInitialized) {
     });
 
     // ========================================================================
+    // GESTIONALE GIORNATE DI GIOCO (OPERATIONS PLANNER & CALENDAR)
+    // ========================================================================
+
+    let gameEventsList = [];
+    let currentPlannerEvent = null;
+
+    function renderPlannerEventsList() {
+        const listEl = document.getElementById('planner-events-list');
+        if (!listEl) return;
+
+        if (!Array.isArray(gameEventsList) || gameEventsList.length === 0) {
+            listEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">NESSUNA GIOCATA IN CALENDARIO</li>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        gameEventsList.forEach(ev => {
+            const isSelected = currentPlannerEvent && currentPlannerEvent.id === ev.id;
+            const isActive   = ev.status === 'ACTIVE';
+            const li = document.createElement('li');
+            li.className = 'roster-item';
+            li.style.flexDirection = 'column';
+            li.style.alignItems = 'stretch';
+            li.style.cursor = 'pointer';
+            li.style.borderLeft = isSelected ? '4px solid var(--sop-primary)' : (isActive ? '4px solid var(--sop-success)' : '4px solid var(--sop-dim)');
+            li.style.background = isSelected ? 'rgba(0, 255, 204, 0.1)' : 'rgba(0, 0, 0, 0.35)';
+
+            const statusBadge = isActive
+                ? '<span style="color:var(--sop-success); font-size:11px; font-weight:bold;">[● IN CORSO]</span>'
+                : `<span style="color:#888; font-size:11px;">[${ev.start_time || '08:30'}]</span>`;
+
+            li.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <span style="color:var(--sop-secondary); font-family:monospace; font-size:13px; font-weight:bold;">📅 ${ev.event_date}</span>
+                    ${statusBadge}
+                </div>
+                <div style="font-size:16px; font-weight:bold; color:#fff; margin-bottom:6px;">${ev.title}</div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#aaa; font-family:monospace;">
+                    <span>👥 ${ev.total_registered}/${ev.max_players} (<span style="color:${ev.alpha_color}">${ev.alpha_count}</span>/<span style="color:${ev.bravo_color}">${ev.bravo_count}</span>)</span>
+                    <span>🔫 Noleggi: ${ev.rental_count}</span>
+                    <span>💶 ${ev.paid_count}/${ev.total_registered}</span>
+                </div>
+            `;
+            li.onclick = () => {
+                socket.emit('request_event_details', { id: ev.id });
+            };
+            listEl.appendChild(li);
+        });
+    }
+
+    function populatePlannerSchedulePresetSelect() {
+        const sel = document.getElementById('plan-schedule-preset-select');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">+ Aggiungi Round da Preset...</option>';
+        const badges = { 'sd': 'S&D', 'dom': 'DOM', 'tdm': 'TDM' };
+        missionPresets.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = String(p.id);
+            opt.textContent = `[${badges[p.mode] || p.mode.toUpperCase()}] ${p.name}`;
+            sel.appendChild(opt);
+        });
+    }
+
+    function renderPlannerEventDetails(ev) {
+        currentPlannerEvent = ev;
+        renderPlannerEventsList();
+        populatePlannerSchedulePresetSelect();
+
+        const titleHeader = document.getElementById('planner-active-title');
+        const metaBox     = document.getElementById('planner-event-meta-box');
+        const logBar      = document.getElementById('planner-logistics-bar');
+        const addBar      = document.getElementById('planner-add-bar');
+        const schedAddBar = document.getElementById('planner-schedule-add-bar');
+        const notesBox    = document.getElementById('planner-notes-box');
+        const btnBalance  = document.getElementById('btn-plan-balance');
+        const btnDeploy   = document.getElementById('btn-plan-deploy');
+
+        if (!ev) {
+            if (titleHeader) titleHeader.textContent = "SELEZIONA UNA GIORNATA";
+            [metaBox, logBar, addBar, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.add('hidden'));
+            return;
+        }
+
+        [metaBox, logBar, addBar, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.remove('hidden'));
+        if (titleHeader) titleHeader.textContent = `${ev.event_date} // ${ev.title}`;
+
+        // 1. Campi Editor Meta Giornata
+        document.getElementById('plan-edit-title').value  = ev.title || '';
+        document.getElementById('plan-edit-date').value   = ev.event_date || '';
+        document.getElementById('plan-edit-time').value   = ev.start_time || '08:30';
+        document.getElementById('plan-edit-max').value    = ev.max_players || 30;
+        document.getElementById('plan-edit-a-name').value = ev.alpha_name || 'ALPHA';
+        document.getElementById('plan-edit-a-col').value  = ev.alpha_color || '#ff3333';
+        document.getElementById('plan-edit-b-name').value = ev.bravo_name || 'BRAVO';
+        document.getElementById('plan-edit-b-col').value  = ev.bravo_color || '#55ff55';
+        document.getElementById('plan-event-notes').value = ev.notes || '';
+
+        // 2. Statistiche Logistiche e Selettore Giocatori DB
+        const parts   = Array.isArray(ev.participants) ? ev.participants : [];
+        const aCount  = parts.filter(p => p.team === 'ALPHA').length;
+        const bCount  = parts.filter(p => p.team === 'BRAVO').length;
+        const rentals = parts.filter(p => p.needs_rental === 1).length;
+        const paid    = parts.filter(p => p.paid === 1).length;
+
+        document.getElementById('plan-stat-tot').textContent     = `${parts.length}/${ev.max_players || 30}`;
+        document.getElementById('plan-stat-teams').innerHTML     = `<span style="color:${ev.alpha_color}">${aCount}</span> vs <span style="color:${ev.bravo_color}">${bCount}</span>`;
+        document.getElementById('plan-stat-rentals').textContent = rentals;
+        document.getElementById('plan-stat-paid').textContent    = `${paid}/${parts.length}`;
+
+        const dbSelect = document.getElementById('plan-add-db-select');
+        if (dbSelect) {
+            const registeredUids = new Set(parts.map(p => p.uid).filter(Boolean));
+            dbSelect.innerHTML = '<option value="">+ Aggiungi operatore registrato dal DB...</option>';
+            (globalPlayersDB || []).filter(p => !registeredUids.has(p.uid)).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.uid;
+                const tag = p.is_pro === 1 ? '★ PRO' : 'GUEST';
+                const asd = (p.asd_team && p.asd_team !== 'NESSUNA') ? ` [${p.asd_team}]` : '';
+                opt.textContent = `${p.alias} (${tag})${asd}`;
+                dbSelect.appendChild(opt);
+            });
+        }
+
+        // 3. Lista Partecipanti e Bozza Squadre
+        const partListEl = document.getElementById('planner-participants-list');
+        if (partListEl) {
+            if (parts.length === 0) {
+                partListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 25px;">NESSUN PARTECIPANTE ISCRITTO A QUESTA GIORNATA</li>';
+            } else {
+                partListEl.innerHTML = '';
+                parts.forEach(p => {
+                    const li = document.createElement('li');
+                    li.className = 'roster-item';
+                    li.style.padding = '8px 10px';
+                    const tColor = p.team === 'ALPHA' ? ev.alpha_color : (p.team === 'BRAVO' ? ev.bravo_color : '#777');
+                    li.style.borderLeft = `4px solid ${tColor}`;
+
+                    const badgePro = p.is_pro === 1
+                        ? '<span style="color:#ffd700; font-size:11px; margin-right:5px;">[★ PRO]</span>'
+                        : '<span style="color:#888; font-size:11px; margin-right:5px;">[GUEST]</span>';
+                    const asdBadge = (p.asd_team && p.asd_team !== 'NESSUNA')
+                        ? `<span style="color:var(--sop-primary); font-size:11px; margin-left:6px;">[${p.asd_team}]</span>`
+                        : '';
+
+                    li.innerHTML = `
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:15px; font-weight:bold; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${badgePro}<span class="${p.uid ? 'clickable-name' : ''}">${p.display_name}</span>${asdBadge}
+                            </div>
+                            <div style="font-size:11px; color:#888; font-family:monospace;">
+                                UID: ${p.uid || 'N/A'} | WinRate: ${p.win_rate}%
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:5px; font-family:monospace; font-size:12px;">
+                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.team === 'ALPHA' ? ev.alpha_color : '#333'}; color:${p.team === 'ALPHA' ? ev.alpha_color : '#666'};" onclick="setEventParticipantTeam(${p.id}, 'ALPHA')" title="Assegna ad Alpha">[A]</span>
+                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.team === 'BRAVO' ? ev.bravo_color : '#333'}; color:${p.team === 'BRAVO' ? ev.bravo_color : '#666'};" onclick="setEventParticipantTeam(${p.id}, 'BRAVO')" title="Assegna a Bravo">[B]</span>
+                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.needs_rental ? 'var(--sop-secondary)' : '#333'}; color:${p.needs_rental ? 'var(--sop-secondary)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_rental')" title="Kit Noleggio ASG/Maschera">[🔫]</span>
+                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.paid ? 'var(--sop-success)' : '#333'}; color:${p.paid ? 'var(--sop-success)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_paid')" title="Quota Campo Saldata">[💶]</span>
+                            <span class="action-btn" style="color:var(--sop-alert); margin-left:4px;" onclick="removeEventParticipant(${p.id})" title="Rimuovi iscritto">[✕]</span>
+                        </div>
+                    `;
+                    if (p.uid) {
+                        const nameEl = li.querySelector('.clickable-name');
+                        if (nameEl) nameEl.onclick = () => socket.emit('request_profile', { uid: p.uid });
+                    }
+                    partListEl.appendChild(li);
+                });
+            }
+        }
+
+        // 4. Scaletta Modalità (Mission Playlist)
+        const schedListEl = document.getElementById('planner-schedule-list');
+        if (schedListEl) {
+            const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
+            if (sched.length === 0) {
+                schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">NESSUN ROUND IN SCALETTA</li>';
+            } else {
+                schedListEl.innerHTML = '';
+                sched.forEach((item, idx) => {
+                    const li = document.createElement('li');
+                    li.className = 'roster-item';
+                    li.style.padding = '8px 10px';
+                    li.style.opacity = item.done ? '0.55' : '1';
+                    li.style.borderLeft = item.done ? '4px solid var(--sop-success)' : '4px solid var(--sop-primary)';
+
+                    li.innerHTML = `
+                        <div style="flex:1;">
+                            <div style="font-size:14px; font-weight:bold; color:${item.done ? 'var(--sop-success)' : '#fff'};">
+                                #${idx + 1} - ${item.title}
+                            </div>
+                            <div style="font-size:11px; color:#888; font-family:monospace;">
+                                MODE: ${(item.mode || 'sd').toUpperCase()} ${item.done ? '// COMPLETATO' : ''}
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; font-family:monospace; font-size:12px;">
+                            <span class="action-btn" style="color:var(--sop-primary); border:1px solid var(--sop-primary); padding:3px 7px;" onclick="loadScheduledPresetIntoSetup(${idx})" title="Carica questo Preset nel pannello Setup">[⚡ SETUP]</span>
+                            <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:3px 6px;" onclick="toggleScheduleRoundDone(${idx})" title="Segna Round come completato">[✓]</span>
+                            <span class="action-btn" style="color:var(--sop-alert);" onclick="removeScheduleRound(${idx})" title="Rimuovi Round">[✕]</span>
+                        </div>
+                    `;
+                    schedListEl.appendChild(li);
+                });
+            }
+        }
+    }
+
+    window.openNewEventModal = function() {
+        const today = new Date().toISOString().split('T')[0];
+        window.openTacticalPrompt({
+            title: "NUOVA GIORNATA DI GIOCO",
+            label: "TITOLO OPERAZIONE / EVENTO",
+            defaultValue: "GIOCATA DOMENICALE",
+            placeholder: "Es. OP. BLACKOUT - DOMENICA",
+            allowEmpty: false,
+            onConfirm: (title) => {
+                socket.emit('save_game_event', {
+                    id: null,
+                    title: title.toUpperCase(),
+                    event_date: today,
+                    start_time: '08:30',
+                    max_players: 30,
+                    alpha_name: currentFactions.ALPHA.name || 'ALPHA',
+                    alpha_color: currentFactions.ALPHA.color || '#ff3333',
+                    bravo_name: currentFactions.BRAVO.name || 'BRAVO',
+                    bravo_color: currentFactions.BRAVO.color || '#55ff55',
+                    notes: ''
+                });
+            }
+        });
+    };
+
+    window.saveEditedEventMeta = function() {
+        if (!currentPlannerEvent) return;
+        socket.emit('save_game_event', {
+            id: currentPlannerEvent.id,
+            title: document.getElementById('plan-edit-title').value,
+            event_date: document.getElementById('plan-edit-date').value,
+            start_time: document.getElementById('plan-edit-time').value,
+            max_players: parseInt(document.getElementById('plan-edit-max').value) || 30,
+            alpha_name: document.getElementById('plan-edit-a-name').value,
+            alpha_color: document.getElementById('plan-edit-a-col').value,
+            bravo_name: document.getElementById('plan-edit-b-name').value,
+            bravo_color: document.getElementById('plan-edit-b-col').value,
+            notes: document.getElementById('plan-event-notes').value
+        });
+        logSystem("PLANNER: Dati giornata aggiornati.");
+    };
+
+    window.deleteCurrentEvent = function() {
+        if (!currentPlannerEvent) return;
+        window.openTacticalConfirm(
+            `Eliminare definitivamente la giornata "${currentPlannerEvent.title}" del ${currentPlannerEvent.event_date}?`,
+            "ELIMINA GIORNATA",
+            "danger",
+            () => {
+                socket.emit('delete_game_event', { id: currentPlannerEvent.id });
+                currentPlannerEvent = null;
+                renderPlannerEventDetails(null);
+            }
+        );
+    };
+
+    window.addSelectedDbPlayerToEvent = function() {
+        if (!currentPlannerEvent) return;
+        const sel = document.getElementById('plan-add-db-select');
+        const uid = sel?.value;
+        if (!uid) return;
+        socket.emit('add_event_participant', {
+            event_id: currentPlannerEvent.id,
+            uid: uid,
+            team: 'UNASSIGNED',
+            needs_rental: 0
+        });
+    };
+
+    window.promptAddGuestToEvent = function() {
+        if (!currentPlannerEvent) return;
+        window.openTacticalPrompt({
+            title: "PRENOTA OSPITE / NOLEGGIO",
+            label: "NOME OSPITE (VERRÀ ASSOCIATO A UNA TESSERA GUEST LIBERA)",
+            defaultValue: "",
+            placeholder: "Es. MARCO ROSSI",
+            allowEmpty: false,
+            onConfirm: (guestName) => {
+                socket.emit('add_event_participant', {
+                    event_id: currentPlannerEvent.id,
+                    uid: 'AUTO_GUEST',
+                    guest_name: guestName.toUpperCase(),
+                    team: 'UNASSIGNED',
+                    needs_rental: 1
+                });
+            }
+        });
+    };
+
+    window.setEventParticipantTeam = function(participantId, team) {
+        if (!currentPlannerEvent) return;
+        socket.emit('update_event_participant', {
+            event_id: currentPlannerEvent.id,
+            participant_id: participantId,
+            action: 'set_team',
+            value: team
+        });
+    };
+
+    window.toggleEventParticipantFlag = function(participantId, action) {
+        if (!currentPlannerEvent) return;
+        socket.emit('update_event_participant', {
+            event_id: currentPlannerEvent.id,
+            participant_id: participantId,
+            action: action
+        });
+    };
+
+    window.removeEventParticipant = function(participantId) {
+        if (!currentPlannerEvent) return;
+        socket.emit('remove_event_participant', {
+            event_id: currentPlannerEvent.id,
+            participant_id: participantId
+        });
+    };
+
+    window.autoBalanceCurrentEvent = function() {
+        if (!currentPlannerEvent) return;
+        socket.emit('auto_balance_event', { event_id: currentPlannerEvent.id });
+        logSystem("PLANNER: Squadre auto-bilanciate per ASD e Win-Rate.");
+    };
+
+    window.deployCurrentEventToRoster = function() {
+        if (!currentPlannerEvent) return;
+        window.openTacticalConfirm(
+            `Vuoi schierare i partecipanti di "${currentPlannerEvent.title}" nel Roster attivo di oggi?\nI giocatori verranno assegnati alle squadre ${currentPlannerEvent.alpha_name} e ${currentPlannerEvent.bravo_name} pronti per il check-in sul Kiosk.`,
+            "SCHIERA GIORNATA NEL ROSTER",
+            "warning",
+            () => {
+                socket.emit('deploy_event_roster', {
+                    event_id: currentPlannerEvent.id,
+                    clear_existing: true
+                });
+            }
+        );
+    };
+
+    window.addRoundToEventSchedule = function() {
+        if (!currentPlannerEvent) return;
+        const sel = document.getElementById('plan-schedule-preset-select');
+        const presetId = parseInt(sel?.value);
+        const foundPreset = missionPresets.find(p => p.id === presetId);
+        if (!foundPreset) {
+            window.openTacticalAlert("Seleziona un Preset dal menu a tendina per aggiungerlo alla scaletta.", "SELEZIONA PRESET", "warning");
+            return;
+        }
+        const sched = Array.isArray(currentPlannerEvent.schedule) ? [...currentPlannerEvent.schedule] : [];
+        sched.push({
+            preset_id: foundPreset.id,
+            title: foundPreset.name,
+            mode: foundPreset.mode,
+            done: false
+        });
+        socket.emit('save_event_schedule', {
+            id: currentPlannerEvent.id,
+            schedule: sched,
+            notes: document.getElementById('plan-event-notes')?.value || ''
+        });
+    };
+
+    window.toggleScheduleRoundDone = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const sched = [...currentPlannerEvent.schedule];
+        if (!sched[idx]) return;
+        sched[idx].done = !sched[idx].done;
+        socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+    };
+
+    window.removeScheduleRound = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const sched = [...currentPlannerEvent.schedule];
+        sched.splice(idx, 1);
+        socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+    };
+
+    window.saveEventNotesOnly = function() {
+        if (!currentPlannerEvent) return;
+        socket.emit('save_event_schedule', {
+            id: currentPlannerEvent.id,
+            schedule: currentPlannerEvent.schedule || [],
+            notes: document.getElementById('plan-event-notes')?.value || ''
+        });
+        window.openTacticalAlert("Note di briefing della giornata salvate.", "BRIEFING SALVATO", "info");
+    };
+
+    window.loadScheduledPresetIntoSetup = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const item = currentPlannerEvent.schedule[idx];
+        if (!item) return;
+
+        showView('setup', socket);
+        if (item.preset_id) {
+            const presetSelect = document.getElementById('setup-preset-select');
+            if (presetSelect) {
+                presetSelect.value = String(item.preset_id);
+                window.onPresetSelectChange(String(item.preset_id));
+            }
+        }
+    };
+
+    socket.on('events_update', (eventsList) => {
+        gameEventsList = Array.isArray(eventsList) ? eventsList : [];
+        renderPlannerEventsList();
+        if (!currentPlannerEvent && gameEventsList.length > 0) {
+            socket.emit('request_event_details', { id: gameEventsList[0].id });
+        }
+    });
+
+    socket.on('event_details_data', (details) => {
+        renderPlannerEventDetails(details);
+    });
+
+    socket.on('event_deployed_ack', (data) => {
+        window.openTacticalAlert(
+            `Schierati ${data.count} operatori nel Roster attivo di giornata!\nOra gli operatori possono passare la tessera sul Kiosk per entrare IN CAMPO.`,
+            "ROSTER SCHIERATO CON SUCCESSO",
+            "success",
+            () => showView('arena-manage', socket)
+        );
+    });
+
+    // ========================================================================
     // HANDLER EVENTI SOCKET.IO DAL SERVER
     // ========================================================================
 

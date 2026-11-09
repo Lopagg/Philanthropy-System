@@ -1,7 +1,7 @@
 <!-- ==========================================================================
      arena_command.html
-     Viste di gestione Arena: Menu Arena, Gestione Squadre, Tracking IN/OUT
-     e Archivio Globale Operatori (Database).
+     Viste di gestione Arena: Menu Arena, Gestione Squadre, Tracking IN/OUT,
+     Archivio Globale Operatori (Database) e Gestionale Giornate (Planner).
      ========================================================================== -->
 
 <!-- 1. Sotto-Menu Arena Command -->
@@ -11,6 +11,14 @@
         <span class="monitor-label">ARENA COMMAND // <span style="color: var(--sop-primary);">MAIN</span></span>
     </div>
     <div class="hub-grid">
+        <div class="hub-card" onclick="showView('arena-planner')">
+            <div class="card-icon">📅</div>
+            <div class="card-content">
+                <h3>OPERATIONS PLANNER</h3>
+                <p>Calendario giocate, iscritti, noleggi, bozza squadre e scaletta modalità.</p>
+                <span class="card-action" style="color: var(--sop-secondary);">[ PLANNER ]</span>
+            </div>
+        </div>
         <div class="hub-card" onclick="showView('arena-manage')">
             <div class="card-icon">👥</div>
             <div class="card-content">
@@ -119,5 +127,131 @@
                 <li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">CARICAMENTO DATABASE...</li>
             </ul>
         </div>
+    </div>
+</div>
+
+<!-- 5. Vista Gestionale Giornate di Gioco (Operations Planner & Calendar) -->
+<div id="view-arena-planner" class="view-panel hidden">
+    <div class="monitor-controls">
+        <div>
+            <button type="button" class="back-btn deck-btn" onclick="showView('arena-menu')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; BACK ]</button>
+            <button type="button" class="deck-btn" onclick="openNewEventModal()" style="margin-bottom: 10px; margin-left: 10px; color: var(--sop-primary); border-color: var(--sop-primary);">[ + NUOVA GIORNATA DI GIOCO ]</button>
+        </div>
+        <span class="monitor-label">OPERATIONS PLANNER // <span id="planner-active-title" style="color: var(--sop-secondary); font-weight: bold;">SELEZIONA UNA GIORNATA</span></span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 0.9fr 1.35fr 1.05fr; gap: 20px; height: calc(100% - 55px); min-height: 0;">
+
+        <!-- COLONNA 1: Calendario Giornate e Parametri Evento -->
+        <div class="sop-card" style="display: flex; flex-direction: column; min-height: 0;">
+            <div class="widget-header" style="background: rgba(0, 255, 204, 0.12); color: var(--sop-primary);">
+                📅 CALENDARIO GIOCATE
+            </div>
+            <ul id="planner-events-list" class="roster-list" style="flex: 1; overflow-y: auto; padding: 10px;">
+                <li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">NESSUNA GIOCATA IN CALENDARIO</li>
+            </ul>
+
+            <!-- Editor Rapido Dati Giornata Selezionata -->
+            <div id="planner-event-meta-box" class="hidden" style="padding: 14px; border-top: 1px solid var(--sop-dim); background: rgba(0,0,0,0.45);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--sop-secondary); font-weight: bold; letter-spacing: 1px;">IMPOSTAZIONI GIORNATA</span>
+                    <span class="action-btn" style="color: var(--sop-alert); font-size: 12px;" onclick="deleteCurrentEvent()">[🗑️ ELIMINA]</span>
+                </div>
+                <div class="input-group-tactical" style="margin-bottom: 8px;">
+                    <input type="text" id="plan-edit-title" class="setup-input" style="padding: 6px 10px; font-size: 14px;" placeholder="Titolo Operazione">
+                </div>
+                <div class="row-inputs" style="gap: 8px; margin-bottom: 8px;">
+                    <input type="date" id="plan-edit-date" class="setup-input" style="flex: 1.2; padding: 6px 8px; font-size: 13px;">
+                    <input type="time" id="plan-edit-time" class="setup-input" style="flex: 0.8; padding: 6px 8px; font-size: 13px;">
+                    <input type="number" id="plan-edit-max" class="setup-input" style="width: 70px; padding: 6px 8px; font-size: 13px;" title="Capienza Max Operatori" min="2">
+                </div>
+                <div class="row-inputs" style="gap: 8px; margin-bottom: 10px;">
+                    <div style="flex: 1; display: flex; gap: 4px;">
+                        <input type="text" id="plan-edit-a-name" class="setup-input" style="padding: 5px 8px; font-size: 12px;" placeholder="Nome Alpha">
+                        <input type="color" id="plan-edit-a-col" value="#ff3333" style="width: 34px; height: 32px; background: transparent; border: 1px solid var(--sop-dim); cursor: pointer;">
+                    </div>
+                    <div style="flex: 1; display: flex; gap: 4px;">
+                        <input type="text" id="plan-edit-b-name" class="setup-input" style="padding: 5px 8px; font-size: 12px;" placeholder="Nome Bravo">
+                        <input type="color" id="plan-edit-b-col" value="#55ff55" style="width: 34px; height: 32px; background: transparent; border: 1px solid var(--sop-dim); cursor: pointer;">
+                    </div>
+                </div>
+                <button type="button" class="deck-btn full-width" style="margin: 0; padding: 7px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="saveEditedEventMeta()">
+                    [ 💾 SALVA DATI GIORNATA ]
+                </button>
+            </div>
+        </div>
+
+        <!-- COLONNA 2: Partecipanti Previsti, Logistica Noleggi/Quote e Bozza Squadre -->
+        <div class="sop-card" style="display: flex; flex-direction: column; min-height: 0;">
+            <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>👥 PARTECIPANTI &amp; BOZZA SQUADRE</span>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" id="btn-plan-balance" class="deck-btn hidden" style="margin: 0; padding: 3px 10px; font-size: 11px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="autoBalanceCurrentEvent()" title="Bilancia automaticamente per ASD e Win-Rate">[ ⚖️ AUTO-BILANCIA ]</button>
+                    <button type="button" id="btn-plan-deploy" class="deck-btn hidden" style="margin: 0; padding: 3px 10px; font-size: 11px; border-color: var(--sop-success); color: var(--sop-success); font-weight: bold;" onclick="deployCurrentEventToRoster()" title="Carica la bozza squadre nel Roster attivo di oggi">[ 🚀 SCHIERA NEL ROSTER ]</button>
+                </div>
+            </div>
+
+            <!-- Barra Contatori Logistici Campo -->
+            <div id="planner-logistics-bar" class="hidden" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 12px; background: rgba(0,0,0,0.45); border-bottom: 1px solid var(--sop-dim); text-align: center;">
+                <div>
+                    <span style="font-size: 10px; color: #888; display: block;">ISCRITTI</span>
+                    <span id="plan-stat-tot" style="font-size: 18px; font-weight: bold; color: var(--sop-primary);">0/30</span>
+                </div>
+                <div>
+                    <span style="font-size: 10px; color: #888; display: block;">SQUADRE (A vs B)</span>
+                    <span id="plan-stat-teams" style="font-size: 18px; font-weight: bold;"><span style="color:var(--team-a-color)">0</span> - <span style="color:var(--team-b-color)">0</span></span>
+                </div>
+                <div>
+                    <span style="font-size: 10px; color: #888; display: block;">KIT NOLEGGIO</span>
+                    <span id="plan-stat-rentals" style="font-size: 18px; font-weight: bold; color: var(--sop-secondary);">0</span>
+                </div>
+                <div>
+                    <span style="font-size: 10px; color: #888; display: block;">QUOTE SALDATE</span>
+                    <span id="plan-stat-paid" style="font-size: 18px; font-weight: bold; color: var(--sop-success);">0/0</span>
+                </div>
+            </div>
+
+            <!-- Barra Aggiunta Rapida Operatore dal DB o Ospite Noleggio -->
+            <div id="planner-add-bar" class="hidden" style="display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px dashed var(--sop-dim); align-items: center;">
+                <select id="plan-add-db-select" class="tactical-select" style="flex: 1; margin-bottom: 0; padding: 6px 10px; font-size: 13px;">
+                    <option value="">+ Aggiungi operatore registrato dal DB...</option>
+                </select>
+                <button type="button" class="deck-btn" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="addSelectedDbPlayerToEvent()">[ + DB ]</button>
+                <button type="button" class="deck-btn" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="promptAddGuestToEvent()" title="Assegna automaticamente una tessera GUEST libera">[ + OSPITE / NOLEGGIO ]</button>
+            </div>
+
+            <!-- Lista Iscritti all'Evento -->
+            <ul id="planner-participants-list" class="roster-list" style="flex: 1; overflow-y: auto; padding: 10px;">
+                <li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 30px;">SELEZIONA UNA GIORNATA DAL CALENDARIO A SINISTRA</li>
+            </ul>
+        </div>
+
+        <!-- COLONNA 3: Programma / Scaletta Modalità e Note Logistiche -->
+        <div class="sop-card" style="display: flex; flex-direction: column; min-height: 0;">
+            <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📋 PROGRAMMA MODALITÀ (SCALETTA)</span>
+            </div>
+
+            <!-- Aggiunta Round da Preset -->
+            <div id="planner-schedule-add-bar" class="hidden" style="display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px dashed var(--sop-dim); align-items: center;">
+                <select id="plan-schedule-preset-select" class="tactical-select" style="flex: 1; margin-bottom: 0; padding: 6px 10px; font-size: 13px;">
+                    <option value="">+ Aggiungi Round da Preset...</option>
+                </select>
+                <button type="button" class="deck-btn" style="margin: 0; padding: 6px 12px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="addRoundToEventSchedule()">[ + ROUND ]</button>
+            </div>
+
+            <!-- Lista Round in Programma -->
+            <ul id="planner-schedule-list" class="roster-list" style="flex: 1; overflow-y: auto; padding: 10px;">
+                <li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">NESSUN ROUND IN SCALETTA</li>
+            </ul>
+
+            <!-- Note Logistiche / Briefing Giornata -->
+            <div id="planner-notes-box" class="hidden" style="padding: 12px; border-top: 1px solid var(--sop-dim); background: rgba(0,0,0,0.4);">
+                <label class="setup-label" for="plan-event-notes" style="font-size: 11px; margin-bottom: 5px; display: block;">NOTE LOGISTICHE / BRIEFING CAMPO</label>
+                <textarea id="plan-event-notes" class="setup-input tactical-textarea" rows="3" style="font-size: 13px; padding: 8px;" placeholder="Annotazioni su arbitri, batterie, scenari, ristori..."></textarea>
+                <button type="button" class="deck-btn full-width" style="margin: 8px 0 0 0; padding: 6px; font-size: 12px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="saveEventNotesOnly()">[ SALVA NOTE BRIEFING ]</button>
+            </div>
+        </div>
+
     </div>
 </div>
