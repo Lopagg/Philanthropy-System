@@ -1,9 +1,9 @@
 {
     "rat-v2": {
-        "version": "v0.0.6",
+        "version": "v0.0.7",
         "file": "rat-v2.bin",
-        "size_bytes": 1110144,
-        "updated_at": "2026-11-08 20:48:15"
+        "size_bytes": 1111120,
+        "updated_at": "2026-11-09 12:05:32"
     },
     "kiosk-v1": {
         "version": "v0.0.2",
