@@ -205,10 +205,16 @@ export function renderDatabase(players, socket, arenaRoster) {
         btnRename.className = 'action-btn';
         btnRename.style.color = 'var(--sop-primary)';
         btnRename.onclick = () => {
-            const newName = prompt("Inserisci nuovo nome operatore:", player.alias);
-            if (newName && newName.trim() !== '') {
-                socket.emit('update_db_player', { uid: player.uid, action: 'rename', value: newName.trim().toUpperCase() });
-            }
+            window.openTacticalPrompt({
+                title: "RINOMINA OPERATORE (DB)",
+                label: "NUOVO CALLSIGN / ALIAS OPERATORE",
+                defaultValue: player.alias,
+                placeholder: "Es. VIPER",
+                allowEmpty: false,
+                onConfirm: (newName) => {
+                    socket.emit('update_db_player', { uid: player.uid, action: 'rename', value: newName.toUpperCase() });
+                }
+            });
         };
 
         const btnDel = document.createElement('span');
@@ -216,9 +222,12 @@ export function renderDatabase(players, socket, arenaRoster) {
         btnDel.className = 'action-btn';
         btnDel.style.color = 'var(--sop-alert)';
         btnDel.onclick = () => {
-            if (confirm(`ELIMINARE PERMANENTEMENTE ${player.alias} DAL DATABASE? L'azione è irreversibile.`)) {
-                socket.emit('update_db_player', { uid: player.uid, action: 'delete' });
-            }
+            window.openTacticalConfirm(
+                `Eliminare permanentemente ${player.alias} (UID: ${player.uid}) dal database?\nL'azione è irreversibile.`,
+                "ELIMINAZIONE PERMANENTE",
+                "danger",
+                () => socket.emit('update_db_player', { uid: player.uid, action: 'delete' })
+            );
         };
 
         controlsDiv.appendChild(btnRename);
@@ -417,16 +426,25 @@ function createManageItem(player, socket) {
     li.querySelector('span.clickable-name').onclick = () => openOperatorProfile(player.uid, socket);
     const btns = li.querySelectorAll('.action-btn');
     btns[0].onclick = () => {
-        const newName = prompt("Inserisci nuovo nome:", player.name);
-        if (newName && newName.trim() !== '') {
-            socket.emit('update_operator', { uid: player.uid, action: 'rename', value: newName.trim().toUpperCase() });
-        }
+        window.openTacticalPrompt({
+            title: "RINOMINA OPERATORE",
+            label: "NUOVO CALLSIGN / ALIAS OPERATORE",
+            defaultValue: player.name,
+            placeholder: "Es. VIPER",
+            allowEmpty: false,
+            onConfirm: (newName) => {
+                socket.emit('update_operator', { uid: player.uid, action: 'rename', value: newName.toUpperCase() });
+            }
+        });
     };
     btns[1].onclick = () => socket.emit('update_operator', { uid: player.uid, action: 'swap' });
     btns[2].onclick = () => {
-        if (confirm(`Rimuovere ${player.name} dal roster attivo?`)) {
-            socket.emit('update_operator', { uid: player.uid, action: 'delete' });
-        }
+        window.openTacticalConfirm(
+            `Rimuovere ${player.name} dal roster attivo di giornata?`,
+            "RIMUOVI DAL ROSTER",
+            "warning",
+            () => socket.emit('update_operator', { uid: player.uid, action: 'delete' })
+        );
     };
     return li;
 }

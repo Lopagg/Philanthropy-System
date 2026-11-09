@@ -2,7 +2,7 @@
      mobile.html
      Terminale Web Mobile completo per Arbitri da campo:
      - TAB 1 (LIVE)  : Telemetria universale (S&D, DOM, TDM), Sirene e Close Mission.
-     - TAB 2 (SETUP) : Configurazione e avvio per S&D (V1 e V2 modulare), DOM (V1 e V2 modulare) e TDM.
+     - TAB 2 (SETUP) : Preset Tattici, Configurazione e avvio per S&D (V1/V2), DOM (V1/V2) e TDM.
      - TAB 3 (ROSTER): Gestione rapida operatori IN CAMPO / FUORI e cambio squadra.
      - TAB 4 (NFC)   : Scanner Web-NFC con assegnazione rapida nuove tessere.
      ========================================================================== -->
@@ -428,6 +428,28 @@
             border-bottom-color: var(--sop-primary);
             background: rgba(0, 255, 204, 0.05);
         }
+
+        /* --- MODALI TATTICI MOBILE (ALERT, CONFIRM, PROMPT) --- */
+        .mob-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(3px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            z-index: 3000;
+        }
+        .mob-modal-card {
+            width: 100%;
+            max-width: 400px;
+            background: #0b0b0b;
+            border: 1px solid var(--sop-primary);
+            border-radius: 6px;
+            padding: 16px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+        }
     </style>
 </head>
 <body>
@@ -515,13 +537,33 @@
         </div>
 
         <!-- ==================================================================
-             TAB 2: SETUP COMPLETO MISSIONE (S&D V1/V2, DOM V1/V2, TDM)
+             TAB 2: SETUP COMPLETO MISSIONE (PRESET, S&D V1/V2, DOM V1/V2, TDM)
              ================================================================== -->
         <div id="tab-setup" class="tab-view">
+
+            <!-- Card Preset Tattici -->
+            <div class="mob-card" style="border-color: rgba(0, 255, 204, 0.35);">
+                <div class="mob-card-title">
+                    <span style="color: var(--sop-primary);">📁 PRESET REGOLE</span>
+                    <span id="mob-preset-status" style="font-size: 10px; color: #888;">MANUALE</span>
+                </div>
+                <div class="input-group" style="margin-bottom: 8px;">
+                    <select id="mob-preset-select" onchange="onMobPresetSelectChange(this.value)">
+                        <option value="">-- Seleziona Preset Salvato --</option>
+                    </select>
+                </div>
+                <div class="btn-row">
+                    <button type="button" class="btn btn-sm" onclick="saveNewMobPreset()">[ + NUOVO ]</button>
+                    <button type="button" id="btn-mob-preset-upd" class="btn warning btn-sm hidden" onclick="overwriteMobPreset()">[ 💾 SALVA ]</button>
+                    <button type="button" id="btn-mob-preset-del" class="btn danger btn-sm hidden" style="width: auto; padding: 10px 14px;" onclick="deleteMobPreset()">[ 🗑️ ]</button>
+                </div>
+            </div>
+
+            <!-- Card Selezione Modalità e Nodo Target -->
             <div class="mob-card">
                 <div class="mob-card-title">
                     <span>SELEZIONE MODALITÀ &amp; NODO</span>
-                    <span id="mob-target-ver-badge" style="color: var(--sop-primary);">--</span>
+                    <span id="mob-target-ver-badge" style="color: var(--sop-primary);">NO TARGET</span>
                 </div>
 
                 <div class="input-group">
@@ -536,13 +578,20 @@
                 <div id="mob-target-group" class="input-group" style="margin-bottom: 0;">
                     <label for="mob-target-select">TERMINALE HARDWARE TARGET</label>
                     <select id="mob-target-select" onchange="onMobTargetChange()">
-                        <option value="">-- Seleziona nodo disponibile --</option>
+                        <option value="">-- Seleziona nodo target --</option>
                     </select>
                 </div>
             </div>
 
-            <!-- PARAMETRI SEARCH & DESTROY -->
-            <div id="mob-params-sd" class="mob-card">
+            <!-- Avviso quando nessun terminale è selezionato -->
+            <div id="mob-no-terminal-card" class="mob-card" style="text-align: center; padding: 24px 14px; border-style: dashed;">
+                <div style="font-size: 24px; margin-bottom: 6px;">📡</div>
+                <div style="color: var(--sop-secondary); font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">SELEZIONA UN TERMINALE</div>
+                <p style="color: #888; font-size: 12px;">Scegli un nodo RAT dal menu qui sopra per visualizzare e trasmettere i parametri della modalità.</p>
+            </div>
+
+            <!-- PARAMETRI SEARCH & DESTROY (nascosti finché non si seleziona un terminale) -->
+            <div id="mob-params-sd" class="mob-card hidden">
                 <div class="mob-card-title"><span>PARAMETRI SEARCH &amp; DESTROY</span></div>
 
                 <div class="input-group">
@@ -565,7 +614,7 @@
                 </div>
 
                 <!-- Sottopannello Legacy RAT-V1 (S&D) -->
-                <div id="mob-sd-v1-block">
+                <div id="mob-sd-v1-block" class="hidden">
                     <div class="grid-2col">
                         <div class="input-group">
                             <label for="mob-v1-arm-time">INNESCO (SEC)</label>
@@ -599,7 +648,7 @@
                 </div>
 
                 <!-- Sottopannello Modulare RAT-V2 (S&D) -->
-                <div id="mob-sd-v2-block" class="hidden">
+                <div id="mob-sd-v2-block">
                     <div class="mob-card-title" style="margin-top: 6px;">
                         <span>SEQUENZA INNESCO (V2)</span>
                         <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('arm')">[+ STEP]</span>
@@ -611,6 +660,25 @@
                         <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('defuse')">[+ STEP]</span>
                     </div>
                     <div id="mob-v2-defuse-list"></div>
+
+                    <div class="mob-card-title" style="margin-top: 12px;">
+                        <span style="color: var(--sop-secondary);">PENALITÀ ERRORE STEP</span>
+                    </div>
+                    <div class="input-group">
+                        <label for="mob-v2-arm-fail-mode">SE SI SBAGLIA INNESCO (ATTACCANTI)</label>
+                        <select id="mob-v2-arm-fail-mode">
+                            <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
+                            <option value="RESTART_SEQ">RIPETI SEQUENZA DA CAPO</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="mob-v2-defuse-fail-mode">SE SI SBAGLIA DISINNESCO (DIFENSORI)</label>
+                        <select id="mob-v2-defuse-fail-mode">
+                            <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
+                            <option value="RESTART_SEQ">RIPETI SEQUENZA DA CAPO</option>
+                            <option value="EXPLODE">LA BOMBA ESPLODE SUBITO!</option>
+                        </select>
+                    </div>
 
                     <div class="grid-2col" style="margin-top: 10px;">
                         <div class="input-group" style="margin-bottom: 0;">
@@ -625,7 +693,7 @@
                 </div>
             </div>
 
-            <!-- PARAMETRI DOMINATION -->
+            <!-- PARAMETRI DOMINATION (nascosti finché non si seleziona un terminale) -->
             <div id="mob-params-dom" class="mob-card hidden">
                 <div class="mob-card-title"><span>PARAMETRI DOMINATION</span></div>
                 <div class="input-group">
@@ -634,7 +702,7 @@
                 </div>
 
                 <!-- Sottopannello Legacy RAT-V1 (DOM) -->
-                <div id="mob-dom-v1-block">
+                <div id="mob-dom-v1-block" class="hidden">
                     <div class="grid-2col">
                         <div class="input-group" style="margin-bottom: 0;">
                             <label for="mob-dom-cap">CATTURA (SEC)</label>
@@ -648,7 +716,7 @@
                 </div>
 
                 <!-- Sottopannello Modulare RAT-V2 (DOM) -->
-                <div id="mob-dom-v2-block" class="hidden">
+                <div id="mob-dom-v2-block">
                     <div class="mob-card-title" style="margin-top: 6px;">
                         <span id="mob-dom-seq-lbl-a" style="color: var(--team-a-color);">CONQUISTA ALPHA (P1)</span>
                         <span style="color: var(--sop-primary); cursor: pointer;" onclick="addMobSeqStep('dom_alpha')">[+ STEP]</span>
@@ -664,7 +732,27 @@
                     </div>
                     <div id="mob-v2-dom-bravo-list"></div>
 
-                    <div class="grid-2col" style="margin-top: 10px;">
+                    <div class="mob-card-title" style="margin-top: 12px;">
+                        <span style="color: var(--sop-secondary);">PENALITÀ ERRORE STEP</span>
+                    </div>
+                    <div class="grid-2col">
+                        <div class="input-group">
+                            <label for="mob-dom-v2-alpha-fail" style="color: var(--team-a-color);">ERRORE ALPHA</label>
+                            <select id="mob-dom-v2-alpha-fail">
+                                <option value="RETRY_STEP">RIPETI STEP</option>
+                                <option value="RESTART_SEQ">DA CAPO</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="mob-dom-v2-bravo-fail" style="color: var(--team-b-color);">ERRORE BRAVO</label>
+                            <select id="mob-dom-v2-bravo-fail">
+                                <option value="RETRY_STEP">RIPETI STEP</option>
+                                <option value="RESTART_SEQ">DA CAPO</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid-2col" style="margin-top: 6px;">
                         <div class="input-group" style="margin-bottom: 0;">
                             <label for="mob-dom-v2-smoke">EFFETTO FUMO</label>
                             <select id="mob-dom-v2-smoke"><option value="false">NO</option><option value="true">SÌ</option></select>
@@ -688,7 +776,7 @@
             </div>
 
             <div class="bottom-zone">
-                <button type="button" class="btn warning" onclick="transmitMobSetup()">[ 1. TRASMETTI CONFIG ]</button>
+                <button type="button" id="btn-mob-transmit" class="btn warning disabled" onclick="transmitMobSetup()">[ 1. TRASMETTI CONFIG ]</button>
                 <button type="button" id="btn-mob-start" class="btn disabled" onclick="launchMobMission()">[ 2. AVVIA MISSIONE ]</button>
             </div>
         </div>
@@ -755,6 +843,39 @@
         <button type="button" class="nav-btn" onclick="switchTab('nfc', this)">NFC</button>
     </div>
 
+    <!-- MODALE TATTICO MOBILE: INPUT TESTO (PROMPT) -->
+    <div id="mob-prompt-modal" class="mob-modal-overlay hidden">
+        <div class="mob-modal-card">
+            <div class="mob-card-title">
+                <span id="mob-prompt-title" style="color: var(--sop-primary); font-weight: bold;">SALVA PRESET</span>
+                <span style="cursor: pointer; color: #888; padding: 2px 6px;" onclick="closeMobPrompt()">[X]</span>
+            </div>
+            <div class="input-group" style="margin-top: 10px;">
+                <label id="mob-prompt-label" for="mob-prompt-input">NOME PRESET TATTICO</label>
+                <input type="text" id="mob-prompt-input" maxlength="50" placeholder="Es. S&D DOMENICA">
+            </div>
+            <div class="btn-row" style="margin-top: 12px;">
+                <button type="button" class="btn danger btn-sm" onclick="closeMobPrompt()">[ ANNULLA ]</button>
+                <button type="button" class="btn btn-sm" onclick="confirmMobPrompt()">[ CONFERMA ]</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE TATTICO MOBILE: AVVISO / CONFERMA (ALERT & CONFIRM) -->
+    <div id="mob-dialog-modal" class="mob-modal-overlay hidden">
+        <div id="mob-dialog-card" class="mob-modal-card">
+            <div class="mob-card-title">
+                <span id="mob-dialog-title" style="color: var(--sop-primary); font-weight: bold;">AVVISO DI SISTEMA</span>
+                <span style="cursor: pointer; color: #888; padding: 2px 6px;" onclick="cancelMobDialog()">[X]</span>
+            </div>
+            <p id="mob-dialog-msg" style="color: #eee; font-size: 14px; line-height: 1.45; margin: 14px 0 18px 0; text-align: center; white-space: pre-line;"></p>
+            <div class="btn-row">
+                <button type="button" id="mob-dialog-cancel" class="btn btn-sm hidden" style="border-color: #666; color: #ccc;" onclick="cancelMobDialog()">[ ANNULLA ]</button>
+                <button type="button" id="mob-dialog-ok" class="btn btn-sm" onclick="confirmMobDialog()">[ RICEVUTO ]</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const socket = io();
         let nfcActive = false;
@@ -763,6 +884,9 @@
 
         let currentDevices = [];
         let arenaRoster = {};
+        let globalPlayersDB = [];
+        let missionPresets = [];
+        let selectedPresetId = null;
         let currentLiveMode = null;
         let currentFactions = {
             ALPHA: { name: 'ALPHA', color: '#ff3333', daily_wins: 0 },
@@ -770,10 +894,107 @@
         };
 
         // Sequenze modulari RAT-V2 per la vista mobile (S&D e Dominio)
-        let mobArmSeq      = [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidCustomUid: '' }];
-        let mobDefuseSeq   = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
-        let mobDomAlphaSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
-        let mobDomBravoSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidCustomUid: '' }];
+        let mobArmSeq      = [{ type: 'HOLD', val: 5,  rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+        let mobDefuseSeq   = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+        let mobDomAlphaSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+        let mobDomBravoSeq = [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }];
+
+        // ====================================================================
+        // MODALI TATTICI MOBILE (SOSTITUISCONO ALERT, CONFIRM E PROMPT)
+        // ====================================================================
+
+        let mobDialogConfirmCb = null;
+        let mobDialogCancelCb  = null;
+        let mobPromptConfirmCb = null;
+
+        function openMobAlert(msg, title = 'AVVISO DI SISTEMA', type = 'info') {
+            const modal   = document.getElementById('mob-dialog-modal');
+            const card    = document.getElementById('mob-dialog-card');
+            const titleEl = document.getElementById('mob-dialog-title');
+            const msgEl   = document.getElementById('mob-dialog-msg');
+            const btnCan  = document.getElementById('mob-dialog-cancel');
+            const btnOk   = document.getElementById('mob-dialog-ok');
+
+            const col = type === 'danger' ? 'var(--sop-alert)' : (type === 'warning' ? 'var(--sop-secondary)' : 'var(--sop-primary)');
+            card.style.borderColor = col;
+            titleEl.style.color = col;
+            titleEl.textContent = title;
+            msgEl.textContent = msg;
+            btnCan.classList.add('hidden');
+            btnOk.textContent = '[ RICEVUTO ]';
+            btnOk.style.borderColor = col;
+            btnOk.style.color = col;
+
+            mobDialogConfirmCb = null;
+            mobDialogCancelCb  = null;
+            modal.classList.remove('hidden');
+        }
+
+        function openMobConfirm(msg, title = 'CONFERMA OPERAZIONE', type = 'warning', onConfirm = null, onCancel = null) {
+            const modal   = document.getElementById('mob-dialog-modal');
+            const card    = document.getElementById('mob-dialog-card');
+            const titleEl = document.getElementById('mob-dialog-title');
+            const msgEl   = document.getElementById('mob-dialog-msg');
+            const btnCan  = document.getElementById('mob-dialog-cancel');
+            const btnOk   = document.getElementById('mob-dialog-ok');
+
+            const col = type === 'danger' ? 'var(--sop-alert)' : 'var(--sop-secondary)';
+            card.style.borderColor = col;
+            titleEl.style.color = col;
+            titleEl.textContent = title;
+            msgEl.textContent = msg;
+            btnCan.classList.remove('hidden');
+            btnOk.textContent = '[ CONFERMA ]';
+            btnOk.style.borderColor = col;
+            btnOk.style.color = col;
+
+            mobDialogConfirmCb = onConfirm;
+            mobDialogCancelCb  = onCancel;
+            modal.classList.remove('hidden');
+        }
+
+        function confirmMobDialog() {
+            document.getElementById('mob-dialog-modal').classList.add('hidden');
+            const cb = mobDialogConfirmCb;
+            mobDialogConfirmCb = null;
+            mobDialogCancelCb  = null;
+            if (cb) cb();
+        }
+
+        function cancelMobDialog() {
+            document.getElementById('mob-dialog-modal').classList.add('hidden');
+            const cb = mobDialogCancelCb;
+            mobDialogConfirmCb = null;
+            mobDialogCancelCb  = null;
+            if (cb) cb();
+        }
+
+        function openMobPrompt(title, label, defaultVal, onConfirm) {
+            document.getElementById('mob-prompt-title').textContent = title;
+            document.getElementById('mob-prompt-label').textContent = label;
+            const inp = document.getElementById('mob-prompt-input');
+            inp.value = defaultVal || '';
+            mobPromptConfirmCb = onConfirm;
+            document.getElementById('mob-prompt-modal').classList.remove('hidden');
+            setTimeout(() => inp.focus(), 50);
+        }
+
+        function closeMobPrompt() {
+            document.getElementById('mob-prompt-modal').classList.add('hidden');
+            mobPromptConfirmCb = null;
+        }
+
+        function confirmMobPrompt() {
+            const val = (document.getElementById('mob-prompt-input').value || '').trim();
+            if (!val) return;
+            const cb = mobPromptConfirmCb;
+            closeMobPrompt();
+            if (cb) cb(val);
+        }
+
+        // ====================================================================
+        // GESTIONE SEQUENZE E COPIA RAPIDA DOMINIO
+        // ====================================================================
 
         function getMobSeqArray(seqType) {
             if (seqType === 'arm')       return mobArmSeq;
@@ -785,6 +1006,9 @@
 
         window.copyMobDomAlphaToBravo = function() {
             mobDomBravoSeq = JSON.parse(JSON.stringify(mobDomAlphaSeq));
+            const aFail = document.getElementById('mob-dom-v2-alpha-fail');
+            const bFail = document.getElementById('mob-dom-v2-bravo-fail');
+            if (aFail && bFail) bFail.value = aFail.value;
             renderMobV2Sequences();
             if (navigator.vibrate) navigator.vibrate(40);
         };
@@ -857,29 +1081,208 @@
             if (action === 'CLOSE_MISSION') {
                 socket.emit('send_command', { target_id: 'SERVER-ROUTER', command: { cmd: 'CLOSE_MISSION' } });
                 resetLiveTelemetryUI();
-            } else if (confirm('ATTENZIONE: Terminare immediatamente la partita in corso?')) {
-                socket.emit('send_command', { target_id: 'SERVER-ROUTER', command: { cmd: 'FORCE_END_GAME' } });
+            } else {
+                openMobConfirm(
+                    'Terminare immediatamente la partita in corso?',
+                    'TERMINA MISSIONE',
+                    'danger',
+                    () => socket.emit('send_command', { target_id: 'SERVER-ROUTER', command: { cmd: 'FORCE_END_GAME' } })
+                );
             }
         }
+
+        // ====================================================================
+        // GESTIONE PRESET TATTICI MOBILE
+        // ====================================================================
+
+        function renderMobPresetDropdown() {
+            const sel = document.getElementById('mob-preset-select');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">-- Configurazione Manuale / Seleziona Preset --</option>';
+            const badges = { 'sd': 'S&D', 'dom': 'DOM', 'tdm': 'TDM' };
+
+            missionPresets.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = String(p.id);
+                opt.textContent = `[${badges[p.mode] || p.mode.toUpperCase()}] ${p.name}`;
+                sel.appendChild(opt);
+            });
+
+            if (selectedPresetId && missionPresets.some(p => p.id === selectedPresetId)) {
+                sel.value = String(selectedPresetId);
+            } else {
+                selectedPresetId = null;
+                sel.value = '';
+            }
+
+            const hasSel = (selectedPresetId !== null);
+            document.getElementById('btn-mob-preset-upd').classList.toggle('hidden', !hasSel);
+            document.getElementById('btn-mob-preset-del').classList.toggle('hidden', !hasSel);
+        }
+
+        function extractMobSetupPreset() {
+            const mode = document.getElementById('mob-mode-select').value;
+            if (mode === 'sd') {
+                return {
+                    attacker:         document.getElementById('mob-sd-attacker').value,
+                    game_duration:    parseInt(document.getElementById('mob-sd-dur').value) || 20,
+                    bomb_time:        parseInt(document.getElementById('mob-sd-bomb').value) || 10,
+                    fx_smoke:         document.getElementById('mob-v2-smoke').value === 'true',
+                    fx_relay:         document.getElementById('mob-v2-relay').value === 'true',
+                    arm_fail_mode:    document.getElementById('mob-v2-arm-fail-mode').value || 'RETRY_STEP',
+                    defuse_fail_mode: document.getElementById('mob-v2-defuse-fail-mode').value || 'RETRY_STEP',
+                    v2_arm_seq:       JSON.parse(JSON.stringify(mobArmSeq)),
+                    v2_defuse_seq:    JSON.parse(JSON.stringify(mobDefuseSeq)),
+                    arm_time:         parseInt(document.getElementById('mob-v1-arm-time').value) || 5,
+                    defuse_time:      parseInt(document.getElementById('mob-v1-def-time').value) || 10,
+                    use_arm_pin:      document.getElementById('mob-v1-use-arm-pin').value,
+                    use_defuse_pin:   document.getElementById('mob-v1-use-def-pin').value,
+                    arm_pin:          document.getElementById('mob-v1-arm-pin').value,
+                    defuse_pin:       document.getElementById('mob-v1-def-pin').value
+                };
+            } else if (mode === 'dom') {
+                return {
+                    game_duration:    parseInt(document.getElementById('mob-dom-dur').value) || 15,
+                    fx_smoke:         document.getElementById('mob-dom-v2-smoke').value === 'true',
+                    fx_relay:         document.getElementById('mob-dom-v2-relay').value === 'true',
+                    alpha_fail_mode:  document.getElementById('mob-dom-v2-alpha-fail').value || 'RETRY_STEP',
+                    bravo_fail_mode:  document.getElementById('mob-dom-v2-bravo-fail').value || 'RETRY_STEP',
+                    v2_dom_alpha_seq: JSON.parse(JSON.stringify(mobDomAlphaSeq)),
+                    v2_dom_bravo_seq: JSON.parse(JSON.stringify(mobDomBravoSeq)),
+                    capture_time:     parseInt(document.getElementById('mob-dom-cap').value) || 10,
+                    countdown:        parseInt(document.getElementById('mob-dom-cd').value) || 10
+                };
+            } else {
+                return {
+                    game_duration:    parseInt(document.getElementById('mob-tdm-dur').value) || 15
+                };
+            }
+        }
+
+        function applyMobPresetToUI(preset) {
+            if (!preset || !preset.config) return;
+            const cfg = preset.config;
+            document.getElementById('mob-mode-select').value = preset.mode || 'sd';
+
+            const setVal = (id, v) => {
+                const el = document.getElementById(id);
+                if (el && v !== undefined && v !== null) el.value = String(v);
+            };
+
+            if (preset.mode === 'sd') {
+                setVal('mob-sd-attacker',         cfg.attacker || 'ALPHA');
+                setVal('mob-sd-dur',              cfg.game_duration ?? 20);
+                setVal('mob-sd-bomb',             cfg.bomb_time ?? 10);
+                setVal('mob-v2-smoke',            cfg.fx_smoke ? 'true' : 'false');
+                setVal('mob-v2-relay',            cfg.fx_relay ? 'true' : 'false');
+                setVal('mob-v2-arm-fail-mode',    cfg.arm_fail_mode || 'RETRY_STEP');
+                setVal('mob-v2-defuse-fail-mode', cfg.defuse_fail_mode || 'RETRY_STEP');
+                setVal('mob-v1-arm-time',         cfg.arm_time ?? 5);
+                setVal('mob-v1-def-time',         cfg.defuse_time ?? 10);
+                setVal('mob-v1-use-arm-pin',      cfg.use_arm_pin ?? 'true');
+                setVal('mob-v1-use-def-pin',      cfg.use_defuse_pin ?? 'true');
+                setVal('mob-v1-arm-pin',          cfg.arm_pin ?? '1234');
+                setVal('mob-v1-def-pin',          cfg.defuse_pin ?? '4321');
+
+                if (Array.isArray(cfg.v2_arm_seq) && cfg.v2_arm_seq.length > 0) {
+                    mobArmSeq = JSON.parse(JSON.stringify(cfg.v2_arm_seq));
+                }
+                if (Array.isArray(cfg.v2_defuse_seq) && cfg.v2_defuse_seq.length > 0) {
+                    mobDefuseSeq = JSON.parse(JSON.stringify(cfg.v2_defuse_seq));
+                }
+            } else if (preset.mode === 'dom') {
+                setVal('mob-dom-dur',           cfg.game_duration ?? 15);
+                setVal('mob-dom-v2-smoke',      cfg.fx_smoke ? 'true' : 'false');
+                setVal('mob-dom-v2-relay',      cfg.fx_relay ? 'true' : 'false');
+                setVal('mob-dom-v2-alpha-fail', cfg.alpha_fail_mode || 'RETRY_STEP');
+                setVal('mob-dom-v2-bravo-fail', cfg.bravo_fail_mode || 'RETRY_STEP');
+                setVal('mob-dom-cap',           cfg.capture_time ?? 10);
+                setVal('mob-dom-cd',            cfg.countdown ?? 10);
+
+                if (Array.isArray(cfg.v2_dom_alpha_seq) && cfg.v2_dom_alpha_seq.length > 0) {
+                    mobDomAlphaSeq = JSON.parse(JSON.stringify(cfg.v2_dom_alpha_seq));
+                }
+                if (Array.isArray(cfg.v2_dom_bravo_seq) && cfg.v2_dom_bravo_seq.length > 0) {
+                    mobDomBravoSeq = JSON.parse(JSON.stringify(cfg.v2_dom_bravo_seq));
+                }
+            } else if (preset.mode === 'tdm') {
+                setVal('mob-tdm-dur', cfg.game_duration ?? 15);
+            }
+
+            renderMobV2Sequences();
+            onMobModeChange();
+        }
+
+        window.onMobPresetSelectChange = function(val) {
+            const stEl = document.getElementById('mob-preset-status');
+            if (!val) {
+                selectedPresetId = null;
+                renderMobPresetDropdown();
+                if (stEl) { stEl.textContent = 'MANUALE'; stEl.style.color = '#888'; }
+                return;
+            }
+            const idNum = parseInt(val);
+            const found = missionPresets.find(p => p.id === idNum);
+            if (found) {
+                selectedPresetId = found.id;
+                applyMobPresetToUI(found);
+                renderMobPresetDropdown();
+                if (stEl) { stEl.textContent = 'CARICATO'; stEl.style.color = 'var(--sop-primary)'; }
+            }
+        };
+
+        window.saveNewMobPreset = function() {
+            const mode = document.getElementById('mob-mode-select').value;
+            const defName = mode === 'sd' ? 'S&D CUSTOM' : (mode === 'dom' ? 'DOMINIO CUSTOM' : 'TDM CUSTOM');
+            openMobPrompt('SALVA NUOVO PRESET', 'NOME PRESET TATTICO', defName, (name) => {
+                socket.emit('save_preset', {
+                    id: null,
+                    name: name.toUpperCase(),
+                    mode: mode,
+                    config: extractMobSetupPreset()
+                });
+            });
+        };
+
+        window.overwriteMobPreset = function() {
+            if (!selectedPresetId) return;
+            const cur = missionPresets.find(p => p.id === selectedPresetId);
+            if (!cur) return;
+            const mode = document.getElementById('mob-mode-select').value;
+            socket.emit('save_preset', {
+                id: cur.id,
+                name: cur.name,
+                mode: mode,
+                config: extractMobSetupPreset()
+            });
+        };
+
+        window.deleteMobPreset = function() {
+            if (!selectedPresetId) return;
+            const cur = missionPresets.find(p => p.id === selectedPresetId);
+            if (!cur) return;
+            openMobConfirm(`Eliminare definitivamente il preset "${cur.name}"?`, 'ELIMINA PRESET', 'danger', () => {
+                socket.emit('delete_preset', { id: cur.id });
+                selectedPresetId = null;
+            });
+        };
 
         // ====================================================================
         // LOGICA DI SETUP E COSTRUTTORE SEQUENZE V2 MOBILE (S&D e DOM)
         // ====================================================================
 
         function isTargetV2(targetId) {
-            if (!targetId) return false;
+            if (!targetId) return true;
             const dev = currentDevices.find(d => d.id === targetId);
-            return Boolean(
-                (dev && dev.version && dev.version.toUpperCase().includes('V2')) ||
-                targetId.toUpperCase().includes('V2')
-            );
+            const isLegacyV1 = dev && dev.version && dev.version.toUpperCase().includes('V1') && !dev.version.toUpperCase().includes('V2') && !targetId.toUpperCase().includes('V2');
+            return !isLegacyV1;
         }
 
         function updateTargetSelectDropdown() {
             const sel = document.getElementById('mob-target-select');
             if (!sel) return;
             const prev = sel.value;
-            sel.innerHTML = '<option value="">-- Seleziona nodo disponibile --</option>';
+            sel.innerHTML = '<option value="">-- Seleziona nodo target --</option>';
 
             const available = currentDevices.filter(d => {
                 const idUp = (d.id || '').toUpperCase();
@@ -895,35 +1298,64 @@
                 sel.appendChild(opt);
             });
 
+            // Mantiene la selezione solo se era già stata scelta manualmente dall'arbitro
             if (prev && available.some(d => d.id === prev)) {
                 sel.value = prev;
-            } else if (available.length > 0) {
-                sel.value = available[0].id;
+            } else {
+                sel.value = '';
             }
             onMobTargetChange();
         }
 
         function onMobModeChange() {
-            const mode = document.getElementById('mob-mode-select').value;
-            document.getElementById('mob-params-sd').classList.toggle('hidden', mode !== 'sd');
-            document.getElementById('mob-params-dom').classList.toggle('hidden', mode !== 'dom');
-            document.getElementById('mob-params-tdm').classList.toggle('hidden', mode !== 'tdm');
-            document.getElementById('mob-target-group').classList.toggle('hidden', mode === 'tdm');
+            document.getElementById('btn-mob-start').classList.add('disabled');
             onMobTargetChange();
         }
 
         function onMobTargetChange() {
-            const mode = document.getElementById('mob-mode-select').value;
-            const targetId = document.getElementById('mob-target-select').value;
-            const badge = document.getElementById('mob-target-ver-badge');
+            const mode       = document.getElementById('mob-mode-select').value;
+            const targetId   = document.getElementById('mob-target-select').value;
+            const badge      = document.getElementById('mob-target-ver-badge');
+            const targetGrp  = document.getElementById('mob-target-group');
+            const noTermCard = document.getElementById('mob-no-terminal-card');
+            const sdCard     = document.getElementById('mob-params-sd');
+            const domCard    = document.getElementById('mob-params-dom');
+            const tdmCard    = document.getElementById('mob-params-tdm');
+            const btnTrans   = document.getElementById('btn-mob-transmit');
+            const btnStart   = document.getElementById('btn-mob-start');
 
             if (mode === 'tdm') {
                 badge.textContent = 'SERVER VIRTUAL';
+                targetGrp.classList.add('hidden');
+                noTermCard.classList.add('hidden');
+                sdCard.classList.add('hidden');
+                domCard.classList.add('hidden');
+                tdmCard.classList.remove('hidden');
+                btnTrans.classList.remove('disabled');
                 return;
             }
 
+            targetGrp.classList.remove('hidden');
+            tdmCard.classList.add('hidden');
+
+            // Finché non viene selezionato un terminale, nasconde i parametri e blocca i pulsanti
+            if (!targetId) {
+                badge.textContent = 'NO TARGET';
+                noTermCard.classList.remove('hidden');
+                sdCard.classList.add('hidden');
+                domCard.classList.add('hidden');
+                btnTrans.classList.add('disabled');
+                btnStart.classList.add('disabled');
+                return;
+            }
+
+            noTermCard.classList.add('hidden');
+            sdCard.classList.toggle('hidden', mode !== 'sd');
+            domCard.classList.toggle('hidden', mode !== 'dom');
+            btnTrans.classList.remove('disabled');
+
             const v2 = isTargetV2(targetId);
-            badge.textContent = targetId ? (v2 ? 'ARCH: RAT-V2' : 'ARCH: RAT-V1') : 'NO TARGET';
+            badge.textContent = v2 ? 'ARCH: RAT-V2' : 'ARCH: RAT-V1';
 
             document.getElementById('mob-sd-v1-block').classList.toggle('hidden', v2);
             document.getElementById('mob-sd-v2-block').classList.toggle('hidden', !v2);
@@ -965,11 +1397,11 @@
         window.addMobSeqStep = function(seqType) {
             const arr = getMobSeqArray(seqType);
             if (arr.length >= 5) {
-                alert('Massimo 5 step per sequenza.');
+                openMobAlert('Massimo 5 step consentiti per sequenza.', 'LIMITE SEQUENZA', 'warning');
                 return;
             }
             const defHold = (seqType === 'arm') ? 5 : 10;
-            arr.push({ type: 'HOLD', val: defHold, rfidMode: 'TEAM', rfidCustomUid: '' });
+            arr.push({ type: 'HOLD', val: defHold, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' });
             renderMobV2Sequences();
         };
 
@@ -978,7 +1410,7 @@
             arr.splice(idx, 1);
             if (arr.length === 0) {
                 const defHold = (seqType === 'arm') ? 5 : 10;
-                arr.push({ type: 'HOLD', val: defHold, rfidMode: 'TEAM', rfidCustomUid: '' });
+                arr.push({ type: 'HOLD', val: defHold, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' });
             }
             renderMobV2Sequences();
         };
@@ -999,7 +1431,10 @@
             if (sel.value === 'HOLD') arr[idx].val = (seqType === 'arm') ? 5 : 10;
             else if (sel.value === 'PIN') arr[idx].val = '1234';
             else if (sel.value === 'KEY') arr[idx].val = 'K1_ON';
-            else if (sel.value === 'RFID') arr[idx].rfidMode = 'TEAM';
+            else if (sel.value === 'RFID') {
+                arr[idx].rfidMode = arr[idx].rfidMode || 'TEAM';
+                arr[idx].rfidPlayers = arr[idx].rfidPlayers || [];
+            }
             renderMobV2Sequences();
         };
 
@@ -1020,6 +1455,28 @@
             arr[idx].rfidCustomUid = el.value.trim().toUpperCase();
         };
 
+        window.addMobRfidPlayer = function(seqType, idx, sel) {
+            const uid = sel.value;
+            if (!uid) return;
+            const arr = getMobSeqArray(seqType);
+            if (!Array.isArray(arr[idx].rfidPlayers)) arr[idx].rfidPlayers = [];
+            if (!arr[idx].rfidPlayers.includes(uid)) arr[idx].rfidPlayers.push(uid);
+            renderMobV2Sequences();
+        };
+
+        window.removeMobRfidPlayer = function(seqType, idx, uid) {
+            const arr = getMobSeqArray(seqType);
+            if (!Array.isArray(arr[idx].rfidPlayers)) return;
+            arr[idx].rfidPlayers = arr[idx].rfidPlayers.filter(u => u !== uid);
+            renderMobV2Sequences();
+        };
+
+        function getMobPlayerName(uid) {
+            if (arenaRoster && arenaRoster[uid]) return arenaRoster[uid].name;
+            const found = globalPlayersDB.find(p => p.uid === uid);
+            return found ? found.alias : uid;
+        }
+
         function renderMobV2Sequences() {
             sanitizeMobKeySequences();
 
@@ -1038,16 +1495,28 @@
                     paramHtml = `<select style="padding:8px; font-size:14px;" onchange="onMobStepValChange('${seqType}', ${i}, this)">${opts}</select>`;
                 } else if (step.type === 'RFID') {
                     const rm = step.rfidMode || 'TEAM';
+                    const selPlayers = Array.isArray(step.rfidPlayers) ? step.rfidPlayers : [];
                     const roleLbl = seqType === 'arm' ? 'SQUADRA ATTACCANTE'
                                   : (seqType === 'defuse' ? 'SQUADRA DIFENSORE'
                                   : (seqType === 'dom_alpha' ? `SQUADRA ${currentFactions.ALPHA.name}` : `SQUADRA ${currentFactions.BRAVO.name}`));
+
+                    let extraRfidHtml = '';
+                    if (rm === 'CUSTOM') {
+                        extraRfidHtml = `<input type="text" value="${step.rfidCustomUid || ''}" style="padding:8px; font-size:14px; margin-top:6px;" placeholder="UID Tessera..." oninput="onMobRfidUidChange('${seqType}', ${i}, this)">`;
+                    } else if (rm === 'PLAYERS') {
+                        const chips = selPlayers.map(u => `<span style="display:inline-block; background:rgba(0,255,204,0.15); border:1px solid var(--sop-primary); padding:2px 6px; border-radius:3px; font-size:11px; margin:3px 3px 0 0;" onclick="removeMobRfidPlayer('${seqType}', ${i}, '${u}')">${getMobPlayerName(u)} ✕</span>`).join('');
+                        const opts = globalPlayersDB.filter(p => !selPlayers.includes(p.uid)).map(p => `<option value="${p.uid}">${p.alias}</option>`).join('');
+                        extraRfidHtml = `<div style="margin-top:4px;">${chips}</div><select style="padding:6px; font-size:12px; margin-top:4px;" onchange="addMobRfidPlayer('${seqType}', ${i}, this)"><option value="">+ Giocatore...</option>${opts}</select>`;
+                    }
+
                     paramHtml = `
-                        <select style="padding:8px; font-size:14px; margin-bottom:${rm === 'CUSTOM' ? '6px' : '0'};" onchange="onMobRfidModeChange('${seqType}', ${i}, this)">
+                        <select style="padding:8px; font-size:14px;" onchange="onMobRfidModeChange('${seqType}', ${i}, this)">
                             <option value="TEAM" ${rm === 'TEAM' ? 'selected' : ''}>${roleLbl}</option>
-                            <option value="ANY" ${rm === 'ANY' ? 'selected' : ''}>QUALSIASI TESSERA</option>
+                            <option value="PLAYERS" ${rm === 'PLAYERS' ? 'selected' : ''}>GIOCATORI SPECIFICI</option>
                             <option value="CUSTOM" ${rm === 'CUSTOM' ? 'selected' : ''}>UID SPECIFICO</option>
+                            <option value="ANY" ${rm === 'ANY' ? 'selected' : ''}>QUALSIASI TESSERA</option>
                         </select>
-                        ${rm === 'CUSTOM' ? `<input type="text" value="${step.rfidCustomUid || ''}" style="padding:8px; font-size:14px;" placeholder="UID Tessera..." oninput="onMobRfidUidChange('${seqType}', ${i}, this)">` : ''}
+                        ${extraRfidHtml}
                     `;
                 }
 
@@ -1087,6 +1556,11 @@
                 if (s.type === 'RFID') {
                     const rm = s.rfidMode || 'TEAM';
                     if (rm === 'TEAM')   return { type: 'RFID', rfid_mode: 'TEAM',   val_str: 'TEAM' };
+                    if (rm === 'PLAYERS') {
+                        const uids = Array.isArray(s.rfidPlayers) ? s.rfidPlayers : [];
+                        const names = uids.map(u => getMobPlayerName(u));
+                        return { type: 'RFID', rfid_mode: 'PLAYERS', val_str: uids.join(','), player_names: names };
+                    }
                     if (rm === 'CUSTOM') return { type: 'RFID', rfid_mode: 'CUSTOM', val_str: String(s.rfidCustomUid || '').trim().toUpperCase() };
                     return { type: 'RFID', rfid_mode: 'ANY', val_str: '*' };
                 }
@@ -1113,6 +1587,8 @@
                         bomb_time: bomb,
                         fx_smoke: document.getElementById('mob-v2-smoke').value === 'true',
                         fx_relay: document.getElementById('mob-v2-relay').value === 'true',
+                        arm_fail_mode: document.getElementById('mob-v2-arm-fail-mode').value || 'RETRY_STEP',
+                        defuse_fail_mode: document.getElementById('mob-v2-defuse-fail-mode').value || 'RETRY_STEP',
                         arm_seq: serializeMobSeq(mobArmSeq),
                         defuse_seq: serializeMobSeq(mobDefuseSeq)
                     };
@@ -1139,6 +1615,8 @@
                         game_duration: dur,
                         fx_smoke: document.getElementById('mob-dom-v2-smoke').value === 'true',
                         fx_relay: document.getElementById('mob-dom-v2-relay').value === 'true',
+                        alpha_fail_mode: document.getElementById('mob-dom-v2-alpha-fail').value || 'RETRY_STEP',
+                        bravo_fail_mode: document.getElementById('mob-dom-v2-bravo-fail').value || 'RETRY_STEP',
                         alpha_seq: serializeMobSeq(mobDomAlphaSeq),
                         bravo_seq: serializeMobSeq(mobDomBravoSeq)
                     };
@@ -1163,7 +1641,7 @@
         function transmitMobSetup() {
             const { mode, targetId, dur, commandData } = buildMobMissionConfig();
             if (mode !== 'tdm' && !targetId) {
-                alert('Seleziona un terminale hardware target prima di trasmettere.');
+                openMobAlert('Seleziona un terminale hardware target prima di trasmettere la configurazione.', 'TERMINALE MANCANTE', 'warning');
                 return;
             }
             socket.emit('send_command', { target_id: targetId, command: commandData });
@@ -1177,9 +1655,22 @@
         function launchMobMission() {
             const { mode, targetId, dur, commandData } = buildMobMissionConfig();
             if (mode !== 'tdm' && !targetId) {
-                alert('Nessun terminale target selezionato.');
+                openMobAlert('Nessun terminale target selezionato.', 'IMPOSSIBILE AVVIARE', 'danger');
                 return;
             }
+
+            const rosterPlayers = Object.values(arenaRoster || {});
+            if (rosterPlayers.length === 0) {
+                openMobAlert('Il Roster attivo è vuoto.\nRegistra i giocatori e portali IN CAMPO prima di iniziare.', 'ROSTER VUOTO', 'danger');
+                return;
+            }
+
+            const outPlayers = rosterPlayers.filter(p => p.status !== 'IN');
+            if (outPlayers.length > 0) {
+                openMobAlert(`Ci sono ancora ${outPlayers.length} operatori FUORI CAMPO.\nTutti i giocatori devono risultare 'IN CAMPO' prima di iniziare.`, 'OPERATORI FUORI CAMPO', 'danger');
+                return;
+            }
+
             socket.emit('request_mission_start', {
                 mode: mode,
                 target_id: targetId,
@@ -1270,6 +1761,25 @@
             updateTargetSelectDropdown();
         });
 
+        socket.on('database_update', (players) => {
+            globalPlayersDB = players || [];
+            renderMobV2Sequences();
+        });
+
+        socket.on('presets_update', (presets) => {
+            missionPresets = Array.isArray(presets) ? presets : [];
+            renderMobPresetDropdown();
+        });
+
+        socket.on('preset_saved_ack', (data) => {
+            if (data && data.id) {
+                selectedPresetId = data.id;
+                renderMobPresetDropdown();
+                const stEl = document.getElementById('mob-preset-status');
+                if (stEl) { stEl.textContent = 'SALVATO!'; stEl.style.color = 'var(--sop-success)'; }
+            }
+        });
+
         socket.on('roster_update', (roster) => {
             arenaRoster = roster || {};
             renderMobileRoster();
@@ -1303,16 +1813,22 @@
         });
 
         socket.on('mission_start_warning', (data) => {
-            if (confirm(data.msg)) {
-                data.original_request.force = true;
-                socket.emit('request_mission_start', data.original_request);
-            } else {
-                document.getElementById('btn-mob-start').classList.remove('disabled');
-            }
+            openMobConfirm(
+                data.msg,
+                'SQUADRE SBILANCIATE',
+                'warning',
+                () => {
+                    data.original_request.force = true;
+                    socket.emit('request_mission_start', data.original_request);
+                },
+                () => {
+                    document.getElementById('btn-mob-start').classList.remove('disabled');
+                }
+            );
         });
 
         socket.on('mission_start_error', (data) => {
-            alert(data.msg);
+            openMobAlert(data.msg, 'ERRORE AVVIO MISSIONE', 'danger');
             document.getElementById('btn-mob-start').classList.remove('disabled');
         });
 
@@ -1326,6 +1842,13 @@
             const payload = raw.payload || {};
 
             if (type === 'RFID_SCAN') return;
+
+            if (type === 'TIME_UPDATE') {
+                if (payload.game_time !== undefined) {
+                    document.getElementById('mob-timer').textContent = formatTime(payload.game_time);
+                }
+                return;
+            }
 
             if (type === 'MODE_EXIT') {
                 resetLiveTelemetryUI();
@@ -1380,7 +1903,7 @@
                 else statusEl.style.color = 'var(--sop-primary)';
             }
 
-            if (isSd) {
+            if (isSd && type === 'SD_UPDATE') {
                 document.getElementById('mob-prog-lbl-1').textContent = 'INNESCO';
                 document.getElementById('mob-prog-lbl-2').textContent = 'DISINNESCO';
                 if (payload.arm_prog !== undefined) document.getElementById('mob-prog-1').style.width = payload.arm_prog + '%';
@@ -1391,7 +1914,7 @@
                 } else if (payload.bomb_time !== undefined) {
                     document.getElementById('mob-bomb-timer').textContent = formatTime(payload.bomb_time);
                 }
-            } else if (isDom) {
+            } else if (isDom && type === 'DOM_UPDATE') {
                 document.getElementById('mob-prog-lbl-1').textContent = `CATTURA ${currentFactions.ALPHA.name}`;
                 document.getElementById('mob-prog-lbl-2').textContent = `CATTURA ${currentFactions.BRAVO.name}`;
                 if (payload.score_a !== undefined) document.getElementById('mob-dom-a').textContent = formatTime(payload.score_a);
@@ -1423,7 +1946,7 @@
             if (nfcActive) return;
 
             if (!('NDEFReader' in window)) {
-                alert('Web NFC richiede Chrome su Android con connessione HTTPS attiva.');
+                openMobAlert('Web NFC richiede Chrome su Android con connessione HTTPS attiva.', 'NFC NON SUPPORTATO', 'warning');
                 return;
             }
 
