@@ -1539,40 +1539,47 @@ if (!window.__zuluMainInitialized) {
         });
     }
 
+    window.togglePlannerEventMeta = function() {
+        const metaBox = document.getElementById('planner-event-meta-box');
+        if (metaBox) {
+            metaBox.classList.toggle('hidden');
+        }
+    };
+
     function createPlannerParticipantItem(p, ev) {
         const li = document.createElement('li');
-        li.className = 'roster-item';
-        li.style.padding = '10px 12px';
-        li.style.marginBottom = '8px';
+        li.className = 'planner-player-card';
         const isAlpha = p.team === 'ALPHA';
         const tColor  = isAlpha ? ev.alpha_color : ev.bravo_color;
         li.style.borderLeft = `4px solid ${tColor}`;
 
         const badgeType = p.is_pro === 1
-            ? '<span style="color:#ffd700; font-size:13px; margin-right:6px;">[★ PRO]</span>'
-            : '<span style="color:#aaa; font-size:13px; margin-right:6px;">[OSPITE]</span>';
+            ? '<span style="color:#ffd700; font-weight:bold;">[★ PRO]</span>'
+            : '<span style="color:#aaa;">[OSPITE]</span>';
         const asdBadge = (p.asd_team && p.asd_team !== 'NESSUNA')
-            ? `<span style="color:var(--sop-primary); font-size:13px; margin-left:6px;">[${p.asd_team}]</span>`
+            ? `<span style="color:var(--sop-primary); background:rgba(0,255,204,0.1); padding:1px 6px; border-radius:3px;">${p.asd_team}</span>`
             : '';
 
         const subInfo = p.uid
-            ? `UID: ${p.uid} | Win: ${p.win_rate}%`
-            : `Tessera: Allo schieramento`;
+            ? `<span style="color:#777; margin-left:auto;">Win: ${p.win_rate}%</span>`
+            : `<span style="color:#666; margin-left:auto;">Tessera allo schieramento</span>`;
 
         li.innerHTML = `
-            <div style="flex:1; min-width:0; margin-right:8px;">
-                <div style="font-size:18px; font-weight:bold; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    ${badgeType}<span class="${p.uid ? 'clickable-name' : ''}">${p.display_name}</span>${asdBadge}
+            <div class="planner-player-top">
+                <div class="planner-player-name ${p.uid ? 'clickable-name' : ''}" title="${p.display_name}">
+                    ${p.display_name}
                 </div>
-                <div style="font-size:13px; color:#888; font-family:monospace; margin-top:2px;">
-                    ${subInfo}
+                <div style="display:flex; align-items:center; gap:5px; font-family:monospace; font-size:14px; flex-shrink:0;">
+                    <span class="action-btn" style="padding:3px 7px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="swapEventParticipantTeam(${p.id})" title="Sposta nell'altra squadra">[⇄]</span>
+                    <span class="action-btn" style="padding:3px 7px; border:1px solid ${p.needs_rental ? 'var(--sop-secondary)' : '#333'}; background:${p.needs_rental ? 'rgba(255,153,0,0.18)' : 'transparent'}; color:${p.needs_rental ? 'var(--sop-secondary)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_rental')" title="Kit Noleggio ASG/Maschera">[🔫]</span>
+                    <span class="action-btn" style="padding:3px 7px; border:1px solid ${p.paid ? 'var(--sop-success)' : '#333'}; background:${p.paid ? 'rgba(85,255,85,0.18)' : 'transparent'}; color:${p.paid ? 'var(--sop-success)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_paid')" title="Quota Campo Saldata">[💶]</span>
+                    <span class="action-btn" style="color:var(--sop-alert); padding:3px 5px;" onclick="removeEventParticipant(${p.id})" title="Rimuovi iscritto">[✕]</span>
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:6px; font-family:monospace; font-size:15px; flex-shrink:0;">
-                <span class="action-btn" style="padding:4px 8px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="swapEventParticipantTeam(${p.id})" title="Sposta nell'altra squadra">[⇄]</span>
-                <span class="action-btn" style="padding:4px 8px; border:1px solid ${p.needs_rental ? 'var(--sop-secondary)' : '#333'}; background:${p.needs_rental ? 'rgba(255,153,0,0.18)' : 'transparent'}; color:${p.needs_rental ? 'var(--sop-secondary)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_rental')" title="Kit Noleggio ASG/Maschera">[🔫]</span>
-                <span class="action-btn" style="padding:4px 8px; border:1px solid ${p.paid ? 'var(--sop-success)' : '#333'}; background:${p.paid ? 'rgba(85,255,85,0.18)' : 'transparent'}; color:${p.paid ? 'var(--sop-success)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_paid')" title="Quota Campo Saldata">[💶]</span>
-                <span class="action-btn" style="color:var(--sop-alert); padding:4px 6px;" onclick="removeEventParticipant(${p.id})" title="Rimuovi iscritto">[✕]</span>
+            <div class="planner-player-bottom">
+                ${badgeType}
+                ${asdBadge}
+                ${subInfo}
             </div>
         `;
         if (p.uid) {
@@ -1598,10 +1605,11 @@ if (!window.__zuluMainInitialized) {
         const notesBox    = document.getElementById('planner-notes-box');
         const btnBalance  = document.getElementById('btn-plan-balance');
         const btnDeploy   = document.getElementById('btn-plan-deploy');
+        const btnMeta = document.getElementById('btn-toggle-event-meta');
 
         if (!ev) {
             if (titleHeader) titleHeader.textContent = "SELEZIONA UNA GIORNATA";
-            [metaBox, logBar, guestWarn, addBar, teamsCont, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.add('hidden'));
+            [logBar, addBar, teamsCont, schedAddBar, notesBox, btnBalance, btnDeploy, btnMeta].forEach(el => el?.classList.remove('hidden'));
             emptyMsg?.classList.remove('hidden');
             return;
         }
