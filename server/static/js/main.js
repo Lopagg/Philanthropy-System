@@ -1482,7 +1482,7 @@ if (!window.__zuluMainInitialized) {
         if (!listEl) return;
 
         if (!Array.isArray(gameEventsList) || gameEventsList.length === 0) {
-            listEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">NESSUNA GIOCATA IN CALENDARIO</li>';
+            listEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px; font-size: 16px;">NESSUNA GIOCATA IN CALENDARIO</li>';
             return;
         }
 
@@ -1495,22 +1495,27 @@ if (!window.__zuluMainInitialized) {
             li.style.flexDirection = 'column';
             li.style.alignItems = 'stretch';
             li.style.cursor = 'pointer';
+            li.style.padding = '12px 14px';
             li.style.borderLeft = isSelected ? '4px solid var(--sop-primary)' : (isActive ? '4px solid var(--sop-success)' : '4px solid var(--sop-dim)');
             li.style.background = isSelected ? 'rgba(0, 255, 204, 0.1)' : 'rgba(0, 0, 0, 0.35)';
 
             const statusBadge = isActive
-                ? '<span style="color:var(--sop-success); font-size:11px; font-weight:bold;">[● IN CORSO]</span>'
-                : `<span style="color:#888; font-size:11px;">[${ev.start_time || '08:30'}]</span>`;
+                ? '<span style="color:var(--sop-success); font-size:13px; font-weight:bold;">[● IN CORSO]</span>'
+                : `<span style="color:#aaa; font-size:13px;">[🕒 ${ev.start_time || '08:30'}]</span>`;
+
+            const guestWarn = (ev.guest_count > ev.total_guest_cards)
+                ? `<span style="color:var(--sop-alert); font-weight:bold;">⚠️ Guest: ${ev.guest_count}/${ev.total_guest_cards}</span>`
+                : `<span>🔫 Noleggi: ${ev.rental_count}</span>`;
 
             li.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <span style="color:var(--sop-secondary); font-family:monospace; font-size:13px; font-weight:bold;">📅 ${ev.event_date}</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <span style="color:var(--sop-secondary); font-family:monospace; font-size:15px; font-weight:bold;">📅 ${ev.event_date}</span>
                     ${statusBadge}
                 </div>
-                <div style="font-size:16px; font-weight:bold; color:#fff; margin-bottom:6px;">${ev.title}</div>
-                <div style="display:flex; justify-content:space-between; font-size:12px; color:#aaa; font-family:monospace;">
-                    <span>👥 ${ev.total_registered}/${ev.max_players} (<span style="color:${ev.alpha_color}">${ev.alpha_count}</span>/<span style="color:${ev.bravo_color}">${ev.bravo_count}</span>)</span>
-                    <span>🔫 Noleggi: ${ev.rental_count}</span>
+                <div style="font-size:19px; font-weight:bold; color:#fff; margin-bottom:8px;">${ev.title}</div>
+                <div style="display:flex; justify-content:space-between; font-size:14px; color:#bbb; font-family:monospace;">
+                    <span>👥 <b>${ev.total_registered}</b> (<span style="color:${ev.alpha_color}">${ev.alpha_count}</span> vs <span style="color:${ev.bravo_color}">${ev.bravo_count}</span>)</span>
+                    ${guestWarn}
                     <span>💶 ${ev.paid_count}/${ev.total_registered}</span>
                 </div>
             `;
@@ -1534,6 +1539,49 @@ if (!window.__zuluMainInitialized) {
         });
     }
 
+    function createPlannerParticipantItem(p, ev) {
+        const li = document.createElement('li');
+        li.className = 'roster-item';
+        li.style.padding = '10px 12px';
+        li.style.marginBottom = '8px';
+        const isAlpha = p.team === 'ALPHA';
+        const tColor  = isAlpha ? ev.alpha_color : ev.bravo_color;
+        li.style.borderLeft = `4px solid ${tColor}`;
+
+        const badgeType = p.is_pro === 1
+            ? '<span style="color:#ffd700; font-size:13px; margin-right:6px;">[★ PRO]</span>'
+            : '<span style="color:#aaa; font-size:13px; margin-right:6px;">[OSPITE]</span>';
+        const asdBadge = (p.asd_team && p.asd_team !== 'NESSUNA')
+            ? `<span style="color:var(--sop-primary); font-size:13px; margin-left:6px;">[${p.asd_team}]</span>`
+            : '';
+
+        const subInfo = p.uid
+            ? `UID: ${p.uid} | Win: ${p.win_rate}%`
+            : `Tessera: Allo schieramento`;
+
+        li.innerHTML = `
+            <div style="flex:1; min-width:0; margin-right:8px;">
+                <div style="font-size:18px; font-weight:bold; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    ${badgeType}<span class="${p.uid ? 'clickable-name' : ''}">${p.display_name}</span>${asdBadge}
+                </div>
+                <div style="font-size:13px; color:#888; font-family:monospace; margin-top:2px;">
+                    ${subInfo}
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; font-family:monospace; font-size:15px; flex-shrink:0;">
+                <span class="action-btn" style="padding:4px 8px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="swapEventParticipantTeam(${p.id})" title="Sposta nell'altra squadra">[⇄]</span>
+                <span class="action-btn" style="padding:4px 8px; border:1px solid ${p.needs_rental ? 'var(--sop-secondary)' : '#333'}; background:${p.needs_rental ? 'rgba(255,153,0,0.18)' : 'transparent'}; color:${p.needs_rental ? 'var(--sop-secondary)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_rental')" title="Kit Noleggio ASG/Maschera">[🔫]</span>
+                <span class="action-btn" style="padding:4px 8px; border:1px solid ${p.paid ? 'var(--sop-success)' : '#333'}; background:${p.paid ? 'rgba(85,255,85,0.18)' : 'transparent'}; color:${p.paid ? 'var(--sop-success)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_paid')" title="Quota Campo Saldata">[💶]</span>
+                <span class="action-btn" style="color:var(--sop-alert); padding:4px 6px;" onclick="removeEventParticipant(${p.id})" title="Rimuovi iscritto">[✕]</span>
+            </div>
+        `;
+        if (p.uid) {
+            const nameEl = li.querySelector('.clickable-name');
+            if (nameEl) nameEl.onclick = () => socket.emit('request_profile', { uid: p.uid });
+        }
+        return li;
+    }
+
     function renderPlannerEventDetails(ev) {
         currentPlannerEvent = ev;
         renderPlannerEventsList();
@@ -1542,7 +1590,10 @@ if (!window.__zuluMainInitialized) {
         const titleHeader = document.getElementById('planner-active-title');
         const metaBox     = document.getElementById('planner-event-meta-box');
         const logBar      = document.getElementById('planner-logistics-bar');
+        const guestWarn   = document.getElementById('planner-guest-warning');
         const addBar      = document.getElementById('planner-add-bar');
+        const emptyMsg    = document.getElementById('planner-empty-msg');
+        const teamsCont   = document.getElementById('planner-teams-container');
         const schedAddBar = document.getElementById('planner-schedule-add-bar');
         const notesBox    = document.getElementById('planner-notes-box');
         const btnBalance  = document.getElementById('btn-plan-balance');
@@ -1550,125 +1601,122 @@ if (!window.__zuluMainInitialized) {
 
         if (!ev) {
             if (titleHeader) titleHeader.textContent = "SELEZIONA UNA GIORNATA";
-            [metaBox, logBar, addBar, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.add('hidden'));
+            [metaBox, logBar, guestWarn, addBar, teamsCont, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.add('hidden'));
+            emptyMsg?.classList.remove('hidden');
             return;
         }
 
-        [metaBox, logBar, addBar, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.remove('hidden'));
+        emptyMsg?.classList.add('hidden');
+        [metaBox, logBar, addBar, teamsCont, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.remove('hidden'));
         if (titleHeader) titleHeader.textContent = `${ev.event_date} // ${ev.title}`;
 
         // 1. Campi Editor Meta Giornata
         document.getElementById('plan-edit-title').value  = ev.title || '';
         document.getElementById('plan-edit-date').value   = ev.event_date || '';
         document.getElementById('plan-edit-time').value   = ev.start_time || '08:30';
-        document.getElementById('plan-edit-max').value    = ev.max_players || 30;
         document.getElementById('plan-edit-a-name').value = ev.alpha_name || 'ALPHA';
         document.getElementById('plan-edit-a-col').value  = ev.alpha_color || '#ff3333';
         document.getElementById('plan-edit-b-name').value = ev.bravo_name || 'BRAVO';
         document.getElementById('plan-edit-b-col').value  = ev.bravo_color || '#55ff55';
         document.getElementById('plan-event-notes').value = ev.notes || '';
 
-        // 2. Statistiche Logistiche e Selettore Giocatori DB
-        const parts   = Array.isArray(ev.participants) ? ev.participants : [];
-        const aCount  = parts.filter(p => p.team === 'ALPHA').length;
-        const bCount  = parts.filter(p => p.team === 'BRAVO').length;
-        const rentals = parts.filter(p => p.needs_rental === 1).length;
-        const paid    = parts.filter(p => p.paid === 1).length;
+        // 2. Statistiche Logistiche e Controllo Tessere Guest
+        const parts           = Array.isArray(ev.participants) ? ev.participants : [];
+        const alphaPlayers    = parts.filter(p => p.team === 'ALPHA');
+        const bravoPlayers    = parts.filter(p => p.team === 'BRAVO');
+        const guestCount      = parts.filter(p => !p.uid).length;
+        const totalGuestCards = ev.total_guest_cards ?? 0;
+        const rentals         = parts.filter(p => p.needs_rental === 1).length;
+        const paid            = parts.filter(p => p.paid === 1).length;
 
-        document.getElementById('plan-stat-tot').textContent     = `${parts.length}/${ev.max_players || 30}`;
-        document.getElementById('plan-stat-teams').innerHTML     = `<span style="color:${ev.alpha_color}">${aCount}</span> vs <span style="color:${ev.bravo_color}">${bCount}</span>`;
+        document.getElementById('plan-stat-tot').textContent     = parts.length;
         document.getElementById('plan-stat-rentals').textContent = rentals;
-        document.getElementById('plan-stat-paid').textContent    = `${paid}/${parts.length}`;
+        document.getElementById('plan-stat-paid').textContent    = `${paid} / ${parts.length}`;
 
+        const guestStatEl = document.getElementById('plan-stat-guests');
+        if (guestStatEl) {
+            guestStatEl.textContent = `${guestCount} / ${totalGuestCards}`;
+            guestStatEl.style.color = (guestCount > totalGuestCards) ? 'var(--sop-alert)' : 'var(--sop-text)';
+        }
+        guestWarn?.classList.toggle('hidden', guestCount <= totalGuestCards);
+
+        // 3. Selettore Operatori DB: mostra SOLO i giocatori PRO (nome fisso) non ancora iscritti
         const dbSelect = document.getElementById('plan-add-db-select');
         if (dbSelect) {
             const registeredUids = new Set(parts.map(p => p.uid).filter(Boolean));
-            dbSelect.innerHTML = '<option value="">+ Aggiungi operatore registrato dal DB...</option>';
-            (globalPlayersDB || []).filter(p => !registeredUids.has(p.uid)).forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.uid;
-                const tag = p.is_pro === 1 ? '★ PRO' : 'GUEST';
-                const asd = (p.asd_team && p.asd_team !== 'NESSUNA') ? ` [${p.asd_team}]` : '';
-                opt.textContent = `${p.alias} (${tag})${asd}`;
-                dbSelect.appendChild(opt);
-            });
+            dbSelect.innerHTML = '<option value="">+ Seleziona operatore PRO registrato...</option>';
+            (globalPlayersDB || [])
+                .filter(p => p.is_pro === 1 && !registeredUids.has(p.uid))
+                .forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.uid;
+                    const asd = (p.asd_team && p.asd_team !== 'NESSUNA') ? ` [${p.asd_team}]` : '';
+                    opt.textContent = `★ ${p.alias}${asd}`;
+                    dbSelect.appendChild(opt);
+                });
         }
 
-        // 3. Lista Partecipanti e Bozza Squadre
-        const partListEl = document.getElementById('planner-participants-list');
-        if (partListEl) {
-            if (parts.length === 0) {
-                partListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 25px;">NESSUN PARTECIPANTE ISCRITTO A QUESTA GIORNATA</li>';
+        // 4. Rendering delle 2 Colonne Squadra (ALPHA a sinistra, BRAVO a destra)
+        const hdrAlpha = document.getElementById('plan-hdr-alpha');
+        const hdrBravo = document.getElementById('plan-hdr-bravo');
+        if (hdrAlpha) {
+            hdrAlpha.style.color = ev.alpha_color;
+            hdrAlpha.style.background = `${ev.alpha_color}26`;
+            hdrAlpha.innerHTML = `<span>${ev.alpha_name || 'ALPHA'}</span><span>(${alphaPlayers.length})</span>`;
+        }
+        if (hdrBravo) {
+            hdrBravo.style.color = ev.bravo_color;
+            hdrBravo.style.background = `${ev.bravo_color}26`;
+            hdrBravo.innerHTML = `<span>${ev.bravo_name || 'BRAVO'}</span><span>(${bravoPlayers.length})</span>`;
+        }
+
+        const listAlphaEl = document.getElementById('planner-list-alpha');
+        const listBravoEl = document.getElementById('planner-list-bravo');
+        if (listAlphaEl && listBravoEl) {
+            listAlphaEl.innerHTML = '';
+            listBravoEl.innerHTML = '';
+
+            if (alphaPlayers.length === 0) {
+                listAlphaEl.innerHTML = '<li class="placeholder-text" style="color:var(--sop-dim); text-align:center; margin-top:20px; font-size:15px;">NESSUN OPERATORE</li>';
             } else {
-                partListEl.innerHTML = '';
-                parts.forEach(p => {
-                    const li = document.createElement('li');
-                    li.className = 'roster-item';
-                    li.style.padding = '8px 10px';
-                    const tColor = p.team === 'ALPHA' ? ev.alpha_color : (p.team === 'BRAVO' ? ev.bravo_color : '#777');
-                    li.style.borderLeft = `4px solid ${tColor}`;
+                alphaPlayers.forEach(p => listAlphaEl.appendChild(createPlannerParticipantItem(p, ev)));
+            }
 
-                    const badgePro = p.is_pro === 1
-                        ? '<span style="color:#ffd700; font-size:11px; margin-right:5px;">[★ PRO]</span>'
-                        : '<span style="color:#888; font-size:11px; margin-right:5px;">[GUEST]</span>';
-                    const asdBadge = (p.asd_team && p.asd_team !== 'NESSUNA')
-                        ? `<span style="color:var(--sop-primary); font-size:11px; margin-left:6px;">[${p.asd_team}]</span>`
-                        : '';
-
-                    li.innerHTML = `
-                        <div style="flex:1; min-width:0;">
-                            <div style="font-size:15px; font-weight:bold; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                                ${badgePro}<span class="${p.uid ? 'clickable-name' : ''}">${p.display_name}</span>${asdBadge}
-                            </div>
-                            <div style="font-size:11px; color:#888; font-family:monospace;">
-                                UID: ${p.uid || 'N/A'} | WinRate: ${p.win_rate}%
-                            </div>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:5px; font-family:monospace; font-size:12px;">
-                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.team === 'ALPHA' ? ev.alpha_color : '#333'}; color:${p.team === 'ALPHA' ? ev.alpha_color : '#666'};" onclick="setEventParticipantTeam(${p.id}, 'ALPHA')" title="Assegna ad Alpha">[A]</span>
-                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.team === 'BRAVO' ? ev.bravo_color : '#333'}; color:${p.team === 'BRAVO' ? ev.bravo_color : '#666'};" onclick="setEventParticipantTeam(${p.id}, 'BRAVO')" title="Assegna a Bravo">[B]</span>
-                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.needs_rental ? 'var(--sop-secondary)' : '#333'}; color:${p.needs_rental ? 'var(--sop-secondary)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_rental')" title="Kit Noleggio ASG/Maschera">[🔫]</span>
-                            <span class="action-btn" style="padding:3px 6px; border:1px solid ${p.paid ? 'var(--sop-success)' : '#333'}; color:${p.paid ? 'var(--sop-success)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_paid')" title="Quota Campo Saldata">[💶]</span>
-                            <span class="action-btn" style="color:var(--sop-alert); margin-left:4px;" onclick="removeEventParticipant(${p.id})" title="Rimuovi iscritto">[✕]</span>
-                        </div>
-                    `;
-                    if (p.uid) {
-                        const nameEl = li.querySelector('.clickable-name');
-                        if (nameEl) nameEl.onclick = () => socket.emit('request_profile', { uid: p.uid });
-                    }
-                    partListEl.appendChild(li);
-                });
+            if (bravoPlayers.length === 0) {
+                listBravoEl.innerHTML = '<li class="placeholder-text" style="color:var(--sop-dim); text-align:center; margin-top:20px; font-size:15px;">NESSUN OPERATORE</li>';
+            } else {
+                bravoPlayers.forEach(p => listBravoEl.appendChild(createPlannerParticipantItem(p, ev)));
             }
         }
 
-        // 4. Scaletta Modalità (Mission Playlist)
+        // 5. Scaletta Modalità (Mission Playlist)
         const schedListEl = document.getElementById('planner-schedule-list');
         if (schedListEl) {
             const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
             if (sched.length === 0) {
-                schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px;">NESSUN ROUND IN SCALETTA</li>';
+                schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px; font-size: 16px;">NESSUN ROUND IN SCALETTA</li>';
             } else {
                 schedListEl.innerHTML = '';
                 sched.forEach((item, idx) => {
                     const li = document.createElement('li');
                     li.className = 'roster-item';
-                    li.style.padding = '8px 10px';
+                    li.style.padding = '10px 12px';
                     li.style.opacity = item.done ? '0.55' : '1';
                     li.style.borderLeft = item.done ? '4px solid var(--sop-success)' : '4px solid var(--sop-primary)';
 
                     li.innerHTML = `
                         <div style="flex:1;">
-                            <div style="font-size:14px; font-weight:bold; color:${item.done ? 'var(--sop-success)' : '#fff'};">
+                            <div style="font-size:17px; font-weight:bold; color:${item.done ? 'var(--sop-success)' : '#fff'};">
                                 #${idx + 1} - ${item.title}
                             </div>
-                            <div style="font-size:11px; color:#888; font-family:monospace;">
+                            <div style="font-size:13px; color:#888; font-family:monospace; margin-top:2px;">
                                 MODE: ${(item.mode || 'sd').toUpperCase()} ${item.done ? '// COMPLETATO' : ''}
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; font-family:monospace; font-size:12px;">
-                            <span class="action-btn" style="color:var(--sop-primary); border:1px solid var(--sop-primary); padding:3px 7px;" onclick="loadScheduledPresetIntoSetup(${idx})" title="Carica questo Preset nel pannello Setup">[⚡ SETUP]</span>
-                            <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:3px 6px;" onclick="toggleScheduleRoundDone(${idx})" title="Segna Round come completato">[✓]</span>
-                            <span class="action-btn" style="color:var(--sop-alert);" onclick="removeScheduleRound(${idx})" title="Rimuovi Round">[✕]</span>
+                        <div style="display:flex; align-items:center; gap:8px; font-family:monospace; font-size:14px;">
+                            <span class="action-btn" style="color:var(--sop-primary); border:1px solid var(--sop-primary); padding:4px 8px;" onclick="loadScheduledPresetIntoSetup(${idx})" title="Carica questo Preset nel pannello Setup">[⚡ SETUP]</span>
+                            <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:4px 8px;" onclick="toggleScheduleRoundDone(${idx})" title="Segna Round come completato">[✓]</span>
+                            <span class="action-btn" style="color:var(--sop-alert); padding:4px 6px;" onclick="removeScheduleRound(${idx})" title="Rimuovi Round">[✕]</span>
                         </div>
                     `;
                     schedListEl.appendChild(li);
@@ -1691,7 +1739,6 @@ if (!window.__zuluMainInitialized) {
                     title: title.toUpperCase(),
                     event_date: today,
                     start_time: '08:30',
-                    max_players: 30,
                     alpha_name: currentFactions.ALPHA.name || 'ALPHA',
                     alpha_color: currentFactions.ALPHA.color || '#ff3333',
                     bravo_name: currentFactions.BRAVO.name || 'BRAVO',
@@ -1709,7 +1756,6 @@ if (!window.__zuluMainInitialized) {
             title: document.getElementById('plan-edit-title').value,
             event_date: document.getElementById('plan-edit-date').value,
             start_time: document.getElementById('plan-edit-time').value,
-            max_players: parseInt(document.getElementById('plan-edit-max').value) || 30,
             alpha_name: document.getElementById('plan-edit-a-name').value,
             alpha_color: document.getElementById('plan-edit-a-col').value,
             bravo_name: document.getElementById('plan-edit-b-name').value,
@@ -1741,7 +1787,7 @@ if (!window.__zuluMainInitialized) {
         socket.emit('add_event_participant', {
             event_id: currentPlannerEvent.id,
             uid: uid,
-            team: 'UNASSIGNED',
+            team: 'AUTO',
             needs_rental: 0
         });
     };
@@ -1749,30 +1795,29 @@ if (!window.__zuluMainInitialized) {
     window.promptAddGuestToEvent = function() {
         if (!currentPlannerEvent) return;
         window.openTacticalPrompt({
-            title: "PRENOTA OSPITE / NOLEGGIO",
-            label: "NOME OSPITE (VERRÀ ASSOCIATO A UNA TESSERA GUEST LIBERA)",
+            title: "AGGIUNGI GIOCATORE OSPITE",
+            label: "NOME / CALLSIGN DELL'OSPITE (TESSERA ASSEGNATA ALLO SCHIERAMENTO)",
             defaultValue: "",
             placeholder: "Es. MARCO ROSSI",
             allowEmpty: false,
             onConfirm: (guestName) => {
                 socket.emit('add_event_participant', {
                     event_id: currentPlannerEvent.id,
-                    uid: 'AUTO_GUEST',
+                    uid: null,
                     guest_name: guestName.toUpperCase(),
-                    team: 'UNASSIGNED',
-                    needs_rental: 1
+                    team: 'AUTO',
+                    needs_rental: 0
                 });
             }
         });
     };
 
-    window.setEventParticipantTeam = function(participantId, team) {
+    window.swapEventParticipantTeam = function(participantId) {
         if (!currentPlannerEvent) return;
         socket.emit('update_event_participant', {
             event_id: currentPlannerEvent.id,
             participant_id: participantId,
-            action: 'set_team',
-            value: team
+            action: 'swap_team'
         });
     };
 
@@ -1801,10 +1846,19 @@ if (!window.__zuluMainInitialized) {
 
     window.deployCurrentEventToRoster = function() {
         if (!currentPlannerEvent) return;
+        const parts = Array.isArray(currentPlannerEvent.participants) ? currentPlannerEvent.participants : [];
+        const guestCount = parts.filter(p => !p.uid).length;
+        const availCards = currentPlannerEvent.total_guest_cards ?? 0;
+
+        let warnSuffix = "";
+        if (guestCount > availCards) {
+            warnSuffix = `\n\n⚠️ ATTENZIONE: Ci sono ${guestCount} ospiti ma solo ${availCards} tessere GUEST nel database (${guestCount - availCards} ospiti non avranno una tessera).`;
+        }
+
         window.openTacticalConfirm(
-            `Vuoi schierare i partecipanti di "${currentPlannerEvent.title}" nel Roster attivo di oggi?\nI giocatori verranno assegnati alle squadre ${currentPlannerEvent.alpha_name} e ${currentPlannerEvent.bravo_name} pronti per il check-in sul Kiosk.`,
+            `Vuoi schierare i ${parts.length} partecipanti di "${currentPlannerEvent.title}" nel Roster attivo di oggi?\nAgli ospiti verranno assegnate automaticamente le tessere GUEST disponibili.${warnSuffix}`,
             "SCHIERA GIORNATA NEL ROSTER",
-            "warning",
+            guestCount > availCards ? "danger" : "warning",
             () => {
                 socket.emit('deploy_event_roster', {
                     event_id: currentPlannerEvent.id,
@@ -1890,10 +1944,16 @@ if (!window.__zuluMainInitialized) {
     });
 
     socket.on('event_deployed_ack', (data) => {
+        const imp = data?.imported || 0;
+        const miss = data?.missing_guests || 0;
+        const msg = miss > 0
+            ? `Schierati ${imp} operatori nel Roster attivo!\n⚠️ Attenzione: ${miss} ospiti non sono stati schierati per esaurimento tessere GUEST nel database.`
+            : `Schierati ${imp} operatori nel Roster attivo di giornata!\nAgli ospiti sono state assegnate le tessere GUEST e ora tutti possono fare check-in sul Kiosk.`;
+
         window.openTacticalAlert(
-            `Schierati ${data.count} operatori nel Roster attivo di giornata!\nOra gli operatori possono passare la tessera sul Kiosk per entrare IN CAMPO.`,
-            "ROSTER SCHIERATO CON SUCCESSO",
-            "success",
+            msg,
+            miss > 0 ? "ROSTER SCHIERATO CON AVVISO" : "ROSTER SCHIERATO CON SUCCESSO",
+            miss > 0 ? "warning" : "success",
             () => showView('arena-manage', socket)
         );
     });

@@ -807,13 +807,14 @@ def handle_deploy_event_roster(data):
     ev_id = data.get('event_id')
     clear_existing = bool(data.get('clear_existing', True))
     if ev_id:
-        count = db_manager.deploy_event_to_active_roster(ev_id, clear_existing=clear_existing)
+        res = db_manager.deploy_event_to_active_roster(ev_id, clear_existing=clear_existing)
         new_factions = db_manager.get_factions_config()
         socketio.emit('factions_update', new_factions)
+        socketio.emit('database_update', db_manager.get_all_players())
         socketio.emit('roster_update', db_manager.get_full_roster())
         socketio.emit('events_update', db_manager.get_all_events())
         emit('event_details_data', db_manager.get_event_details(ev_id))
-        emit('event_deployed_ack', {'count': count})
+        emit('event_deployed_ack', res)
 
 @socketio.on('send_command')
 def handle_socket_command(data):
