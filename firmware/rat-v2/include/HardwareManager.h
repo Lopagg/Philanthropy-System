@@ -160,7 +160,6 @@ public:
     void playTone(uint16_t freq, uint32_t durationMs);
     void noTone();
     void audioLoop();
-    void setVolume(uint8_t vol);
     bool isAudioPlaying();
     void setVolume(uint8_t volPct, bool saveToNvs = true);
     uint8_t getVolume() const { return _currentVolumePct; }

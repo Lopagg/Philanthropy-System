@@ -251,8 +251,10 @@ void SearchDestroyMode::handleEvent(const SystemEvent& event) {
                         hardware.setLedsColor(s_winnerColor[0], s_winnerColor[1], s_winnerColor[2]);
                     }
 
+                    // Segnale acustico immediato per Tempo Scaduto / Squadra Eliminata
+                    // (seguito subito dopo dall'annuncio vocale TTS generato dal server)
                     if (strcmp(reason, "TEMPO SCADUTO!") == 0 || strcmp(reason, "SQUADRA ELIMINATA!") == 0) {
-                        hardware.playAudio("/audio/common/match_end.mp3", AUDIO_CH_VOICE);
+                        hardware.playTone(880, 250);
                     }
 
                     setOledLabels("", "");

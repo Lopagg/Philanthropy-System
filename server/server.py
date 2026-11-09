@@ -809,11 +809,12 @@ def handle_socket_command(data):
 
 
 # =============================================================================
-# REGIA AUDIO TATTICA: TTS LIVE E INTERCOM PUSH-TO-TALK (WALKIE-TALKIE)
+# REGIA AUDIO TATTICA: TTS LIVE, VITTORIA AUTOMATICA E INTERCOM PUSH-TO-TALK
 # =============================================================================
 
 import glob
 import site
+from threading import Thread
 
 # Aggiunge automaticamente i percorsi globali/utente di Ubuntu così il venv vede edge-tts
 for extra_path in glob.glob('/home/*/.local/lib/python3*/site-packages') + [
@@ -838,19 +839,17 @@ VOICE_PROFILES = {
     "TACTICAL_AI": {"voice": "it-IT-IsabellaNeural", "rate": "+5%", "pitch": "+0Hz"}
 }
 
+_tts_lock = Lock()
 
-def resolve_audio_base_url(target_id):
+
+def publish_audio_url_to_target(target_id, filename, channel="VOICE", wait_free=False):
     """
-    Costruisce l'URL HTTP sulla porta 5000 usando lo stesso host della dashboard
-    (identico al meccanismo di TRIGGER_OTA, es. http://philanthropy-dev.duckdns.org:5000).
+    Invia il comando PLAY_AUDIO_URL con percorso relativo compatto (/static/tts/...)
+    così l'ESP32-S3 costruisce l'URL sul proprio MQTT_SERVER ed evita troncamenti JSON.
     """
-    host_ip = request.host.split(':')[0]
-    return f"http://{host_ip}:5000"
+    ts = int(time.time()) % 100000
+    rel_url = f"/static/tts/{filename}?t={ts}"
 
-
-def publish_audio_url_to_target(target_id, filename, channel="VOICE"):
-    """Invia il comando PLAY_AUDIO_URL al nodo specifico o a tutti i nodi V2."""
-    ts = int(time.time() * 1000)
     targets = []
     if target_id == "ALL_V2":
         active_devs, _ = game_engine.registry.get_active_devices()
@@ -858,37 +857,27 @@ def publish_audio_url_to_target(target_id, filename, channel="VOICE"):
     elif target_id:
         targets = [target_id]
 
-    last_url = ""
+    payload_dict = {
+        "cmd": "PLAY_AUDIO_URL",
+        "url": rel_url,
+        "channel": channel
+    }
+    if wait_free:
+        payload_dict["wait"] = 1
+
+    payload_json = json.dumps(payload_dict)
     for tid in targets:
-        base_url = resolve_audio_base_url(tid)
-        last_url = f"{base_url}/static/tts/{filename}?t={ts}"
-        game_engine.mqtt_client.publish(f"zulu/cmd/{tid}", json.dumps({
-            "cmd": "PLAY_AUDIO_URL",
-            "url": last_url,
-            "channel": channel
-        }), qos=1)
-    return last_url
+        game_engine.mqtt_client.publish(f"zulu/cmd/{tid}", payload_json, qos=1)
+    return rel_url
 
 
-@app.route('/api/audio/tts', methods=['POST'])
-@admin_required
-def api_audio_tts():
-    data = request.get_json(silent=True) or {}
-    text = str(data.get('text', '')).strip()
-    target_id = str(data.get('target_id', '')).strip()
-    profile_key = str(data.get('profile', 'COMMANDER')).upper()
-
-    if not text or not target_id:
-        return jsonify({"status": "error", "msg": "Testo o nodo target mancante."}), 400
-    if len(text) > 280:
-        text = text[:280]
-
+def synthesize_and_send_tts(target_id, text, profile_key="COMMANDER", out_filename="tts_live.mp3", wait_free=False):
+    """Genera l'MP3 vocale con edge-tts, applica il mastering FFmpeg e invia il comando MQTT al RAT-V2."""
     profile = VOICE_PROFILES.get(profile_key, VOICE_PROFILES["COMMANDER"])
-    raw_path = os.path.join(TTS_FOLDER, "tts_raw.mp3")
-    out_filename = "tts_live.mp3"
+    raw_path = os.path.join(TTS_FOLDER, f"raw_{out_filename}")
     out_path = os.path.join(TTS_FOLDER, out_filename)
 
-    try:
+    with _tts_lock:
         import edge_tts  # type: ignore
 
         async def _gen():
@@ -912,8 +901,53 @@ def api_audio_tts():
             out_path
         ], check=True)
 
-        sent_url = publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
-        logger.info(f"[LIVE TTS] Inviato a {target_id} ({sent_url}): '{text}'")
+    sent_url = publish_audio_url_to_target(target_id, out_filename, channel="VOICE", wait_free=wait_free)
+    logger.info(f"[TTS ENGINE] Inviato a {target_id} (wait={wait_free}, url={sent_url}): '{text}'")
+    return sent_url
+
+
+def trigger_async_victory_tts(target_id, speech_text):
+    """Avvia in un thread separato la sintesi dell'annuncio di vittoria di fine partita."""
+    def _worker():
+        try:
+            synthesize_and_send_tts(
+                target_id=target_id,
+                text=speech_text,
+                profile_key="COMMANDER",
+                out_filename="tts_victory.mp3",
+                wait_free=True
+            )
+        except Exception as e:
+            logger.error(f"[ASYNC VICTORY TTS ERROR] {e}")
+
+    Thread(target=_worker, daemon=True).start()
+
+
+# Registra il callback nel motore di gioco per gli annunci automatici di fine match
+game_engine.tts_announcer_callback = trigger_async_victory_tts
+
+
+@app.route('/api/audio/tts', methods=['POST'])
+@admin_required
+def api_audio_tts():
+    data = request.get_json(silent=True) or {}
+    text = str(data.get('text', '')).strip()
+    target_id = str(data.get('target_id', '')).strip()
+    profile_key = str(data.get('profile', 'COMMANDER')).upper()
+
+    if not text or not target_id:
+        return jsonify({"status": "error", "msg": "Testo o nodo target mancante."}), 400
+    if len(text) > 280:
+        text = text[:280]
+
+    try:
+        sent_url = synthesize_and_send_tts(
+            target_id=target_id,
+            text=text,
+            profile_key=profile_key,
+            out_filename="tts_live.mp3",
+            wait_free=False
+        )
         return jsonify({"status": "ok", "text": text, "url": sent_url})
     except Exception as e:
         logger.error(f"[LIVE TTS ERROR] {e}")
@@ -945,7 +979,7 @@ def api_audio_intercom():
             out_path
         ], check=True)
 
-        sent_url = publish_audio_url_to_target(target_id, out_filename, channel="VOICE")
+        sent_url = publish_audio_url_to_target(target_id, out_filename, channel="VOICE", wait_free=False)
         logger.info(f"[LIVE INTERCOM] Messaggio vocale PTT trasmesso a {target_id} ({sent_url})")
         return jsonify({"status": "ok", "url": sent_url})
     except Exception as e:

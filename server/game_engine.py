@@ -22,6 +22,7 @@ mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
 mission_ready_flag = False
 background_thread_started = False
 _mqtt_started = False
+tts_announcer_callback = None
 
 
 # =============================================================================
@@ -97,6 +98,30 @@ def trigger_end_match_sequence(end_state):
     if socketio:
         socketio.emit('database_update', db_manager.get_all_players())
         socketio.emit('factions_update', db_manager.get_factions_config())
+
+def trigger_victory_voice_announcement(mc, winner_team_id, reason_str):
+    """
+    Costruisce la frase vocale con il motivo della vittoria e il nome personalizzato
+    della squadra vincente e avvia la generazione TTS asincrona verso il RAT-V2.
+    """
+    if not tts_announcer_callback or not mc.target_v2 or not mc.target_id or mc.target_id == "SERVER-TDM":
+        return
+
+    reason_clean = str(reason_str or "Fine partita").strip().capitalize()
+    if not reason_clean.endswith(("!", ".")):
+        reason_clean += "!"
+
+    if winner_team_id == "DRAW":
+        speech_text = f"Fine partita! {reason_clean} Pareggio!"
+    else:
+        config = db_manager.get_factions_config()
+        winner_name = config.get(winner_team_id, {}).get('name', winner_team_id)
+        speech_text = f"{reason_clean} Vince la squadra {winner_name}!"
+
+    try:
+        tts_announcer_callback(mc.target_id, speech_text)
+    except Exception as e:
+        logger.error(f"[VICTORY TTS ERROR] {e}")
 
 
 def normalize_uid_str(raw_str):
@@ -301,6 +326,7 @@ class SDEngine(BaseGameMode):
 
         registry.update_telemetry(mc.target_id, {"state": end_state_str}, end_state_str)
         trigger_end_match_sequence(end_state_str)
+        trigger_victory_voice_announcement(mc, winner_team_id, reason_str)
 
         doc = {
             "id": mc.target_id,
@@ -449,6 +475,7 @@ class DominationEngine(BaseGameMode):
         }, end_state_str)
 
         trigger_end_match_sequence(end_state_str)
+        trigger_victory_voice_announcement(mc, winner_team_id, reason_str)
 
         doc = {
             "id": mc.target_id,

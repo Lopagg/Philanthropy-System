@@ -6,7 +6,7 @@
  * - Core 0 (inputTask)  : Scansione continua a bassa latenza di MCP23017 (pulsanti, chiavi, keypad) e RFID PN532.
  * - Core 1 (audioTask)  : Mixer polifonico I2S a 4 canali (2x MP3 + Sweep DDS + Beep DDS) ad alta priorità.
  * - Core 1 (networkTask): Gestione Wi-Fi, sync NTP/RTC, ArduinoOTA e client MQTT.
- * - Core 1 (loop)       : Schermata Standby ("REMOTE ACCESS TERMINAL"), diagnostica e delega alla GameMode attiva.
+ * - Core 1 (loop)       : Schermata Standby ("REMOTE ACCESS TERMINAL"), coda Audio URL differita e delega alla GameMode attiva.
  */
 
 #include <Arduino.h>
@@ -34,6 +34,11 @@ bool inHardwareTest = false;
 String activeModeType = "";
 bool showingNetInfoOverlay = false;
 unsigned long netInfoOverlayStartMs = 0;
+
+// Coda per annunci vocali HTTP (attende la fine di esplosione/disinnesco prima di parlare)
+String pendingAudioUrl = "";
+AudioChannel pendingAudioChannel = AUDIO_CH_VOICE;
+unsigned long lastAudioBusyMs = 0;
 
 TaskHandle_t InputTaskHandle;
 TaskHandle_t AudioTaskHandle;
@@ -124,6 +129,7 @@ void networkTask(void * pvParameters) {
 
 void showStandbyScreen() {
     showingNetInfoOverlay = false;
+    pendingAudioUrl = "";
     hardware.noTone();
     hardware.clearLcd();
     hardware.printLcdLine(0, "REMOTE ACCESS", true);
@@ -201,7 +207,10 @@ void loop() {
         // 1. Gestione Comandi Remoti dal Server Centrale
         if (ev.type == EV_SERVER_COMMAND) {
             JsonDocument doc;
-            if (!deserializeJson(doc, ev.stringData)) {
+            DeserializationError err = deserializeJson(doc, ev.stringData);
+            if (err) {
+                Serial.printf("[SYS] Errore parsing JSON comando: %s\n", err.c_str());
+            } else {
                 const char* cmd = doc["cmd"];
                 if (cmd) {
                     if (strcmp(cmd, "SET_SD_SETTINGS") == 0) {
@@ -225,6 +234,7 @@ void loop() {
                     }
                     else if (strcmp(cmd, "START_SD_GAME") == 0) {
                         Serial.println("[SYS] Avvio motore Search And Destroy");
+                        pendingAudioUrl = "";
                         if (currentGameMode != nullptr && activeModeType != "SD") {
                             delete currentGameMode;
                             currentGameMode = nullptr;
@@ -262,6 +272,7 @@ void loop() {
                     }
                     else if (strcmp(cmd, "START_DOM_GAME") == 0) {
                         Serial.println("[SYS] Avvio motore Domination");
+                        pendingAudioUrl = "";
                         if (currentGameMode != nullptr && activeModeType != "DOM") {
                             delete currentGameMode;
                             currentGameMode = nullptr;
@@ -285,11 +296,27 @@ void loop() {
                         return;
                     }
                     else if (strcmp(cmd, "PLAY_AUDIO_URL") == 0) {
-                        const char* url = doc["url"] | "";
-                        const char* ch  = doc["channel"] | "VOICE";
-                        if (strlen(url) > 0) {
+                        const char* rawUrl = doc["url"] | "";
+                        const char* ch     = doc["channel"] | "VOICE";
+                        bool waitFree      = (doc["wait"] | 0) == 1;
+
+                        if (strlen(rawUrl) > 0) {
+                            String fullUrl = String(rawUrl);
+                            if (fullUrl.startsWith("/")) {
+                                fullUrl = "http://" + String(MQTT_SERVER) + ":5000" + fullUrl;
+                            }
                             AudioChannel targetCh = (strcmp(ch, "SFX") == 0) ? AUDIO_CH_SFX : AUDIO_CH_VOICE;
-                            hardware.playAudioUrl(String(url), targetCh);
+
+                            // Se è richiesto di attendere (es. annuncio fine match) o c'è già un suono in corso,
+                            // accoda la riproduzione finché l'esplosione/disinnesco non è terminato
+                            if (waitFree || hardware.isAudioPlaying()) {
+                                pendingAudioUrl = fullUrl;
+                                pendingAudioChannel = targetCh;
+                                lastAudioBusyMs = millis();
+                                Serial.printf("[AUDIO-URL] In coda (attesa fine suono): %s\n", fullUrl.c_str());
+                            } else {
+                                hardware.playAudioUrl(fullUrl, targetCh);
+                            }
                         }
                         return;
                     }
@@ -315,6 +342,7 @@ void loop() {
                         gameIsRunning = false;
                         inHardwareTest = false;
                         activeModeType = "";
+                        pendingAudioUrl = "";
                         if (currentGameMode) {
                             delete currentGameMode;
                             currentGameMode = nullptr;
@@ -378,7 +406,19 @@ void loop() {
         }
     }
 
-    // 3. Aggiornamento Ciclico Modalità Attiva o Timeout Schermata Info Rete
+    // 3. Esecuzione differita di PLAY_AUDIO_URL in coda (attende che esplosione/disinnesco finiscano)
+    if (pendingAudioUrl.length() > 0) {
+        if (hardware.isAudioPlaying()) {
+            lastAudioBusyMs = millis();
+        } else if (millis() - lastAudioBusyMs >= 450) {
+            String urlToPlay = pendingAudioUrl;
+            AudioChannel chToPlay = pendingAudioChannel;
+            pendingAudioUrl = "";
+            hardware.playAudioUrl(urlToPlay, chToPlay);
+        }
+    }
+
+    // 4. Aggiornamento Ciclico Modalità Attiva o Timeout Schermata Info Rete
     if (gameIsRunning && currentGameMode != nullptr) {
         currentGameMode->update();
 
@@ -394,7 +434,6 @@ void loop() {
             }
         }
     } else {
-        // Effetto Rainbow continuo in Standby (come sul RAT-V1)
         hardware.updateRainbowEffect();
 
         if (showingNetInfoOverlay && (millis() - netInfoOverlayStartMs >= 4000)) {
