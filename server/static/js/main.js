@@ -1687,6 +1687,17 @@ if (!window.__zuluMainInitialized) {
             if (titleHeader) titleHeader.textContent = "SELEZIONA UNA GIORNATA";
             [metaBox, logBar, ctxBar, guestWarn, addBar, teamsCont, schedAddBar, notesBox, btnShuffle, btnBalance, btnDeploy, btnMeta].forEach(el => el?.classList.add('hidden'));
             emptyMsg?.classList.remove('hidden');
+
+            const schedListEl = document.getElementById('planner-schedule-list');
+            if (schedListEl) {
+                schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px; font-size: 16px;">NESSUNA PARTITA IN SCALETTA</li>';
+            }
+            const listAlphaEl = document.getElementById('planner-list-alpha');
+            const listBravoEl = document.getElementById('planner-list-bravo');
+            if (listAlphaEl) listAlphaEl.innerHTML = '';
+            if (listBravoEl) listBravoEl.innerHTML = '';
+            const notesInput = document.getElementById('plan-event-notes');
+            if (notesInput) notesInput.value = '';
             return;
         }
 
@@ -2297,10 +2308,22 @@ if (!window.__zuluMainInitialized) {
     };
 
     socket.on('events_update', (eventsList) => {
-        gameEventsList = Array.isArray(eventsList) ? presetsListFallback(eventsList) : [];
+        gameEventsList = Array.isArray(eventsList) ? eventsList : [];
+
+        // Se la giornata che avevamo aperta è stata eliminata, azzera il riferimento
+        if (currentPlannerEvent && !gameEventsList.some(e => e.id === currentPlannerEvent.id)) {
+            currentPlannerEvent = null;
+            plannerTeamContext = 'BASE';
+        }
+
         renderPlannerEventsList();
-        if (!currentPlannerEvent && gameEventsList.length > 0) {
-            socket.emit('request_event_details', { id: gameEventsList[0].id });
+
+        if (!currentPlannerEvent) {
+            if (gameEventsList.length > 0) {
+                socket.emit('request_event_details', { id: gameEventsList[0].id });
+            } else {
+                renderPlannerEventDetails(null);
+            }
         }
     });
 
