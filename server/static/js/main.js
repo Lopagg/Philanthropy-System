@@ -249,6 +249,8 @@ export function updateSetupDropdown() {
     }
 }
 
+window.editingPlannerRoundIdx = null;
+
 window.updateUIForTargetVersion = function() {
     const targetSelect  = document.getElementById('setup-target-select');
     const modeSelect    = document.getElementById('setup-mode-select');
@@ -259,11 +261,15 @@ window.updateUIForTargetVersion = function() {
     const tdmParams     = document.getElementById('setup-tdm-params');
     const btnTransmit   = document.getElementById('btn-transmit-setup');
     const btnStart      = document.getElementById('btn-start-mission');
+    const roundBanner   = document.getElementById('setup-planner-round-banner');
 
     if (!targetSelect || !modeSelect) return;
 
     const mode = modeSelect.value;
     const targetId = targetSelect.value;
+    const isPlanningRound = (window.editingPlannerRoundIdx !== null);
+
+    roundBanner?.classList.toggle('hidden', !isPlanningRound);
 
     // 1. Modalità TDM: non usa terminali fisici
     if (mode === 'tdm') {
@@ -279,11 +285,11 @@ window.updateUIForTargetVersion = function() {
         return;
     }
 
-    // 2. Modalità S&D o Domination: richiede obbligatoriamente la selezione di un terminale
-    targetRow?.classList.remove('hidden');
+    // 2. Modalità S&D o Domination
+    targetRow?.classList.toggle('hidden', isPlanningRound);
     tdmParams?.classList.add('hidden');
 
-    if (!targetId) {
+    if (!targetId && !isPlanningRound) {
         sdParams?.classList.add('hidden');
         domParams?.classList.add('hidden');
         noTermMsg?.classList.remove('hidden');
@@ -298,7 +304,7 @@ window.updateUIForTargetVersion = function() {
         return;
     }
 
-    // 3. Terminale selezionato: mostra il pannello della modalità (default V2 modulare)
+    // 3. Terminale selezionato OPPURE preparazione anticipata regole dal Planner
     noTermMsg?.classList.add('hidden');
     if (mode === 'sd') {
         sdParams?.classList.remove('hidden');
@@ -309,12 +315,12 @@ window.updateUIForTargetVersion = function() {
     }
 
     if (btnTransmit) {
-        btnTransmit.disabled = false;
-        btnTransmit.classList.remove('disabled');
+        btnTransmit.disabled = !targetId;
+        btnTransmit.classList.toggle('disabled', !targetId);
     }
 
     const device = currentDevices.find(d => d.id === targetId);
-    const isLegacyV1 = device && device.version && device.version.includes("V1") && !device.version.includes("V2") && !targetId.includes("V2");
+    const isLegacyV1 = !isPlanningRound && device && device.version && device.version.includes("V1") && !device.version.includes("V2") && !targetId.includes("V2");
     const isV2 = !isLegacyV1;
 
     const sdV1  = document.getElementById('sd-v1-legacy-params');
@@ -1471,11 +1477,59 @@ if (!window.__zuluMainInitialized) {
     });
 
     // ========================================================================
-    // GESTIONALE GIORNATE DI GIOCO (OPERATIONS PLANNER & CALENDAR)
+    // GESTIONALE GIORNATE DI GIOCO (OPERATIONS PLANNER, REGOLE & SQUADRE ROUND)
     // ========================================================================
 
     let gameEventsList = [];
     let currentPlannerEvent = null;
+    let plannerTeamContext = 'BASE'; // 'BASE' oppure indice numerico della partita ('0', '1', ...)
+
+    const MODE_BADGE_LABELS = {
+        'sd':  'S&D',
+        'dom': 'DOM',
+        'tdm': 'TDM'
+    };
+
+    function getDefaultConfigForMode(mode) {
+        if (mode === 'sd') {
+            return {
+                attacker: 'ALPHA', game_duration: 20, bomb_time: 10,
+                fx_smoke: false, fx_relay: false,
+                arm_fail_mode: 'RETRY_STEP', defuse_fail_mode: 'RETRY_STEP',
+                v2_arm_seq: [{ type: 'HOLD', val: 5, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }],
+                v2_defuse_seq: [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }],
+                arm_time: 5, defuse_time: 10, use_arm_pin: 'true', use_defuse_pin: 'true',
+                arm_pin: '1234', defuse_pin: '4321'
+            };
+        } else if (mode === 'dom') {
+            return {
+                game_duration: 15, fx_smoke: false, fx_relay: false,
+                alpha_fail_mode: 'RETRY_STEP', bravo_fail_mode: 'RETRY_STEP',
+                v2_dom_alpha_seq: [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }],
+                v2_dom_bravo_seq: [{ type: 'HOLD', val: 10, rfidMode: 'TEAM', rfidPlayers: [], rfidCustomUid: '' }],
+                capture_time: 10, countdown: 10
+            };
+        }
+        return { game_duration: 15 };
+    }
+
+    function summarizeRoundRules(item) {
+        const cfg = item.config || {};
+        if (item.mode === 'sd') {
+            const aSteps = Array.isArray(cfg.v2_arm_seq) ? cfg.v2_arm_seq.length : 1;
+            const dSteps = Array.isArray(cfg.v2_defuse_seq) ? cfg.v2_defuse_seq.length : 1;
+            return `${cfg.game_duration || 20}m | Bomba ${cfg.bomb_time || 10}m | Step A:${aSteps} D:${dSteps}`;
+        } else if (item.mode === 'dom') {
+            const aSteps = Array.isArray(cfg.v2_dom_alpha_seq) ? cfg.v2_dom_alpha_seq.length : 1;
+            const bSteps = Array.isArray(cfg.v2_dom_bravo_seq) ? cfg.v2_dom_bravo_seq.length : 1;
+            return `${cfg.game_duration || 15}m | Step A:${aSteps} B:${bSteps}`;
+        }
+        return `Durata: ${cfg.game_duration || 15} min`;
+    }
+
+    window.togglePlannerEventMeta = function() {
+        document.getElementById('planner-event-meta-box')?.classList.toggle('hidden');
+    };
 
     function renderPlannerEventsList() {
         const listEl = document.getElementById('planner-events-list');
@@ -1520,6 +1574,7 @@ if (!window.__zuluMainInitialized) {
                 </div>
             `;
             li.onclick = () => {
+                plannerTeamContext = 'BASE';
                 socket.emit('request_event_details', { id: ev.id });
             };
             listEl.appendChild(li);
@@ -1529,27 +1584,44 @@ if (!window.__zuluMainInitialized) {
     function populatePlannerSchedulePresetSelect() {
         const sel = document.getElementById('plan-schedule-preset-select');
         if (!sel) return;
-        sel.innerHTML = '<option value="">+ Aggiungi Round da Preset...</option>';
-        const badges = { 'sd': 'S&D', 'dom': 'DOM', 'tdm': 'TDM' };
-        missionPresets.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = String(p.id);
-            opt.textContent = `[${badges[p.mode] || p.mode.toUpperCase()}] ${p.name}`;
-            sel.appendChild(opt);
-        });
+        sel.innerHTML = `
+            <option value="">+ Scegli Modalità o Preset...</option>
+            <optgroup label="NUOVA PARTITA DA CONFIGURARE">
+                <option value="MODE:sd">[S&D] SEARCH &amp; DESTROY (Personalizzata)</option>
+                <option value="MODE:dom">[DOM] DOMINATION (Personalizzata)</option>
+                <option value="MODE:tdm">[TDM] TEAM DEATHMATCH (Personalizzata)</option>
+            </optgroup>
+        `;
+        if (missionPresets.length > 0) {
+            const grp = document.createElement('optgroup');
+            grp.label = "COPIA DA PRESET SALVATO";
+            missionPresets.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = `PRESET:${p.id}`;
+                const b = MODE_BADGE_LABELS[p.mode] || p.mode.toUpperCase();
+                opt.textContent = `[${b}] ${p.name}`;
+                grp.appendChild(opt);
+            });
+            sel.appendChild(grp);
+        }
     }
 
-    window.togglePlannerEventMeta = function() {
-        const metaBox = document.getElementById('planner-event-meta-box');
-        if (metaBox) {
-            metaBox.classList.toggle('hidden');
+    function getEffectiveParticipantTeam(p, ev) {
+        if (plannerTeamContext !== 'BASE') {
+            const rIdx = parseInt(plannerTeamContext);
+            const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
+            const rnd = sched[rIdx];
+            if (rnd && rnd.use_custom_teams && rnd.team_map && rnd.team_map[String(p.id)]) {
+                return rnd.team_map[String(p.id)];
+            }
         }
-    };
+        return p.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
+    }
 
-    function createPlannerParticipantItem(p, ev) {
+    function createPlannerParticipantItem(p, ev, effectiveTeam) {
         const li = document.createElement('li');
         li.className = 'planner-player-card';
-        const isAlpha = p.team === 'ALPHA';
+        const isAlpha = effectiveTeam === 'ALPHA';
         const tColor  = isAlpha ? ev.alpha_color : ev.bravo_color;
         li.style.borderLeft = `4px solid ${tColor}`;
 
@@ -1562,7 +1634,9 @@ if (!window.__zuluMainInitialized) {
 
         const subInfo = p.uid
             ? `<span style="color:#777; margin-left:auto;">Win: ${p.win_rate}%</span>`
-            : `<span style="color:#666; margin-left:auto;">Tessera allo schieramento</span>`;
+            : (p.assigned_uid
+                ? `<span style="color:var(--sop-success); margin-left:auto;">Tag: ${p.assigned_uid.slice(-4)}</span>`
+                : `<span style="color:#666; margin-left:auto;">Tessera allo schieramento</span>`);
 
         li.innerHTML = `
             <div class="planner-player-top">
@@ -1597,25 +1671,27 @@ if (!window.__zuluMainInitialized) {
         const titleHeader = document.getElementById('planner-active-title');
         const metaBox     = document.getElementById('planner-event-meta-box');
         const logBar      = document.getElementById('planner-logistics-bar');
+        const ctxBar      = document.getElementById('planner-team-context-bar');
         const guestWarn   = document.getElementById('planner-guest-warning');
         const addBar      = document.getElementById('planner-add-bar');
         const emptyMsg    = document.getElementById('planner-empty-msg');
         const teamsCont   = document.getElementById('planner-teams-container');
         const schedAddBar = document.getElementById('planner-schedule-add-bar');
         const notesBox    = document.getElementById('planner-notes-box');
+        const btnShuffle  = document.getElementById('btn-plan-shuffle');
         const btnBalance  = document.getElementById('btn-plan-balance');
         const btnDeploy   = document.getElementById('btn-plan-deploy');
-        const btnMeta = document.getElementById('btn-toggle-event-meta');
+        const btnMeta     = document.getElementById('btn-toggle-event-meta');
 
         if (!ev) {
             if (titleHeader) titleHeader.textContent = "SELEZIONA UNA GIORNATA";
-            [logBar, addBar, teamsCont, schedAddBar, notesBox, btnBalance, btnDeploy, btnMeta].forEach(el => el?.classList.remove('hidden'));
+            [metaBox, logBar, ctxBar, guestWarn, addBar, teamsCont, schedAddBar, notesBox, btnShuffle, btnBalance, btnDeploy, btnMeta].forEach(el => el?.classList.add('hidden'));
             emptyMsg?.classList.remove('hidden');
             return;
         }
 
         emptyMsg?.classList.add('hidden');
-        [metaBox, logBar, addBar, teamsCont, schedAddBar, notesBox, btnBalance, btnDeploy].forEach(el => el?.classList.remove('hidden'));
+        [logBar, ctxBar, addBar, teamsCont, schedAddBar, notesBox, btnShuffle, btnBalance, btnDeploy, btnMeta].forEach(el => el?.classList.remove('hidden'));
         if (titleHeader) titleHeader.textContent = `${ev.event_date} // ${ev.title}`;
 
         // 1. Campi Editor Meta Giornata
@@ -1628,10 +1704,42 @@ if (!window.__zuluMainInitialized) {
         document.getElementById('plan-edit-b-col').value  = ev.bravo_color || '#55ff55';
         document.getElementById('plan-event-notes').value = ev.notes || '';
 
-        // 2. Statistiche Logistiche e Controllo Tessere Guest
+        const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
+        if (plannerTeamContext !== 'BASE' && !sched[parseInt(plannerTeamContext)]) {
+            plannerTeamContext = 'BASE';
+        }
+
+        // 2. Selettore Contesto Squadre (Base vs Singola Partita)
+        const ctxSelect = document.getElementById('plan-team-context-select');
+        const chkLbl    = document.getElementById('plan-round-custom-teams-lbl');
+        const chkInput  = document.getElementById('plan-round-custom-teams-chk');
+        if (ctxSelect) {
+            ctxSelect.innerHTML = '<option value="BASE">📋 SQUADRE BASE GIORNATA (DEFAULT)</option>';
+            sched.forEach((item, idx) => {
+                const opt = document.createElement('option');
+                opt.value = String(idx);
+                const mBadge = MODE_BADGE_LABELS[item.mode] || (item.mode || 'SD').toUpperCase();
+                const suffix = item.use_custom_teams ? ' [🔀 SQUADRE DEDICATE]' : ' [Usa Base]';
+                opt.textContent = `PARTITA #${idx + 1}: [${mBadge}] ${item.title}${suffix}`;
+                ctxSelect.appendChild(opt);
+            });
+            ctxSelect.value = plannerTeamContext;
+        }
+
+        if (plannerTeamContext === 'BASE') {
+            chkLbl?.classList.add('hidden');
+        } else {
+            chkLbl?.classList.remove('hidden');
+            const activeRound = sched[parseInt(plannerTeamContext)];
+            if (chkInput && activeRound) {
+                chkInput.checked = Boolean(activeRound.use_custom_teams);
+            }
+        }
+
+        // 3. Statistiche Logistiche e Controllo Tessere Guest
         const parts           = Array.isArray(ev.participants) ? ev.participants : [];
-        const alphaPlayers    = parts.filter(p => p.team === 'ALPHA');
-        const bravoPlayers    = parts.filter(p => p.team === 'BRAVO');
+        const alphaPlayers    = parts.filter(p => getEffectiveParticipantTeam(p, ev) === 'ALPHA');
+        const bravoPlayers    = parts.filter(p => getEffectiveParticipantTeam(p, ev) === 'BRAVO');
         const guestCount      = parts.filter(p => !p.uid).length;
         const totalGuestCards = ev.total_guest_cards ?? 0;
         const rentals         = parts.filter(p => p.needs_rental === 1).length;
@@ -1648,7 +1756,7 @@ if (!window.__zuluMainInitialized) {
         }
         guestWarn?.classList.toggle('hidden', guestCount <= totalGuestCards);
 
-        // 3. Selettore Operatori DB: mostra SOLO i giocatori PRO (nome fisso) non ancora iscritti
+        // 4. Selettore Operatori DB: mostra SOLO i giocatori PRO
         const dbSelect = document.getElementById('plan-add-db-select');
         if (dbSelect) {
             const registeredUids = new Set(parts.map(p => p.uid).filter(Boolean));
@@ -1664,7 +1772,7 @@ if (!window.__zuluMainInitialized) {
                 });
         }
 
-        // 4. Rendering delle 2 Colonne Squadra (ALPHA a sinistra, BRAVO a destra)
+        // 5. Rendering delle 2 Colonne Squadra (ALPHA e BRAVO)
         const hdrAlpha = document.getElementById('plan-hdr-alpha');
         const hdrBravo = document.getElementById('plan-hdr-bravo');
         if (hdrAlpha) {
@@ -1687,44 +1795,60 @@ if (!window.__zuluMainInitialized) {
             if (alphaPlayers.length === 0) {
                 listAlphaEl.innerHTML = '<li class="placeholder-text" style="color:var(--sop-dim); text-align:center; margin-top:20px; font-size:15px;">NESSUN OPERATORE</li>';
             } else {
-                alphaPlayers.forEach(p => listAlphaEl.appendChild(createPlannerParticipantItem(p, ev)));
+                alphaPlayers.forEach(p => listAlphaEl.appendChild(createPlannerParticipantItem(p, ev, 'ALPHA')));
             }
 
             if (bravoPlayers.length === 0) {
                 listBravoEl.innerHTML = '<li class="placeholder-text" style="color:var(--sop-dim); text-align:center; margin-top:20px; font-size:15px;">NESSUN OPERATORE</li>';
             } else {
-                bravoPlayers.forEach(p => listBravoEl.appendChild(createPlannerParticipantItem(p, ev)));
+                bravoPlayers.forEach(p => listBravoEl.appendChild(createPlannerParticipantItem(p, ev, 'BRAVO')));
             }
         }
 
-        // 5. Scaletta Modalità (Mission Playlist)
+        // 6. Scaletta Partite (con Rinomina, Badge Modalità, Regole Anticipate e Squadre Dedicate)
         const schedListEl = document.getElementById('planner-schedule-list');
         if (schedListEl) {
-            const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
             if (sched.length === 0) {
-                schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px; font-size: 16px;">NESSUN ROUND IN SCALETTA</li>';
+                schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px; font-size: 16px;">NESSUNA PARTITA IN SCALETTA</li>';
             } else {
                 schedListEl.innerHTML = '';
                 sched.forEach((item, idx) => {
+                    const isEditingTeamsHere = (plannerTeamContext === String(idx));
+                    const modeBadge = MODE_BADGE_LABELS[item.mode] || (item.mode || 'sd').toUpperCase();
                     const li = document.createElement('li');
-                    li.className = 'roster-item';
-                    li.style.padding = '10px 12px';
-                    li.style.opacity = item.done ? '0.55' : '1';
-                    li.style.borderLeft = item.done ? '4px solid var(--sop-success)' : '4px solid var(--sop-primary)';
+                    li.className = 'planner-player-card';
+                    li.style.opacity = item.done ? '0.6' : '1';
+                    li.style.borderLeft = item.done
+                        ? '4px solid var(--sop-success)'
+                        : (isEditingTeamsHere ? '4px solid var(--sop-secondary)' : '4px solid var(--sop-primary)');
+
+                    const customTeamsTag = item.use_custom_teams
+                        ? `<span style="color:var(--sop-secondary); font-weight:bold;">[🔀 SQUADRE DEDICATE]</span>`
+                        : `<span style="color:#666;">[Squadre Base]</span>`;
 
                     li.innerHTML = `
-                        <div style="flex:1;">
-                            <div style="font-size:17px; font-weight:bold; color:${item.done ? 'var(--sop-success)' : '#fff'};">
-                                #${idx + 1} - ${item.title}
+                        <div class="planner-player-top">
+                            <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                                <span style="background:rgba(0,255,204,0.15); border:1px solid var(--sop-primary); color:var(--sop-primary); padding:2px 7px; border-radius:3px; font-size:13px; font-weight:bold; flex-shrink:0;">
+                                    #${idx + 1} ${modeBadge}
+                                </span>
+                                <span class="planner-player-name" style="color:${item.done ? 'var(--sop-success)' : '#fff'};" title="${item.title}">
+                                    ${item.title}
+                                </span>
+                                <span class="action-btn" style="color:#aaa; font-size:14px; flex-shrink:0;" onclick="renameScheduleRound(${idx})" title="Rinomina questa partita">[✏️]</span>
                             </div>
-                            <div style="font-size:13px; color:#888; font-family:monospace; margin-top:2px;">
-                                MODE: ${(item.mode || 'sd').toUpperCase()} ${item.done ? '// COMPLETATO' : ''}
+                            <div style="display:flex; align-items:center; gap:5px; font-family:monospace; font-size:13px; flex-shrink:0;">
+                                <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:3px 6px;" onclick="toggleScheduleRoundDone(${idx})" title="Segna partita come completata">[✓]</span>
+                                <span class="action-btn" style="color:var(--sop-alert); padding:3px 5px;" onclick="removeScheduleRound(${idx})" title="Rimuovi partita">[✕]</span>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:8px; font-family:monospace; font-size:14px;">
-                            <span class="action-btn" style="color:var(--sop-primary); border:1px solid var(--sop-primary); padding:4px 8px;" onclick="loadScheduledPresetIntoSetup(${idx})" title="Carica questo Preset nel pannello Setup">[⚡ SETUP]</span>
-                            <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:4px 8px;" onclick="toggleScheduleRoundDone(${idx})" title="Segna Round come completato">[✓]</span>
-                            <span class="action-btn" style="color:var(--sop-alert); padding:4px 6px;" onclick="removeScheduleRound(${idx})" title="Rimuovi Round">[✕]</span>
+                        <div class="planner-player-bottom" style="justify-content:space-between; margin-top:2px;">
+                            <span>${summarizeRoundRules(item)} | ${customTeamsTag}</span>
+                            <div style="display:flex; gap:6px;">
+                                <span class="action-btn" style="color:var(--sop-secondary); border:1px solid var(--sop-secondary); padding:3px 8px;" onclick="selectRoundTeamsContext(${idx})" title="Imposta o rimescola le squadre per questa partita">[🔀 SQUADRE]</span>
+                                <span class="action-btn" style="color:#fff; border:1px solid #666; padding:3px 8px;" onclick="openRoundRulesEditor(${idx})" title="Prepara o modifica tutte le regole di questa partita">[⚙️ REGOLE]</span>
+                                <span class="action-btn" style="color:var(--sop-primary); border:1px solid var(--sop-primary); padding:3px 8px; font-weight:bold;" onclick="loadScheduledPresetIntoSetup(${idx})" title="Carica regole e squadre di questa partita per giocare">[⚡ GIOCA]</span>
+                            </div>
                         </div>
                     `;
                     schedListEl.appendChild(li);
@@ -1732,6 +1856,91 @@ if (!window.__zuluMainInitialized) {
             }
         }
     }
+
+    // --- Gestione Contesto Squadre per Partita e Rimescolamento ---
+
+    window.onPlannerTeamContextChange = function(val) {
+        plannerTeamContext = val || 'BASE';
+        if (currentPlannerEvent) renderPlannerEventDetails(currentPlannerEvent);
+    };
+
+    window.selectRoundTeamsContext = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const sched = [...currentPlannerEvent.schedule];
+        const rnd = sched[idx];
+        if (!rnd) return;
+
+        // Se non aveva ancora una mappa squadre dedicata, la inizializza copiando le squadre base
+        if (!rnd.use_custom_teams) {
+            rnd.use_custom_teams = true;
+            if (!rnd.team_map || Object.keys(rnd.team_map).length === 0) {
+                rnd.team_map = {};
+                (currentPlannerEvent.participants || []).forEach(p => {
+                    rnd.team_map[String(p.id)] = p.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
+                });
+            }
+            plannerTeamContext = String(idx);
+            socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+        } else {
+            plannerTeamContext = String(idx);
+            renderPlannerEventDetails(currentPlannerEvent);
+        }
+    };
+
+    window.toggleRoundCustomTeams = function(enabled) {
+        if (!currentPlannerEvent || plannerTeamContext === 'BASE') return;
+        const idx = parseInt(plannerTeamContext);
+        const sched = Array.isArray(currentPlannerEvent.schedule) ? [...currentPlannerEvent.schedule] : [];
+        const rnd = sched[idx];
+        if (!rnd) return;
+
+        rnd.use_custom_teams = Boolean(enabled);
+        if (enabled && (!rnd.team_map || Object.keys(rnd.team_map).length === 0)) {
+            rnd.team_map = {};
+            (currentPlannerEvent.participants || []).forEach(p => {
+                rnd.team_map[String(p.id)] = p.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
+            });
+        }
+        socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+    };
+
+    window.shuffleCurrentContextTeams = function() {
+        if (!currentPlannerEvent) return;
+        const parts = Array.isArray(currentPlannerEvent.participants) ? [...currentPlannerEvent.participants] : [];
+        if (parts.length < 2) return;
+
+        // Fisher-Yates shuffle bilanciato (metà ALPHA, metà BRAVO)
+        for (let i = parts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = parts[i];
+            parts[i] = parts[j];
+            parts[j] = tmp;
+        }
+
+        const newMap = {};
+        const half = Math.ceil(parts.length / 2);
+        parts.forEach((p, i) => {
+            newMap[String(p.id)] = (i < half) ? 'ALPHA' : 'BRAVO';
+        });
+
+        if (plannerTeamContext === 'BASE') {
+            socket.emit('batch_update_event_teams', {
+                event_id: currentPlannerEvent.id,
+                team_map: newMap
+            });
+            logSystem("PLANNER: Squadre base rimescolate casualmente.");
+        } else {
+            const idx = parseInt(plannerTeamContext);
+            const sched = [...(currentPlannerEvent.schedule || [])];
+            if (!sched[idx]) return;
+            sched[idx].use_custom_teams = true;
+            sched[idx].team_map = newMap;
+            socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+            logSystem(`PLANNER: Squadre rimescolate per Partita #${idx + 1}.`);
+        }
+    };
+
+    // --- Azioni CRUD Giornata e Partecipanti ---
 
     window.openNewEventModal = function() {
         const today = new Date().toISOString().split('T')[0];
@@ -1770,6 +1979,7 @@ if (!window.__zuluMainInitialized) {
             bravo_color: document.getElementById('plan-edit-b-col').value,
             notes: document.getElementById('plan-event-notes').value
         });
+        document.getElementById('planner-event-meta-box')?.classList.add('hidden');
         logSystem("PLANNER: Dati giornata aggiornati.");
     };
 
@@ -1822,6 +2032,20 @@ if (!window.__zuluMainInitialized) {
 
     window.swapEventParticipantTeam = function(participantId) {
         if (!currentPlannerEvent) return;
+        if (plannerTeamContext !== 'BASE') {
+            const idx = parseInt(plannerTeamContext);
+            const sched = [...(currentPlannerEvent.schedule || [])];
+            const rnd = sched[idx];
+            if (rnd) {
+                rnd.use_custom_teams = true;
+                if (!rnd.team_map) rnd.team_map = {};
+                const pObj = (currentPlannerEvent.participants || []).find(x => x.id === participantId);
+                const curTeam = rnd.team_map[String(participantId)] || (pObj?.team === 'BRAVO' ? 'BRAVO' : 'ALPHA');
+                rnd.team_map[String(participantId)] = (curTeam === 'ALPHA') ? 'BRAVO' : 'ALPHA';
+                socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+                return;
+            }
+        }
         socket.emit('update_event_participant', {
             event_id: currentPlannerEvent.id,
             participant_id: participantId,
@@ -1858,45 +2082,159 @@ if (!window.__zuluMainInitialized) {
         const guestCount = parts.filter(p => !p.uid).length;
         const availCards = currentPlannerEvent.total_guest_cards ?? 0;
 
+        let customMap = null;
+        let ctxDesc = "Squadre Base";
+        if (plannerTeamContext !== 'BASE') {
+            const idx = parseInt(plannerTeamContext);
+            const rnd = (currentPlannerEvent.schedule || [])[idx];
+            if (rnd && rnd.use_custom_teams && rnd.team_map) {
+                customMap = rnd.team_map;
+                ctxDesc = `Squadre della Partita #${idx + 1} (${rnd.title})`;
+            }
+        }
+
         let warnSuffix = "";
         if (guestCount > availCards) {
-            warnSuffix = `\n\n⚠️ ATTENZIONE: Ci sono ${guestCount} ospiti ma solo ${availCards} tessere GUEST nel database (${guestCount - availCards} ospiti non avranno una tessera).`;
+            warnSuffix = `\n\n⚠️ ATTENZIONE: Ci sono ${guestCount} ospiti ma solo ${availCards} tessere GUEST nel database.`;
         }
 
         window.openTacticalConfirm(
-            `Vuoi schierare i ${parts.length} partecipanti di "${currentPlannerEvent.title}" nel Roster attivo di oggi?\nAgli ospiti verranno assegnate automaticamente le tessere GUEST disponibili.${warnSuffix}`,
-            "SCHIERA GIORNATA NEL ROSTER",
+            `Vuoi schierare i ${parts.length} partecipanti usando le [${ctxDesc}] nel Roster attivo?\nGli ospiti manterranno la propria tessera GUEST assegnata.${warnSuffix}`,
+            "SCHIERA SQUADRE NEL ROSTER",
             guestCount > availCards ? "danger" : "warning",
             () => {
                 socket.emit('deploy_event_roster', {
                     event_id: currentPlannerEvent.id,
-                    clear_existing: true
+                    clear_existing: true,
+                    custom_team_map: customMap,
+                    silent: false
                 });
             }
         );
     };
 
+    // --- Gestione Scaletta Partite: Creazione, Rinomina, Regole Anticipate e Avvio ---
+
     window.addRoundToEventSchedule = function() {
         if (!currentPlannerEvent) return;
         const sel = document.getElementById('plan-schedule-preset-select');
-        const presetId = parseInt(sel?.value);
-        const foundPreset = missionPresets.find(p => p.id === presetId);
-        if (!foundPreset) {
-            window.openTacticalAlert("Seleziona un Preset dal menu a tendina per aggiungerlo alla scaletta.", "SELEZIONA PRESET", "warning");
+        const rawVal = sel?.value || '';
+        if (!rawVal) {
+            window.openTacticalAlert("Scegli una Modalità o un Preset dal menu a tendina per aggiungere una partita.", "SELEZIONA MODALITÀ", "warning");
             return;
         }
+
+        let mode = 'sd';
+        let baseConfig = {};
+        let presetId = null;
         const sched = Array.isArray(currentPlannerEvent.schedule) ? [...currentPlannerEvent.schedule] : [];
-        sched.push({
-            preset_id: foundPreset.id,
-            title: foundPreset.name,
-            mode: foundPreset.mode,
-            done: false
+        let suggestedName = `PARTITA #${sched.length + 1}`;
+
+        if (rawVal.startsWith('MODE:')) {
+            mode = rawVal.replace('MODE:', '');
+            baseConfig = getDefaultConfigForMode(mode);
+        } else if (rawVal.startsWith('PRESET:')) {
+            presetId = parseInt(rawVal.replace('PRESET:', ''));
+            const foundPreset = missionPresets.find(p => p.id === presetId);
+            if (!foundPreset) return;
+            mode = foundPreset.mode;
+            baseConfig = JSON.parse(JSON.stringify(foundPreset.config || getDefaultConfigForMode(mode)));
+            suggestedName = foundPreset.name;
+        }
+
+        const badge = MODE_BADGE_LABELS[mode] || mode.toUpperCase();
+        window.openTacticalPrompt({
+            title: `NUOVA PARTITA [${badge}]`,
+            label: `NOME DELLA PARTITA (MODALITÀ: ${badge})`,
+            defaultValue: suggestedName,
+            placeholder: "Es. ASSALTO AL BUNKER",
+            allowEmpty: false,
+            onConfirm: (customTitle) => {
+                sched.push({
+                    preset_id: presetId,
+                    title: customTitle.toUpperCase(),
+                    mode: mode,
+                    config: baseConfig,
+                    use_custom_teams: false,
+                    team_map: {},
+                    done: false
+                });
+                if (sel) sel.value = '';
+                socket.emit('save_event_schedule', {
+                    id: currentPlannerEvent.id,
+                    schedule: sched,
+                    notes: document.getElementById('plan-event-notes')?.value || ''
+                });
+            }
         });
+    };
+
+    window.renameScheduleRound = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const sched = [...currentPlannerEvent.schedule];
+        const item = sched[idx];
+        if (!item) return;
+
+        const badge = MODE_BADGE_LABELS[item.mode] || (item.mode || 'sd').toUpperCase();
+        window.openTacticalPrompt({
+            title: `RINOMINA PARTITA #${idx + 1} [${badge}]`,
+            label: `NUOVO NOME PARTITA (MODALITÀ FISSA: ${badge})`,
+            defaultValue: item.title,
+            placeholder: "Es. DIFESA DEL LABORATORIO",
+            allowEmpty: false,
+            onConfirm: (newTitle) => {
+                sched[idx].title = newTitle.toUpperCase();
+                socket.emit('save_event_schedule', {
+                    id: currentPlannerEvent.id,
+                    schedule: sched
+                });
+            }
+        });
+    };
+
+    window.openRoundRulesEditor = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const item = currentPlannerEvent.schedule[idx];
+        if (!item) return;
+
+        window.editingPlannerRoundIdx = idx;
+        const badge = MODE_BADGE_LABELS[item.mode] || (item.mode || 'sd').toUpperCase();
+        const bannerTitle = document.getElementById('setup-planner-round-title');
+        if (bannerTitle) {
+            bannerTitle.textContent = `PARTITA #${idx + 1}: [${badge}] ${item.title}`;
+        }
+
+        const effectiveCfg = item.config || getDefaultConfigForMode(item.mode);
+        showView('setup', socket);
+        applyPresetToUI({ mode: item.mode, config: effectiveCfg });
+    };
+
+    window.saveRoundRulesFromSetup = function() {
+        if (!currentPlannerEvent || window.editingPlannerRoundIdx === null) return;
+        const idx = window.editingPlannerRoundIdx;
+        const sched = Array.isArray(currentPlannerEvent.schedule) ? [...currentPlannerEvent.schedule] : [];
+        if (!sched[idx]) return;
+
+        const mode = document.getElementById('setup-mode-select')?.value || sched[idx].mode;
+        const cfg  = extractCurrentSetupPreset();
+        sched[idx].mode   = mode;
+        sched[idx].config = cfg;
+
+        window.editingPlannerRoundIdx = null;
+        document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+
         socket.emit('save_event_schedule', {
             id: currentPlannerEvent.id,
-            schedule: sched,
-            notes: document.getElementById('plan-event-notes')?.value || ''
+            schedule: sched
         });
+        showView('arena-planner', socket);
+        logSystem(`PLANNER: Regole salvate per Partita #${idx + 1} (${sched[idx].title}).`);
+    };
+
+    window.cancelRoundRulesEditor = function() {
+        window.editingPlannerRoundIdx = null;
+        document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+        showView('arena-planner', socket);
     };
 
     window.toggleScheduleRoundDone = function(idx) {
@@ -1911,6 +2249,7 @@ if (!window.__zuluMainInitialized) {
         if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
         const sched = [...currentPlannerEvent.schedule];
         sched.splice(idx, 1);
+        if (plannerTeamContext === String(idx)) plannerTeamContext = 'BASE';
         socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
     };
 
@@ -1929,8 +2268,26 @@ if (!window.__zuluMainInitialized) {
         const item = currentPlannerEvent.schedule[idx];
         if (!item) return;
 
+        window.editingPlannerRoundIdx = null;
+        document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+
+        // Se questa partita ha squadre dedicate (o se vogliamo applicare le squadre del round al roster attivo),
+        // aggiorna in automatico il roster attivo mantenendo le stesse tessere GUEST!
+        const customMap = (item.use_custom_teams && item.team_map) ? item.team_map : null;
+        if (customMap || Object.keys(arenaRoster || {}).length > 0) {
+            socket.emit('deploy_event_roster', {
+                event_id: currentPlannerEvent.id,
+                clear_existing: true,
+                custom_team_map: customMap,
+                silent: true
+            });
+        }
+
         showView('setup', socket);
-        if (item.preset_id) {
+        if (item.config && Object.keys(item.config).length > 0) {
+            applyPresetToUI({ mode: item.mode, config: item.config });
+            setPresetStatus(`PARTITA #${idx + 1}: ${item.title}`, "var(--sop-secondary)");
+        } else if (item.preset_id) {
             const presetSelect = document.getElementById('setup-preset-select');
             if (presetSelect) {
                 presetSelect.value = String(item.preset_id);
@@ -1940,18 +2297,24 @@ if (!window.__zuluMainInitialized) {
     };
 
     socket.on('events_update', (eventsList) => {
-        gameEventsList = Array.isArray(eventsList) ? eventsList : [];
+        gameEventsList = Array.isArray(eventsList) ? presetsListFallback(eventsList) : [];
         renderPlannerEventsList();
         if (!currentPlannerEvent && gameEventsList.length > 0) {
             socket.emit('request_event_details', { id: gameEventsList[0].id });
         }
     });
 
+    function presetsListFallback(arr) { return arr; }
+
     socket.on('event_details_data', (details) => {
         renderPlannerEventDetails(details);
     });
 
     socket.on('event_deployed_ack', (data) => {
+        if (data?.silent) {
+            logSystem(`PLANNER: Squadre della partita applicate al Roster attivo (${data.imported || 0} op.).`);
+            return;
+        }
         const imp = data?.imported || 0;
         const miss = data?.missing_guests || 0;
         const msg = miss > 0

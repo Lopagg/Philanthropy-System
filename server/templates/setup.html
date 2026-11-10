@@ -10,6 +10,18 @@
         </div>
 
         <div class="panel-body" style="overflow-y: auto; max-height: 75vh;">
+
+            <!-- Banner Pianificazione Regole Partita (visibile quando aperto dall'Operations Planner) -->
+            <div id="setup-planner-round-banner" class="hidden" style="background: rgba(255, 153, 0, 0.14); border: 2px solid var(--sop-secondary); border-radius: 4px; padding: 14px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <span style="font-size: 12px; color: var(--sop-secondary); letter-spacing: 2px; display: block; font-weight: bold;">📋 MODALITÀ PIANIFICAZIONE ANTICIPATA PARTITA</span>
+                    <div id="setup-planner-round-title" style="font-size: 20px; color: #fff; font-weight: bold; margin-top: 2px;">PARTITA #1</div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 10px 14px; font-size: 14px;" onclick="cancelRoundRulesEditor()">[ ↩ TORNA AL PLANNER ]</button>
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 10px 18px; font-size: 14px; border-color: var(--sop-success); color: var(--sop-success); font-weight: bold;" onclick="saveRoundRulesFromSetup()">[ 💾 SALVA REGOLE NELLA PARTITA ]</button>
+                </div>
+            </div>
             
             <!-- Riepilogo Operatori Pronti per Squadra -->
             <div class="setup-roster-summary">

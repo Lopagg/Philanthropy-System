@@ -225,6 +225,10 @@ def init_db():
                 FOREIGN KEY(event_id) REFERENCES game_events(id)
             )
         ''')
+        try:
+            c.execute("ALTER TABLE event_participants ADD COLUMN assigned_uid TEXT")
+        except sqlite3.OperationalError:
+            pass
 
         conn.commit()
 
@@ -1042,12 +1046,27 @@ def auto_balance_event_teams(event_id):
         conn.commit()
 
 
-def deploy_event_to_active_roster(event_id, clear_existing=True):
+def batch_update_event_teams(event_id, team_map):
+    """Aggiorna in blocco le squadre base dei partecipanti ({participant_id: 'ALPHA'|'BRAVO'})."""
+    if not isinstance(team_map, dict):
+        return
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        for pid_str, team_val in team_map.items():
+            if team_val in ('ALPHA', 'BRAVO'):
+                c.execute(
+                    "UPDATE event_participants SET team = ? WHERE id = ? AND event_id = ?",
+                    (team_val, int(pid_str), int(event_id))
+                )
+        conn.commit()
+
+
+def deploy_event_to_active_roster(event_id, clear_existing=True, custom_team_map=None):
     """
-    Importa la bozza squadre della giornata nel Roster attivo di gioco (active_roster):
-    - Schiera direttamente i giocatori PRO tramite il loro UID.
-    - Assegna in questo momento a ciascun Ospite una tessera GUEST disponibile nel DB,
-      impostandole temporaneamente il nome dell'ospite.
+    Importa i partecipanti della giornata nel Roster attivo (active_roster):
+    - Se custom_team_map è presente (partita con squadre dedicate), usa la squadra specifica del round.
+    - Assegna a ciascun Ospite una tessera GUEST libera e la salva in 'assigned_uid' così
+      l'ospite mantiene la stessa identica tessera fisica anche rimescolando le squadre nei round successivi!
     """
     details = get_event_details(event_id)
     if not details:
@@ -1055,6 +1074,11 @@ def deploy_event_to_active_roster(event_id, clear_existing=True):
 
     with get_db_connection() as conn:
         c = conn.cursor()
+
+        # Conserva lo stato IN/FUORI se stiamo solo rimescolando le squadre a giornata già iniziata
+        c.execute("SELECT uid, status FROM active_roster")
+        previous_status = {r[0]: r[1] for r in c.fetchall()}
+
         if clear_existing:
             c.execute("DELETE FROM active_roster")
 
@@ -1065,31 +1089,51 @@ def deploy_event_to_active_roster(event_id, clear_existing=True):
             c.execute("UPDATE factions_config SET display_name = ?, hex_color = ? WHERE team_id = 'BRAVO'",
                       (details['bravo_name'], details['bravo_color']))
 
-        # Recupera tutte le tessere GUEST libere (non già nel roster attivo)
+        # Tessere già riservate da altri ospiti di questo stesso evento
+        reserved_uids = {
+            p.get('assigned_uid') for p in details['participants']
+            if p.get('assigned_uid')
+        }
+
         c.execute('''
             SELECT uid FROM players
             WHERE COALESCE(is_pro, 0) = 0
               AND uid NOT IN (SELECT uid FROM active_roster)
             ORDER BY original_alias, uid
         ''')
-        available_guest_uids = [r[0] for r in c.fetchall()]
+        available_guest_uids = [r[0] for r in c.fetchall() if r[0] not in reserved_uids]
 
         imported = 0
         missing_guests = 0
 
         for p in details['participants']:
-            team = p.get('team') if p.get('team') in ('ALPHA', 'BRAVO') else 'ALPHA'
-            uid = p.get('uid')
+            pid_str = str(p['id'])
+            if isinstance(custom_team_map, dict) and custom_team_map.get(pid_str) in ('ALPHA', 'BRAVO'):
+                team = custom_team_map[pid_str]
+            else:
+                team = p.get('team') if p.get('team') in ('ALPHA', 'BRAVO') else 'ALPHA'
 
+            uid = p.get('uid')
             if uid:
-                c.execute("INSERT OR REPLACE INTO active_roster (uid, team, status) VALUES (?, ?, 'FUORI')", (uid, team))
+                st = previous_status.get(uid, 'FUORI')
+                c.execute("INSERT OR REPLACE INTO active_roster (uid, team, status) VALUES (?, ?, ?)", (uid, team, st))
                 imported += 1
             else:
-                if available_guest_uids:
+                assigned_uid = p.get('assigned_uid')
+                if assigned_uid:
+                    c.execute("SELECT uid FROM players WHERE uid = ?", (assigned_uid,))
+                    if not c.fetchone():
+                        assigned_uid = None
+
+                if not assigned_uid and available_guest_uids:
                     assigned_uid = available_guest_uids.pop(0)
+                    c.execute("UPDATE event_participants SET assigned_uid = ? WHERE id = ?", (assigned_uid, p['id']))
+
+                if assigned_uid:
                     g_name = (p.get('guest_name') or p.get('display_name') or 'OSPITE').strip().upper()
                     c.execute("UPDATE players SET alias = ? WHERE uid = ?", (g_name, assigned_uid))
-                    c.execute("INSERT OR REPLACE INTO active_roster (uid, team, status) VALUES (?, ?, 'FUORI')", (assigned_uid, team))
+                    st = previous_status.get(assigned_uid, 'FUORI')
+                    c.execute("INSERT OR REPLACE INTO active_roster (uid, team, status) VALUES (?, ?, ?)", (assigned_uid, team, st))
                     imported += 1
                 else:
                     missing_guests += 1

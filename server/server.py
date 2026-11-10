@@ -801,13 +801,31 @@ def handle_auto_balance_event(data):
         emit('event_details_data', db_manager.get_event_details(ev_id))
 
 
+@socketio.on('batch_update_event_teams')
+@login_required
+def handle_batch_update_event_teams(data):
+    ev_id = data.get('event_id')
+    team_map = data.get('team_map')
+    if ev_id and isinstance(team_map, dict):
+        db_manager.batch_update_event_teams(ev_id, team_map)
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+
+
 @socketio.on('deploy_event_roster')
 @login_required
 def handle_deploy_event_roster(data):
     ev_id = data.get('event_id')
     clear_existing = bool(data.get('clear_existing', True))
+    custom_team_map = data.get('custom_team_map')
+    silent = bool(data.get('silent', False))
     if ev_id:
-        res = db_manager.deploy_event_to_active_roster(ev_id, clear_existing=clear_existing)
+        res = db_manager.deploy_event_to_active_roster(
+            ev_id,
+            clear_existing=clear_existing,
+            custom_team_map=custom_team_map
+        )
+        res['silent'] = silent
         new_factions = db_manager.get_factions_config()
         socketio.emit('factions_update', new_factions)
         socketio.emit('database_update', db_manager.get_all_players())
