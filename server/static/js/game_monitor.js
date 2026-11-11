@@ -293,6 +293,17 @@ function updateForceEndButton(state) {
  */
 export function renderRules(payload) {
     const elSdRulesList = document.getElementById('sd-rules-list');
+    if (payload.mission_title) {
+        setElText('monitor-mode-title', `OPERATION: ${(payload.mode || '').replace(/_/g, ' ').toUpperCase()} // ${payload.mission_title}`);
+    }
+    if (payload.mission_desc) {
+        const li = document.createElement('li');
+        li.style.flexDirection = 'column';
+        li.style.alignItems = 'flex-start';
+        li.style.gap = '4px';
+        li.innerHTML = `<span class="rule-key" style="color:var(--sop-secondary);">BRIEFING SCENARIO</span> <span class="rule-val" style="text-align:left; font-size:15px; color:#ddd; font-weight:normal;">${payload.mission_desc}</span>`;
+        elSdRulesList.appendChild(li);
+    }
     if (!elSdRulesList) return;
     elSdRulesList.innerHTML = '';
 

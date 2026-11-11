@@ -837,7 +837,7 @@ def get_event_details(event_id):
 
         c.execute('''
             SELECT ep.id, ep.event_id, ep.uid, ep.guest_name, ep.team,
-                   ep.needs_rental, ep.paid, ep.notes,
+                   ep.needs_rental, ep.paid, ep.notes, ep.assigned_uid,
                    p.alias AS db_alias, p.is_pro, p.asd_team,
                    p.games_played, p.wins
             FROM event_participants ep

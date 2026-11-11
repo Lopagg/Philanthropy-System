@@ -4,7 +4,7 @@ Motore di gioco autoritativo, controller di missione e client MQTT per Zulu Game
 
 Architettura:
 - Il server è l'unica autorità che decreta la vittoria (per tempo, eliminazione squadra o obiettivo).
-- Gestisce i motori di modalità (SDEngine, TDMEngine) con tick a 1 Hz in background.
+- Gestisce i motori di modalità (SDEngine, DominationEngine, TDMEngine) con tick a 1 Hz in background.
 - Mantiene il registro live dei nodi hardware connessi (DeviceRegistry) e sincronizza il Kiosk.
 """
 
@@ -98,6 +98,7 @@ def trigger_end_match_sequence(end_state):
     if socketio:
         socketio.emit('database_update', db_manager.get_all_players())
         socketio.emit('factions_update', db_manager.get_factions_config())
+
 
 def trigger_victory_voice_announcement(mc, winner_team_id, reason_str):
     """
@@ -200,6 +201,7 @@ def publish_sd_settings_to_target(target_id, cmd_obj):
         }
         mqtt_client.publish(f"zulu/cmd/{target_id}", json.dumps(flat_payload), qos=1)
 
+
 def publish_dom_settings_to_target(target_id, cmd_obj):
     """Invia il pacchetto SET_DOM_SETTINGS formattato per RAT-V2 (sequenze modulari) o RAT-V1 (legacy)."""
     if not target_id or target_id in ["SERVER-ROUTER", "SERVER-TDM"]:
@@ -234,7 +236,7 @@ def publish_dom_settings_to_target(target_id, cmd_obj):
 
 
 # =============================================================================
-# MOTORI DELLE MODALITÀ DI GIOCO (BASE, TDM, SEARCH & DESTROY)
+# MOTORI DELLE MODALITÀ DI GIOCO (BASE, TDM, SEARCH & DESTROY, DOMINATION)
 # =============================================================================
 
 class BaseGameMode:
@@ -405,6 +407,7 @@ class SDEngine(BaseGameMode):
             self._conclude_match(mc.sd_attacker_team, "BOMBA ESPLOSA!", bomb_time_override=0)
         elif event_name == 'BOMB_DEFUSED':
             self._conclude_match(mc.sd_defender_team, "BOMBA DISINNESCATA!", bomb_time_override=None)
+
 
 class DominationEngine(BaseGameMode):
     """
@@ -627,9 +630,13 @@ class MissionController:
 
         if mode == 'tdm':
             if socketio:
-                socketio.emit('esp_event', {"parsed_data": {"id": "SERVER-TDM", "type": "MODE_ENTER", "payload": {"mode": "TEAM_DEATHMATCH"}}})
-                socketio.emit('esp_event', {"parsed_data": {"id": "SERVER-TDM", "type": "SETTINGS_UPDATE", "payload": {"mode": "TEAM_DEATHMATCH", "game_duration": duration}}})
+                rules_payload = dict(self.sd_settings) if isinstance(self.sd_settings, dict) else {}
+                rules_payload["mode"] = "TEAM_DEATHMATCH"
+                rules_payload["game_duration"] = duration
+                socketio.emit('esp_event', {"parsed_data": {"id": "SERVER-TDM", "type": "MODE_ENTER", "payload": rules_payload}})
+                socketio.emit('esp_event', {"parsed_data": {"id": "SERVER-TDM", "type": "SETTINGS_UPDATE", "payload": rules_payload}})
             trigger_siren("SIREN_LONG")
+            publish_kiosk_led_sync()
             return
 
         if target_id and target_id != "SERVER-TDM":
@@ -684,6 +691,7 @@ class MissionController:
                 initial_state = "SAFE" if mode == 'sd' else "NEUTRAL"
                 registry.update_telemetry(target_id, {"state": initial_state}, initial_state)
                 trigger_siren("SIREN_LONG")
+                publish_kiosk_led_sync()
 
                 if socketio:
                     mode_name = "SEARCH_AND_DESTROY" if mode == 'sd' else "DOMINATION"
@@ -721,6 +729,7 @@ class MissionController:
             time_left = self.global_time_left
 
         trigger_end_match_sequence("STOPPED")
+        publish_kiosk_led_sync()
 
         if rt and rt != "SERVER-TDM":
             try:
@@ -753,6 +762,8 @@ class MissionController:
             self.state = "STANDBY"
             self.active_engine = None
             logger.info("[MISSION CONTROL] Missione Chiusa Definitivamente.")
+
+        publish_kiosk_led_sync()
 
         if rt and rt != "SERVER-TDM":
             try:
@@ -908,16 +919,10 @@ def on_mqtt_connect(client, userdata, flags, rc):
     logger.info(f"[MQTT] Connesso al Broker con codice: {rc}")
     client.subscribe("zulu/telemetry/#")
 
-def notify_kiosk_checkin(team, status):
-    """Invia al Kiosk il comando per riprodurre suono e animazione LED anche per azioni da Web/Mobile."""
-    try:
-        action_str = "IN_ALL" if team == "ALL" else f"{status}_{team}"
-        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({
-            "cmd": "KIOSK_REPLY",
-            "action": action_str
-        }))
 
-        # Sincronizza subito lo stato dei LED del Kiosk (es. tutti IN CAMPO -> luce azzurra)
+def publish_kiosk_led_sync():
+    """Sincronizza immediatamente lo stato dei LED del Kiosk (tutti IN CAMPO, stato partita e colori fazione)."""
+    try:
         players = db_manager.get_active_roster_status()
         total_players = len(players)
         players_out = sum(1 for p in players if p[2] != 'IN')
@@ -931,17 +936,35 @@ def notify_kiosk_checkin(team, status):
         a_rgb = get_pure_rgb(factions['ALPHA']['color'])
         b_rgb = get_pure_rgb(factions['BRAVO']['color'])
 
-        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({
+        sync_json = json.dumps({
             "cmd": "KIOSK_LED_SYNC",
             "all_players_in": all_in,
             "game_running": is_running,
             "game_ready": mission_ready_flag,
             "mission_state": m_state,
+            "t1": factions['ALPHA']['name'],
             "t1_c": a_rgb,
+            "t2": factions['BRAVO']['name'],
             "t2_c": b_rgb
+        })
+        mqtt_client.publish("zulu/cmd/NODE-KIOSK-1", sync_json)
+        mqtt_client.publish("zulu/cmd/broadcast", sync_json)
+    except Exception as e:
+        logger.error(f"[KIOSK SYNC ERROR] {e}")
+
+
+def notify_kiosk_checkin(team, status):
+    """Invia al Kiosk il comando per riprodurre suono e animazione LED anche per azioni da Web/Mobile."""
+    try:
+        action_str = "IN_ALL" if team == "ALL" else f"{status}_{team}"
+        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({
+            "cmd": "KIOSK_REPLY",
+            "action": action_str
         }))
+        publish_kiosk_led_sync()
     except Exception as e:
         logger.error(f"[KIOSK NOTIFY ERROR] {e}")
+
 
 def on_mqtt_message(client, userdata, msg):
     global mission_ready_flag
@@ -1008,11 +1031,13 @@ def on_mqtt_message(client, userdata, msg):
                 else:
                     reply_action = "WAIT_ASSIGN"
             mqtt_client.publish(f"zulu/cmd/{device_id}", json.dumps({"cmd": "KIOSK_REPLY", "action": reply_action}), qos=1)
+            publish_kiosk_led_sync()
 
         elif msg_type == 'TAG_ASSIGN':
             if payload.get('uid') and payload.get('team'):
                 db_manager.register_player(payload.get('uid'), payload.get('team'))
                 socketio.emit('roster_update', db_manager.get_full_roster())
+                publish_kiosk_led_sync()
 
         # 3. Aggiornamento Registro Dispositivi e Sincronizzazione Volume
         mode = payload.get('mode') or parsed.get('mode')
@@ -1097,7 +1122,7 @@ def on_mqtt_message(client, userdata, msg):
             }})
             return
 
-        # 5. Eventi Critici di Fine Partita dal RAT (BOMB_EXPLODED / BOMB_DEFUSED)
+        # 5. Eventi Critici di Fine Partita dal RAT (BOMB_EXPLODED / BOMB_DEFUSED / ZONE_CAPTURED)
         if msg_type == 'MATCH_EVENT':
             if mission_control.is_authorized_node(device_id) and mission_control.active_engine:
                 mission_control.active_engine.handle_event(device_id, payload)
@@ -1183,7 +1208,6 @@ def background_cleanup(fetch_weather_callback):
         tick_counter += 1
         
         players = db_manager.get_active_roster_status()
-        players_out = sum(1 for p in players if p[2] != 'IN')
         alpha_in = sum(1 for p in players if p[1] == 'ALPHA' and p[2] == 'IN')
         bravo_in = sum(1 for p in players if p[1] == 'BRAVO' and p[2] == 'IN')
         
@@ -1193,21 +1217,7 @@ def background_cleanup(fetch_weather_callback):
         if game_is_running:
             mission_ready_flag = False
 
-        try:
-            config = db_manager.get_factions_config()
-            mqtt_client.publish("zulu/cmd/NODE-KIOSK-1", json.dumps({
-                "cmd": "KIOSK_LED_SYNC",
-                "all_players_in": (players_out == 0) and (len(players) > 0),
-                "game_running": game_is_running,
-                "game_ready": mission_ready_flag,
-                "mission_state": mission_control.state,
-                "t1": config.get('ALPHA', {}).get('name', 'ALPHA'),
-                "t1_c": get_pure_rgb(config.get('ALPHA', {}).get('color', '#ff3333')),
-                "t2": config.get('BRAVO', {}).get('name', 'BRAVO'),
-                "t2_c": get_pure_rgb(config.get('BRAVO', {}).get('color', '#55ff55'))
-            }))
-        except Exception as e:
-            logger.error(f"[KIOSK SYNC ERROR] {e}")
+        publish_kiosk_led_sync()
 
         with mission_control.lock:
             if mission_control.active_mission and mission_control.state == "ACTIVE":

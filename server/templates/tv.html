@@ -1,9 +1,12 @@
 <!-- ==========================================================================
      tv.html
      Dashboard pubblica a tutto schermo per la Sala d'Attesa / Spettatori (16:9).
-     Sincronizza in tempo reale timer, meteo tattico, stato bomba/dominio,
-     roster in campo (con ridimensionamento dinamico del font + auto-scroll in loop
-     per squadre molto numerose) e regole complete di missione.
+     Include:
+     - Telemetria real-time (Timer, Bomba S&D, Punteggi Domination, Barre).
+     - Roster in campo con auto-scaling del font e auto-scroll fluido in loop.
+     - Titolo Operazione e Briefing Scenario in evidenza.
+     - TV Media Engine programmabile (Modalità PIP nel Tactical Feed, Spot
+       Fullscreen periodico e controllo remoto Socket.IO).
      ========================================================================== -->
 <!DOCTYPE html>
 <html lang="it">
@@ -15,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=17">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=18">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
     <style>
@@ -50,10 +53,19 @@
             color: #fff;
             font-size: 2.2rem;
             margin: 0;
-            letter-spacing: 6px; 
+            letter-spacing: 5px; 
             text-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
             font-weight: 700;
             text-align: center;
+        }
+
+        .tv-subtitle {
+            color: var(--sop-secondary);
+            font-size: 1.15rem;
+            letter-spacing: 3px;
+            text-align: center;
+            margin-top: 3px;
+            font-weight: bold;
         }
         
         .tv-grid {
@@ -70,6 +82,7 @@
             box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
             min-height: 0;
             overflow: hidden;
+            position: relative;
         }
         
         .tv-timer-huge { 
@@ -169,7 +182,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            flex-shrink: 0; /* Impedisce che i box vengano schiacciati tagliando le lettere */
+            flex-shrink: 0;
             display: flex;
             align-items: center;
         }
@@ -211,7 +224,94 @@
             line-height: 1.5;
         }
 
-        /* Animazioni ingresso/uscita operatori nel roster (senza max-height fisso che taglia il testo) */
+        /* --- TV MEDIA ENGINE (PIP IN TACTICAL FEED & FULLSCREEN OVERLAY) --- */
+        .tv-pip-media-box {
+            width: 100%;
+            flex: 1;
+            min-height: 220px;
+            max-height: 520px;
+            margin: 15px 0;
+            border: 2px solid var(--sop-primary);
+            border-radius: 8px;
+            background: #000;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tv-pip-media-box img,
+        .tv-pip-media-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .tv-media-badge {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 1px solid var(--sop-primary);
+            color: var(--sop-primary);
+            padding: 3px 10px;
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            border-radius: 3px;
+            z-index: 5;
+        }
+
+        .tv-fullscreen-media-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 3, 3, 0.96);
+            z-index: 5000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 35px;
+        }
+        .tv-fullscreen-frame {
+            width: 100%;
+            height: 100%;
+            border: 2px solid var(--sop-primary);
+            box-shadow: 0 0 40px rgba(0, 255, 204, 0.25);
+            background: #000;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .tv-fullscreen-frame img,
+        .tv-fullscreen-frame video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* Pulsante discreto in alto a destra per configurare il Media Player direttamente sulla TV */
+        .tv-media-cfg-trigger {
+            position: fixed;
+            bottom: 10px;
+            right: 12px;
+            z-index: 6000;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid var(--sop-dim);
+            color: #666;
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            opacity: 0.25;
+            transition: opacity 0.2s;
+        }
+        .tv-media-cfg-trigger:hover {
+            opacity: 1;
+            color: var(--sop-primary);
+            border-color: var(--sop-primary);
+        }
+
         @keyframes slideInLeft {
             0%   { opacity: 0; transform: translateX(-40px); }
             100% { opacity: 1; transform: translateX(0); }
@@ -232,14 +332,17 @@
     </div>
 
     <div class="tv-container">
-        <!-- Header Superiore con Logo, Modalità, Meteo Locale e Orologio/Data -->
+        <!-- Header Superiore con Logo, Modalità + Titolo Missione, Meteo Locale e Orologio/Data -->
         <header class="tv-header sop-card">
             <div class="logo-box">
                 <span class="logo-text">PHILANTHROPY</span>
                 <span class="logo-sub">SPECTATOR DISPLAY</span>
             </div>
 
-            <h1 class="tv-title" id="tv-mode-title">STANDBY</h1>
+            <div>
+                <h1 class="tv-title" id="tv-mode-title">STANDBY</h1>
+                <div class="tv-subtitle hidden" id="tv-custom-mission-title"></div>
+            </div>
 
             <div style="display: flex; align-items: center; gap: 28px;">
                 <!-- Widget Meteo Locale -->
@@ -302,22 +405,35 @@
                 </div>
             </div>
 
-            <!-- Colonna 2: Feed Tattico Centrale (Stato, Timer Bomba, Punteggi Domination, Barre) -->
+            <!-- Colonna 2: Feed Tattico Centrale (Stato, Briefing, Media PIP, Timer Bomba, Domination, Barre) -->
             <div class="sop-card tv-widget">
                 <div class="widget-header" style="text-align: center; font-size: 1.6rem; border-bottom: 2px solid var(--sop-primary);">TACTICAL FEED</div>
                 
-                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 20px;">
-                    <div style="font-size: 1.8rem; color: #888; letter-spacing: 2px;">CURRENT STATUS</div>
-                    <div id="tv-tac-status" class="tv-status-huge" style="color: var(--sop-primary);">WAITING FOR DATA</div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 12px 20px; min-height: 0; overflow: hidden;">
+                    <div style="font-size: 1.6rem; color: #888; letter-spacing: 2px; flex-shrink: 0;">CURRENT STATUS</div>
+                    <div id="tv-tac-status" class="tv-status-huge" style="color: var(--sop-primary); flex-shrink: 0;">WAITING FOR DATA</div>
+
+                    <!-- Riquadro Briefing Scenario (visibile quando la missione ha una descrizione) -->
+                    <div id="tv-briefing-banner" class="hidden" style="width: 100%; background: rgba(255, 153, 0, 0.08); border: 1px solid var(--sop-secondary); border-left: 4px solid var(--sop-secondary); border-radius: 6px; padding: 12px 16px; margin: 8px 0; text-align: center; flex-shrink: 0;">
+                        <span style="font-size: 0.95rem; color: var(--sop-secondary); letter-spacing: 2px; display: block; font-weight: bold; margin-bottom: 4px;">📋 MISSION BRIEFING // SCENARIO</span>
+                        <div id="tv-briefing-text" style="font-size: 1.35rem; color: #eee; line-height: 1.35;"></div>
+                    </div>
+
+                    <!-- Finestra Media Integrata (PIP dentro Tactical Feed) -->
+                    <div id="tv-pip-media-container" class="tv-pip-media-box hidden">
+                        <span class="tv-media-badge" id="tv-pip-media-label">TACTICAL MEDIA FEED</span>
+                        <img id="tv-pip-img" class="hidden" src="" alt="Media TV">
+                        <video id="tv-pip-video" class="hidden" playsinline></video>
+                    </div>
                     
-                    <div id="tv-bomb-container" style="display: none; width: 100%; text-align: center; margin-top: 25px;">
+                    <div id="tv-bomb-container" style="display: none; width: 100%; text-align: center; margin-top: 15px; flex-shrink: 0;">
                         <div style="font-size: 1.8rem; color: var(--sop-alert); letter-spacing: 3px;">DETONATION SEQUENCE</div>
                         <div id="tv-bomb-box" class="tv-bomb-box">
                             <div id="tv-bomb-timer" class="tv-bomb-huge">--:--</div>
                         </div>
                     </div>
 
-                    <div id="tv-dom-container" style="display: none; width: 100%; margin-top: 35px;">
+                    <div id="tv-dom-container" style="display: none; width: 100%; margin-top: 25px; flex-shrink: 0;">
                         <div style="display: flex; justify-content: space-around; align-items: center; width: 100%;">
                             <div style="text-align: center;">
                                 <div style="font-size: 1.8rem; color: var(--team-a-color); letter-spacing: 2px;" id="tv-dom-lbl-a">ALPHA SCORE</div>
@@ -332,20 +448,20 @@
                     </div>
                 </div>
 
-                <div id="tv-progress-container" style="display: none; padding: 25px; background: rgba(0,0,0,0.5); border-top: 1px solid #333;">
-                    <div style="margin-bottom: 25px;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                            <span id="tv-lbl-prog-1" style="color: var(--sop-alert); font-weight: bold; font-size: 1.5rem; letter-spacing: 1px;">ARMING PROGRESS</span>
+                <div id="tv-progress-container" style="display: none; padding: 20px 25px; background: rgba(0,0,0,0.5); border-top: 1px solid #333; flex-shrink: 0;">
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span id="tv-lbl-prog-1" style="color: var(--sop-alert); font-weight: bold; font-size: 1.4rem; letter-spacing: 1px;">ARMING PROGRESS</span>
                         </div>
-                        <div class="progress-track" style="height: 30px; background: #111; border-radius: 15px; overflow: hidden; border: 1px solid #333;">
+                        <div class="progress-track" style="height: 28px; background: #111; border-radius: 14px; overflow: hidden; border: 1px solid #333;">
                             <div id="tv-prog-1" class="progress-fill fill-red" style="width: 0%; height: 100%; transition: width 0.15s;"></div>
                         </div>
                     </div>
                     <div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                            <span id="tv-lbl-prog-2" style="color: var(--sop-success); font-weight: bold; font-size: 1.5rem; letter-spacing: 1px;">DEFUSING PROGRESS</span>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span id="tv-lbl-prog-2" style="color: var(--sop-success); font-weight: bold; font-size: 1.4rem; letter-spacing: 1px;">DEFUSING PROGRESS</span>
                         </div>
-                        <div class="progress-track" style="height: 30px; background: #111; border-radius: 15px; overflow: hidden; border: 1px solid #333;">
+                        <div class="progress-track" style="height: 28px; background: #111; border-radius: 14px; overflow: hidden; border: 1px solid #333;">
                             <div id="tv-prog-2" class="progress-fill fill-green" style="width: 0%; height: 100%; transition: width 0.15s;"></div>
                         </div>
                     </div>
@@ -384,12 +500,79 @@
         </div>
     </div>
 
+    <!-- OVERLAY MEDIA A SCHERMO INTERO (Per Spot Periodici o Trigger Manuali) -->
+    <div id="tv-fullscreen-overlay" class="tv-fullscreen-media-overlay hidden" onclick="closeFullscreenMedia()">
+        <div class="tv-fullscreen-frame">
+            <span class="tv-media-badge" id="tv-fs-media-label">PHILANTHROPY // BROADCAST</span>
+            <img id="tv-fs-img" class="hidden" src="" alt="Fullscreen Media">
+            <video id="tv-fs-video" class="hidden" playsinline></video>
+        </div>
+    </div>
+
+    <!-- Pulsante Discreto Configurazione Media TV (in basso a destra) -->
+    <button type="button" class="tv-media-cfg-trigger" onclick="toggleTvMediaConfigModal()">[ 🎬 MEDIA TV ]</button>
+
+    <!-- Modale Programmazione Media TV -->
+    <div id="tv-media-config-modal" class="modal-overlay hidden" style="z-index: 6500;">
+        <div class="sop-card profile-modal" style="width: 560px; padding: 20px;">
+            <div class="panel-header" style="margin-bottom: 15px;">
+                <h2 style="margin: 0; font-size: 20px; color: var(--sop-primary);">🎬 PROGRAMMAZIONE SPAZIO MEDIA TV</h2>
+                <button type="button" class="close-modal-btn" onclick="toggleTvMediaConfigModal()">[X]</button>
+            </div>
+            <p style="font-size: 13px; color: #aaa; margin-bottom: 15px;">
+                Inserisci foto (<code>.jpg, .png, .webp, .gif</code>) o video (<code>.mp4, .webm</code>) nella cartella <code>server/static/tv_media/</code> per riprodurli automaticamente sulla TV.
+            </p>
+            <div class="input-group-tactical" style="margin-bottom: 12px;">
+                <label class="setup-label" for="tv-cfg-mode">MODALITÀ SPAZIO MEDIA</label>
+                <select id="tv-cfg-mode" class="tactical-select" style="font-size: 15px; padding: 8px 12px;">
+                    <option value="OFF">DISATTIVATO (Solo Telemetria)</option>
+                    <option value="PIP">FINESTRA DENTRO TACTICAL FEED (PIP)</option>
+                    <option value="FULLSCREEN">SPOT PERIODICO A SCHERMO INTERO</option>
+                </select>
+            </div>
+            <div class="row-inputs" style="gap: 12px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label class="setup-label" for="tv-cfg-interval">INTERVALLO SPOT / CAMBIO (SEC)</label>
+                    <input type="number" id="tv-cfg-interval" class="setup-input" style="font-size: 15px; padding: 8px 12px;" value="60" min="5">
+                </div>
+                <div style="flex: 1;">
+                    <label class="setup-label" for="tv-cfg-duration">DURATA FOTO (SEC)</label>
+                    <input type="number" id="tv-cfg-duration" class="setup-input" style="font-size: 15px; padding: 8px 12px;" value="12" min="3">
+                </div>
+            </div>
+            <div class="row-inputs" style="gap: 12px; margin-bottom: 18px;">
+                <div style="flex: 1;">
+                    <label class="setup-label" for="tv-cfg-hide-active">NASCONDI DURANTE AZIONE PARTITA</label>
+                    <select id="tv-cfg-hide-active" class="tactical-select" style="font-size: 15px; padding: 8px 12px;">
+                        <option value="true">SÌ (Mostra solo in Standby/Attesa)</option>
+                        <option value="false">NO (Mostra anche a partita in corso)</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label class="setup-label" for="tv-cfg-sound">AUDIO VIDEO (.MP4)</label>
+                    <select id="tv-cfg-sound" class="tactical-select" style="font-size: 15px; padding: 8px 12px;">
+                        <option value="true">MUTO (Consigliato per Autoplay)</option>
+                        <option value="false">AUDIO ATTIVO</option>
+                    </select>
+                </div>
+            </div>
+            <div style="font-size: 12px; color: var(--sop-secondary); font-family: monospace; margin-bottom: 15px;" id="tv-cfg-files-count">
+                File rilevati in /static/tv_media/: 0
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="deck-btn full-width" style="margin: 0; font-size: 14px; padding: 10px;" onclick="testTvMediaNow()">[ ▶ PROVA ORA ]</button>
+                <button type="button" class="deck-btn full-width" style="margin: 0; font-size: 14px; padding: 10px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="saveTvMediaConfig()">[ 💾 SALVA E APPLICA ]</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentFactions = { 
             ALPHA: { name: 'ALPHA', color: '#ff3333', daily_wins: 0 }, 
             BRAVO: { name: 'BRAVO', color: '#55ff55', daily_wins: 0 } 
         };
         let currentTvMode = null;
+        let currentTvState = 'STANDBY';
         let lastRulesPayload = null;
         let lastLoggedState = null;
         let renderedRoster = new Set();
@@ -476,7 +659,7 @@
             let fontSize = 2.1;
             let padV = 9;
             let gap = 8;
-            const minReadableFont = 1.35; // Sotto questa soglia attiva lo scorrimento fluido in loop
+            const minReadableFont = 1.35;
 
             const applyMetrics = (f, p, g) => {
                 ul.style.gap = g + 'px';
@@ -488,7 +671,6 @@
 
             applyMetrics(fontSize, padV, gap);
 
-            // Misura direttamente ul.scrollHeight rispetto a ul.clientHeight (non il padre!)
             while (ul.scrollHeight > ul.clientHeight && fontSize > minReadableFont) {
                 fontSize -= 0.08;
                 if (padV > 4) padV -= 0.4;
@@ -497,8 +679,6 @@
             }
 
             if (ul.scrollHeight > ul.clientHeight + 4) {
-                // La squadra è molto numerosa (es. 12-20+ operatori): mantiene un font ben leggibile
-                // e attiva lo scorrimento verticale continuo su e giù
                 applyMetrics(1.48, 6, 6);
                 if (st) {
                     st.active = true;
@@ -515,7 +695,6 @@
             }
         }
 
-        // Loop a ~30 fps per lo scorrimento automatico morbido delle liste lunghe
         setInterval(() => {
             const now = Date.now();
             ['tv-list-alpha', 'tv-list-bravo'].forEach(listId => {
@@ -536,11 +715,11 @@
                 if (st.pos >= maxScroll) {
                     st.pos = maxScroll;
                     st.dir = -1;
-                    st.pauseUntil = now + 2200; // Pausa di 2.2s in fondo alla lista
+                    st.pauseUntil = now + 2200;
                 } else if (st.pos <= 0) {
                     st.pos = 0;
                     st.dir = 1;
-                    st.pauseUntil = now + 2200; // Pausa di 2.2s in cima alla lista
+                    st.pauseUntil = now + 2200;
                 }
                 ul.scrollTop = st.pos;
             });
@@ -551,13 +730,241 @@
             adjustFontSize('tv-list-bravo');
         });
 
+        // ====================================================================
+        // TV MEDIA ENGINE (PIP IN TACTICAL FEED & SPOT FULLSCREEN PERIODICI)
+        // ====================================================================
+
+        let tvMediaPlaylist = [];
+        let tvMediaIdx = 0;
+        let tvMediaTimer = null;
+        let tvFullscreenTimeout = null;
+        let tvMediaConfig = JSON.parse(localStorage.getItem('zulu_tv_media_cfg') || JSON.stringify({
+            mode: 'PIP',          // 'OFF', 'PIP', 'FULLSCREEN'
+            intervalSec: 45,      // Ogni quanti secondi ruota o mostra lo spot fullscreen
+            durationSec: 12,      // Durata di visualizzazione per le immagini statiche
+            hideWhenActive: true, // Se true, nasconde i media durante il combattimento attivo
+            muted: true
+        }));
+
+        function isMatchActionActive() {
+            if (!currentTvState) return false;
+            const idleStates = ['STANDBY', 'WAITING FOR DATA', 'MISSION READY', 'PREPARING', 'STOPPED'];
+            return !idleStates.includes(currentTvState.toUpperCase());
+        }
+
+        function fetchTvMediaList() {
+            fetch('/api/tv/media')
+                .then(r => r.json())
+                .then(data => {
+                    if (Array.isArray(data.files)) {
+                        tvMediaPlaylist = data.files;
+                        const countEl = document.getElementById('tv-cfg-files-count');
+                        if (countEl) countEl.textContent = `File rilevati in /static/tv_media/: ${tvMediaPlaylist.length}`;
+                        syncTvMediaEngine();
+                    }
+                })
+                .catch(() => {});
+        }
+
+        function isVideoUrl(url) {
+            const clean = String(url).split('?')[0].toLowerCase();
+            return clean.endsWith('.mp4') || clean.endsWith('.webm') || clean.endsWith('.mov');
+        }
+
+        function closeFullscreenMedia() {
+            const fsOv  = document.getElementById('tv-fullscreen-overlay');
+            const fsVid = document.getElementById('tv-fs-video');
+            const fsImg = document.getElementById('tv-fs-img');
+            if (fsFullscreenTimeout) { clearTimeout(tvFullscreenTimeout); tvFullscreenTimeout = null; }
+            if (fsVid) { fsVid.pause(); fsVid.removeAttribute('src'); fsVid.classList.add('hidden'); }
+            if (fsImg) { fsImg.classList.add('hidden'); }
+            if (fsOv)  { fsOv.classList.add('hidden'); }
+        }
+        let fsFullscreenTimeout = null;
+
+        function playMediaItemInPip(url, titleLabel = 'TACTICAL MEDIA FEED') {
+            const pipBox = document.getElementById('tv-pip-media-container');
+            const pipImg = document.getElementById('tv-pip-img');
+            const pipVid = document.getElementById('tv-pip-video');
+            const pipLbl = document.getElementById('tv-pip-media-label');
+            if (!pipBox || !pipImg || !pipVid) return;
+
+            if (tvMediaConfig.hideWhenActive && isMatchActionActive()) {
+                pipVid.pause();
+                pipBox.classList.add('hidden');
+                return;
+            }
+
+            pipBox.classList.remove('hidden');
+            if (pipLbl) pipLbl.textContent = titleLabel;
+
+            if (isVideoUrl(url)) {
+                pipImg.classList.add('hidden');
+                pipVid.classList.remove('hidden');
+                pipVid.muted = Boolean(tvMediaConfig.muted);
+                pipVid.src = url;
+                pipVid.onended = () => advanceTvMediaCycle();
+                pipVid.play().catch(() => {});
+            } else {
+                pipVid.pause();
+                pipVid.classList.add('hidden');
+                pipImg.classList.remove('hidden');
+                pipImg.src = url;
+            }
+        }
+
+        function playMediaItemFullscreen(url, titleLabel = 'PHILANTHROPY // BROADCAST', customDurSec = null) {
+            if (tvMediaConfig.hideWhenActive && isMatchActionActive()) return;
+
+            const fsOv  = document.getElementById('tv-fullscreen-overlay');
+            const fsImg = document.getElementById('tv-fs-img');
+            const fsVid = document.getElementById('tv-fs-video');
+            const fsLbl = document.getElementById('tv-fs-media-label');
+            if (!fsOv || !fsImg || !fsVid) return;
+
+            if (fsFullscreenTimeout) { clearTimeout(fsFullscreenTimeout); fsFullscreenTimeout = null; }
+            fsOv.classList.remove('hidden');
+            if (fsLbl) fsLbl.textContent = titleLabel;
+
+            const durMs = ((customDurSec || tvMediaConfig.durationSec || 12) * 1000);
+
+            if (isVideoUrl(url)) {
+                fsImg.classList.add('hidden');
+                fsVid.classList.remove('hidden');
+                fsVid.muted = Boolean(tvMediaConfig.muted);
+                fsVid.src = url;
+                fsVid.onended = () => closeFullscreenMedia();
+                fsVid.play().catch(() => {
+                    fsFullscreenTimeout = setTimeout(closeFullscreenMedia, durMs);
+                });
+            } else {
+                fsVid.pause();
+                fsVid.classList.add('hidden');
+                fsImg.classList.remove('hidden');
+                fsImg.src = url;
+                fsFullscreenTimeout = setTimeout(closeFullscreenMedia, durMs);
+            }
+        }
+
+        function advanceTvMediaCycle() {
+            if (tvMediaConfig.mode === 'OFF' || tvMediaPlaylist.length === 0) {
+                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+                closeFullscreenMedia();
+                return;
+            }
+
+            if (tvMediaConfig.hideWhenActive && isMatchActionActive()) {
+                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+                closeFullscreenMedia();
+                return;
+            }
+
+            const item = tvMediaPlaylist[tvMediaIdx % tvMediaPlaylist.length];
+            tvMediaIdx = (tvMediaIdx + 1) % tvMediaPlaylist.length;
+
+            if (tvMediaConfig.mode === 'PIP') {
+                closeFullscreenMedia();
+                playMediaItemInPip(item.url, item.name || 'TACTICAL MEDIA FEED');
+            } else if (tvMediaConfig.mode === 'FULLSCREEN') {
+                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+                playMediaItemFullscreen(item.url, item.name || 'PHILANTHROPY // BROADCAST');
+            }
+        }
+
+        function syncTvMediaEngine() {
+            if (tvMediaTimer) { clearInterval(tvMediaTimer); tvMediaTimer = null; }
+
+            if (tvMediaConfig.mode === 'OFF' || tvMediaPlaylist.length === 0) {
+                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+                closeFullscreenMedia();
+                return;
+            }
+
+            const periodMs = Math.max(5, parseInt(tvMediaConfig.intervalSec) || 45) * 1000;
+            if (tvMediaConfig.mode === 'PIP') {
+                advanceTvMediaCycle();
+            }
+            tvMediaTimer = setInterval(advanceTvMediaCycle, periodMs);
+        }
+
+        window.toggleTvMediaConfigModal = function() {
+            const modal = document.getElementById('tv-media-config-modal');
+            if (!modal) return;
+            if (modal.classList.contains('hidden')) {
+                document.getElementById('tv-cfg-mode').value        = tvMediaConfig.mode || 'PIP';
+                document.getElementById('tv-cfg-interval').value    = tvMediaConfig.intervalSec || 45;
+                document.getElementById('tv-cfg-duration').value    = tvMediaConfig.durationSec || 12;
+                document.getElementById('tv-cfg-hide-active').value = String(tvMediaConfig.hideWhenActive !== false);
+                document.getElementById('tv-cfg-sound').value       = String(tvMediaConfig.muted !== false);
+                fetchTvMediaList();
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        };
+
+        window.saveTvMediaConfig = function() {
+            tvMediaConfig = {
+                mode:           document.getElementById('tv-cfg-mode').value,
+                intervalSec:    Math.max(5, parseInt(document.getElementById('tv-cfg-interval').value) || 45),
+                durationSec:    Math.max(3, parseInt(document.getElementById('tv-cfg-duration').value) || 12),
+                hideWhenActive: document.getElementById('tv-cfg-hide-active').value === 'true',
+                muted:          document.getElementById('tv-cfg-sound').value === 'true'
+            };
+            localStorage.setItem('zulu_tv_media_cfg', JSON.stringify(tvMediaConfig));
+            document.getElementById('tv-media-config-modal').classList.add('hidden');
+            syncTvMediaEngine();
+        };
+
+        window.testTvMediaNow = function() {
+            saveTvMediaConfig();
+            advanceTvMediaCycle();
+        };
+
+        // ====================================================================
+        // RIEPILOGO REGOLE E BRIEFING PARTITA
+        // ====================================================================
+
+        function updateTvMissionTitleAndBriefing(payload) {
+            if (!payload) return;
+            const subTitleEl = document.getElementById('tv-custom-mission-title');
+            const briefBox   = document.getElementById('tv-briefing-banner');
+            const briefTxt   = document.getElementById('tv-briefing-text');
+
+            if (payload.mission_title !== undefined) {
+                const cleanTitle = String(payload.mission_title || '').trim();
+                if (cleanTitle && subTitleEl) {
+                    subTitleEl.textContent = `// ${cleanTitle}`;
+                    subTitleEl.classList.remove('hidden');
+                } else if (subTitleEl) {
+                    subTitleEl.textContent = '';
+                    subTitleEl.classList.add('hidden');
+                }
+            }
+
+            if (payload.mission_desc !== undefined) {
+                const cleanDesc = String(payload.mission_desc || '').trim();
+                if (cleanDesc && briefBox && briefTxt) {
+                    briefTxt.textContent = cleanDesc;
+                    briefBox.classList.remove('hidden');
+                } else if (briefBox) {
+                    briefBox.classList.add('hidden');
+                }
+            }
+        }
+
         function renderTvRules(payload) {
             if (!payload) return;
             lastRulesPayload = payload;
+            updateTvMissionTitleAndBriefing(payload);
 
             const list = document.getElementById('tv-rules-list');
             if (!list) return;
             list.innerHTML = '';
+
+            if (payload.mission_title) {
+                list.innerHTML += `<div class="tv-rule-item"><span class="tv-rule-label">OPERAZIONE</span><span class="tv-rule-val" style="color:var(--sop-secondary);">${payload.mission_title}</span></div>`;
+            }
 
             if (payload.attacker) {
                 const isAlpha = payload.attacker === 'ALPHA';
@@ -651,8 +1058,24 @@
         socket.on('connect', () => {
             log("LINK ESTABLISHED WITH SOP SERVER.");
             socket.emit('request_roster');
+            fetchTvMediaList();
         });
         socket.on('disconnect', () => log("CRITICAL: CONNECTION LOST."));
+
+        // Controllo remoto Media TV dall'Admin
+        socket.on('tv_media_cmd', (data) => {
+            if (!data) return;
+            if (data.action === 'RELOAD_LIST') {
+                fetchTvMediaList();
+            } else if (data.action === 'PLAY_FULLSCREEN' && data.url) {
+                playMediaItemFullscreen(data.url, data.title || 'PHILANTHROPY // BROADCAST', data.duration || 15);
+            } else if (data.action === 'PLAY_PIP' && data.url) {
+                playMediaItemInPip(data.url, data.title || 'TACTICAL MEDIA FEED');
+            } else if (data.action === 'STOP') {
+                closeFullscreenMedia();
+                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+            }
+        });
 
         socket.on('weather_update', (data) => {
             if (!data || !data.weather) return;
@@ -794,7 +1217,6 @@
                 return;
             }
 
-            // Aggiornamento rapido a 1 Hz del solo timer globale (senza alterare barre o stato)
             if (type === 'TIME_UPDATE') {
                 if (payload.game_time !== undefined) {
                     const globalTimerEl = document.getElementById('tv-global-timer');
@@ -812,9 +1234,12 @@
             
             if (type === 'MODE_EXIT') {
                 currentTvMode = null;
+                currentTvState = 'STANDBY';
                 lastRulesPayload = null;
                 lastLoggedState = null;
                 document.getElementById('tv-mode-title').textContent = "STANDBY";
+                document.getElementById('tv-custom-mission-title')?.classList.add('hidden');
+                document.getElementById('tv-briefing-banner')?.classList.add('hidden');
                 document.getElementById('tv-global-timer').textContent = "--:--";
                 document.getElementById('tv-global-timer').style.color = "var(--sop-primary)";
                 document.getElementById('tv-global-timer').style.textShadow = "0 0 20px rgba(0,255,204,0.3)";
@@ -828,6 +1253,7 @@
                 document.getElementById('tv-dom-container').style.display = 'none';
                 document.getElementById('tv-progress-container').style.display = 'none';
                 log("MISSIONE CHIUSA. TERMINALE IN STANDBY.");
+                syncTvMediaEngine();
                 return;
             }
             
@@ -849,6 +1275,7 @@
                 if (type === 'SETTINGS_UPDATE' && statusEl && statusEl.textContent === 'WAITING FOR DATA') {
                     statusEl.textContent = "MISSION READY";
                     statusEl.style.color = "var(--sop-secondary)";
+                    currentTvState = "MISSION READY";
                 }
             }
 
@@ -865,6 +1292,7 @@
             }
 
             if (payload.state) {
+                currentTvState = payload.state;
                 let s = payload.state
                     .replace('ALPHA', currentFactions.ALPHA.name)
                     .replace('BRAVO', currentFactions.BRAVO.name);
@@ -875,6 +1303,12 @@
                 if (s !== lastLoggedState) {
                     lastLoggedState = s;
                     log(`STATUS -> ${s}`);
+                }
+
+                // Se la partita è entrata nel vivo e l'opzione hideWhenActive è attiva, chiude i media
+                if (tvMediaConfig.hideWhenActive && isMatchActionActive()) {
+                    document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+                    closeFullscreenMedia();
                 }
                 
                 if (s.includes('WINS') || s.includes('OWNED')) {

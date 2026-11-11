@@ -834,6 +834,11 @@ function buildMissionConfig() {
     }
 
     return { mode, targetId, dur, commandData };
+
+    commandData.mission_title = (document.getElementById('setup-mission-title')?.value || '').trim().toUpperCase();
+    commandData.mission_desc  = (document.getElementById('setup-mission-desc')?.value || '').trim();
+
+    return { mode, targetId, dur, commandData };
 }
 
 // ============================================================================
@@ -2498,6 +2503,11 @@ if (!window.__zuluMainInitialized) {
         const item = currentPlannerEvent.schedule[idx];
         if (!item) return;
 
+        const titleInp = document.getElementById('setup-mission-title');
+        const descInp  = document.getElementById('setup-mission-desc');
+        if (titleInp) titleInp.value = item.title || '';
+        if (descInp)  descInp.value  = item.description || '';
+
         window.editingPlannerRoundIdx = idx;
         window.__currentPlannerEventRef = currentPlannerEvent;
 
@@ -2518,6 +2528,11 @@ if (!window.__zuluMainInitialized) {
         const idx = window.editingPlannerRoundIdx;
         const sched = Array.isArray(currentPlannerEvent.schedule) ? [...currentPlannerEvent.schedule] : [];
         if (!sched[idx]) return;
+
+        const editedTitle = (document.getElementById('setup-mission-title')?.value || '').trim().toUpperCase();
+        const editedDesc  = (document.getElementById('setup-mission-desc')?.value || '').trim();
+        if (editedTitle) sched[idx].title = editedTitle;
+        sched[idx].description = editedDesc;
 
         const mode = document.getElementById('setup-mode-select')?.value || sched[idx].mode;
         const cfg  = extractCurrentSetupPreset();
@@ -2547,6 +2562,11 @@ if (!window.__zuluMainInitialized) {
         if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
         const item = currentPlannerEvent.schedule[idx];
         if (!item) return;
+
+        const titleInp = document.getElementById('setup-mission-title');
+        const descInp  = document.getElementById('setup-mission-desc');
+        if (titleInp) titleInp.value = item.title || '';
+        if (descInp)  descInp.value  = item.description || '';
 
         window.editingPlannerRoundIdx = null;
         document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
@@ -2692,17 +2712,7 @@ if (!window.__zuluMainInitialized) {
         renderV2Sequences();
         window.syncSetupFactionLabels();
 
-        const attackerSelect = document.getElementById('sd-attacker-team');
-        if (attackerSelect) {
-            Array.from(attackerSelect.options).forEach(opt => {
-                if (opt.value === 'ALPHA') opt.textContent = currentFactions.ALPHA.name;
-                if (opt.value === 'BRAVO') opt.textContent = currentFactions.BRAVO.name;
-            });
-        }
-
         const setEl = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-        setEl('setup-label-alpha',  `TEAM ${currentFactions.ALPHA.name}`);
-        setEl('setup-label-bravo',  `TEAM ${currentFactions.BRAVO.name}`);
         setEl('monitor-name-alpha', currentFactions.ALPHA.name);
         setEl('monitor-name-bravo', currentFactions.BRAVO.name);
         setEl('dom-lbl-alpha',      currentFactions.ALPHA.name);

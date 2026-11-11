@@ -51,6 +51,9 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 TTS_FOLDER = os.path.join(app.root_path, 'static', 'tts')
 os.makedirs(TTS_FOLDER, exist_ok=True)
 
+TV_MEDIA_FOLDER = os.path.join(app.root_path, 'static', 'tv_media')
+os.makedirs(TV_MEDIA_FOLDER, exist_ok=True)
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 login_manager = LoginManager()
@@ -202,6 +205,21 @@ def index():
 @app.route('/tv')
 def tv_dashboard():
     return render_template('tv.html')
+
+@app.route('/api/tv/media')
+def api_tv_media_list():
+    allowed_exts = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov'}
+    files = []
+    if os.path.exists(TV_MEDIA_FOLDER):
+        for fname in sorted(os.listdir(TV_MEDIA_FOLDER)):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in allowed_exts:
+                files.append({
+                    "name": os.path.splitext(fname)[0].replace('_', ' ').upper(),
+                    "filename": fname,
+                    "url": f"/static/tv_media/{fname}"
+                })
+    return jsonify({"status": "ok", "files": files})
 
 
 @app.route('/mobile')
