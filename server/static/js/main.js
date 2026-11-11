@@ -337,6 +337,10 @@ window.updateUIForTargetVersion = function() {
         domV2.classList.toggle('hidden', !isV2);
     }
 
+    if (typeof window.syncSetupFactionLabels === 'function') {
+        window.syncSetupFactionLabels();
+    }
+
     if (isV2) {
         renderV2Sequences();
     }
@@ -472,14 +476,137 @@ window.updateRfidCustomUid = function(type, index, inputElement) {
     arr[index].rfidCustomUid = inputElement.value.trim().toUpperCase();
 };
 
-function getPlayerDisplayName(uid) {
-    if (arenaRoster && arenaRoster[uid]) {
-        const teamName = arenaRoster[uid].team === 'ALPHA' ? currentFactions.ALPHA.name : currentFactions.BRAVO.name;
-        return `${arenaRoster[uid].name} [${teamName}]`;
+window.getSetupFactionsContext = function() {
+    if (window.editingPlannerRoundIdx !== null && window.__currentPlannerEventRef) {
+        const ev = window.__currentPlannerEventRef;
+        const aNameInput = document.getElementById('plan-edit-a-name')?.value?.trim().toUpperCase();
+        const bNameInput = document.getElementById('plan-edit-b-name')?.value?.trim().toUpperCase();
+        const aColInput  = document.getElementById('plan-edit-a-col')?.value;
+        const bColInput  = document.getElementById('plan-edit-b-col')?.value;
+
+        return {
+            isPlanning: true,
+            ALPHA: {
+                name:  aNameInput || ev.alpha_name || 'ALPHA',
+                color: aColInput  || ev.alpha_color || '#ff3333'
+            },
+            BRAVO: {
+                name:  bNameInput || ev.bravo_name || 'BRAVO',
+                color: bColInput  || ev.bravo_color || '#55ff55'
+            }
+        };
     }
+    return {
+        isPlanning: false,
+        ALPHA: { name: currentFactions.ALPHA.name || 'ALPHA', color: currentFactions.ALPHA.color || '#ff3333' },
+        BRAVO: { name: currentFactions.BRAVO.name || 'BRAVO', color: currentFactions.BRAVO.color || '#55ff55' }
+    };
+};
+
+window.syncSetupFactionLabels = function() {
+    const ctx = window.getSetupFactionsContext();
+    const aName = ctx.ALPHA.name;
+    const bName = ctx.BRAVO.name;
+    const aCol  = ctx.ALPHA.color;
+    const bCol  = ctx.BRAVO.color;
+
+    // 1. Selettore Squadra Attaccante in S&D
+    const attackerSelect = document.getElementById('sd-attacker-team');
+    if (attackerSelect) {
+        Array.from(attackerSelect.options).forEach(opt => {
+            if (opt.value === 'ALPHA') opt.textContent = aName;
+            if (opt.value === 'BRAVO') opt.textContent = bName;
+        });
+    }
+
+    // 2. Intestazioni e Contatori Riepilogo Operatori in cima a Setup
+    const lblA = document.getElementById('setup-label-alpha');
+    const lblB = document.getElementById('setup-label-bravo');
+    const cntA = document.getElementById('setup-alpha-count');
+    const cntB = document.getElementById('setup-bravo-count');
+
+    if (lblA) lblA.textContent = `TEAM ${aName}`;
+    if (lblB) lblB.textContent = `TEAM ${bName}`;
+
+    if (ctx.isPlanning && window.__currentPlannerEventRef) {
+        const ev = window.__currentPlannerEventRef;
+        const parts = Array.isArray(ev.participants) ? ev.participants : [];
+        const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
+        const rnd = sched[window.editingPlannerRoundIdx];
+
+        let aPlanned = 0, bPlanned = 0;
+        parts.forEach(p => {
+            let t = p.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
+            if (rnd && rnd.use_custom_teams && rnd.team_map && rnd.team_map[String(p.id)]) {
+                t = rnd.team_map[String(p.id)];
+            }
+            if (t === 'ALPHA') aPlanned++; else bPlanned++;
+        });
+
+        if (cntA) { cntA.textContent = `${aPlanned} PREVISTI`; cntA.style.color = aCol; }
+        if (cntB) { cntB.textContent = `${bPlanned} PREVISTI`; cntB.style.color = bCol; }
+    } else {
+        let aTot = 0, bTot = 0, aIn = 0, bIn = 0;
+        Object.values(arenaRoster || {}).forEach(p => {
+            if (p.team === 'ALPHA') { aTot++; if (p.status === 'IN') aIn++; }
+            else { bTot++; if (p.status === 'IN') bIn++; }
+        });
+        if (cntA) { cntA.textContent = `${aIn}/${aTot}`; cntA.style.color = ''; }
+        if (cntB) { cntB.textContent = `${bIn}/${bTot}`; cntB.style.color = ''; }
+    }
+
+    // 3. Etichette e pulsante Copia nella sezione Domination
+    const domSeqA  = document.getElementById('dom-seq-lbl-alpha');
+    const domSeqB  = document.getElementById('dom-seq-lbl-bravo');
+    const domFailA = document.getElementById('dom-fail-lbl-alpha');
+    const domFailB = document.getElementById('dom-fail-lbl-bravo');
+    const btnCopy  = document.getElementById('btn-copy-dom-seq');
+
+    if (domSeqA)  { domSeqA.textContent  = `CONQUISTA ${aName} (PULSANTE P1)`; domSeqA.style.color = aCol; }
+    if (domSeqB)  { domSeqB.textContent  = `CONQUISTA ${bName} (PULSANTE P2)`; domSeqB.style.color = bCol; }
+    if (domFailA) { domFailA.textContent = `SE SI SBAGLIA STEP ${aName}`;      domFailA.style.color = aCol; }
+    if (domFailB) { domFailB.textContent = `SE SI SBAGLIA STEP ${bName}`;      domFailB.style.color = bCol; }
+    if (btnCopy)  { btnCopy.textContent  = `[ COPIA ${aName} → ${bName} ]`; }
+};
+
+window.onSetupCancelClick = function() {
+    if (window.editingPlannerRoundIdx !== null) {
+        window.cancelRoundRulesEditor();
+    } else {
+        window.showView('hub');
+    }
+};
+
+function getPlayerTeamTagForSetup(uid) {
+    const ctx = window.getSetupFactionsContext();
+    if (ctx.isPlanning && window.__currentPlannerEventRef) {
+        const ev = window.__currentPlannerEventRef;
+        const foundPart = (ev.participants || []).find(p => p.uid === uid);
+        if (foundPart) {
+            const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
+            const rnd = sched[window.editingPlannerRoundIdx];
+            let t = foundPart.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
+            if (rnd && rnd.use_custom_teams && rnd.team_map && rnd.team_map[String(foundPart.id)]) {
+                t = rnd.team_map[String(foundPart.id)];
+            }
+            return t === 'ALPHA' ? ctx.ALPHA.name : ctx.BRAVO.name;
+        }
+        return null;
+    }
+    if (arenaRoster && arenaRoster[uid]) {
+        return arenaRoster[uid].team === 'ALPHA' ? ctx.ALPHA.name : ctx.BRAVO.name;
+    }
+    return null;
+}
+
+function getPlayerDisplayName(uid) {
+    const tName = getPlayerTeamTagForSetup(uid);
     if (typeof globalPlayersDB !== 'undefined' && Array.isArray(globalPlayersDB)) {
         const found = globalPlayersDB.find(p => p.uid === uid);
-        if (found) return found.alias;
+        if (found) return tName ? `${found.alias} [${tName}]` : found.alias;
+    }
+    if (arenaRoster && arenaRoster[uid]) {
+        return tName ? `${arenaRoster[uid].name} [${tName}]` : arenaRoster[uid].name;
     }
     return uid;
 }
@@ -491,6 +618,7 @@ function renderV2Sequences() {
     const domBravoContainer = document.getElementById('v2-dom-bravo-sequence-container');
 
     sanitizeKeySequences();
+    const fCtx = window.getSetupFactionsContext();
 
     const generateHtml = (arr, typeName) => {
         let html = '';
@@ -515,7 +643,7 @@ function renderV2Sequences() {
                 const selectedPlayers = Array.isArray(step.rfidPlayers) ? step.rfidPlayers : [];
                 const roleLabel = typeName === 'arm' ? 'SQUADRA ATTACCANTE'
                                 : (typeName === 'defuse' ? 'SQUADRA DIFENSORE'
-                                : (typeName === 'dom_alpha' ? `SQUADRA ${currentFactions.ALPHA.name}` : `SQUADRA ${currentFactions.BRAVO.name}`));
+                                : (typeName === 'dom_alpha' ? `SQUADRA ${fCtx.ALPHA.name}` : `SQUADRA ${fCtx.BRAVO.name}`));
 
                 let subControlHtml = '';
                 if (rfidMode === 'TEAM') {
@@ -533,8 +661,8 @@ function renderV2Sequences() {
                     const playerOptions = allDbPlayers
                         .filter(p => !selectedPlayers.includes(p.uid))
                         .map(p => {
-                            const inRoster = arenaRoster && arenaRoster[p.uid];
-                            const teamTag = inRoster ? ` [${inRoster.team === 'ALPHA' ? currentFactions.ALPHA.name : currentFactions.BRAVO.name}]` : '';
+                            const tName = getPlayerTeamTagForSetup(p.uid);
+                            const teamTag = tName ? ` [${tName}]` : '';
                             return `<option value="${p.uid}">${p.alias}${teamTag}</option>`;
                         }).join('');
 
@@ -1517,9 +1645,12 @@ if (!window.__zuluMainInitialized) {
     function summarizeRoundRules(item) {
         const cfg = item.config || {};
         if (item.mode === 'sd') {
+            const aName = (currentPlannerEvent?.alpha_name || 'ALPHA');
+            const bName = (currentPlannerEvent?.bravo_name || 'BRAVO');
+            const attTeam = (cfg.attacker === 'BRAVO') ? bName : aName;
             const aSteps = Array.isArray(cfg.v2_arm_seq) ? cfg.v2_arm_seq.length : 1;
             const dSteps = Array.isArray(cfg.v2_defuse_seq) ? cfg.v2_defuse_seq.length : 1;
-            return `${cfg.game_duration || 20}m | Bomba ${cfg.bomb_time || 10}m | Step A:${aSteps} D:${dSteps}`;
+            return `Attacco: ${attTeam} | ${cfg.game_duration || 20}m | Bomba ${cfg.bomb_time || 10}m (Step ${aSteps}/${dSteps})`;
         } else if (item.mode === 'dom') {
             const aSteps = Array.isArray(cfg.v2_dom_alpha_seq) ? cfg.v2_dom_alpha_seq.length : 1;
             const bSteps = Array.isArray(cfg.v2_dom_bravo_seq) ? cfg.v2_dom_bravo_seq.length : 1;
@@ -1733,6 +1864,7 @@ if (!window.__zuluMainInitialized) {
 
     function renderPlannerEventDetails(ev) {
         currentPlannerEvent = ev;
+        window.__currentPlannerEventRef = ev;
         renderPlannerEventsList();
         populatePlannerSchedulePresetSelect();
 
@@ -2367,6 +2499,8 @@ if (!window.__zuluMainInitialized) {
         if (!item) return;
 
         window.editingPlannerRoundIdx = idx;
+        window.__currentPlannerEventRef = currentPlannerEvent;
+
         const badge = MODE_BADGE_LABELS[item.mode] || (item.mode || 'sd').toUpperCase();
         const bannerTitle = document.getElementById('setup-planner-round-title');
         if (bannerTitle) {
@@ -2375,6 +2509,7 @@ if (!window.__zuluMainInitialized) {
 
         const effectiveCfg = item.config || getDefaultConfigForMode(item.mode);
         showView('setup', socket);
+        window.syncSetupFactionLabels();
         applyPresetToUI({ mode: item.mode, config: effectiveCfg });
     };
 
@@ -2391,6 +2526,7 @@ if (!window.__zuluMainInitialized) {
 
         window.editingPlannerRoundIdx = null;
         document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+        window.syncSetupFactionLabels();
 
         socket.emit('save_event_schedule', {
             id: currentPlannerEvent.id,
@@ -2403,7 +2539,38 @@ if (!window.__zuluMainInitialized) {
     window.cancelRoundRulesEditor = function() {
         window.editingPlannerRoundIdx = null;
         document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+        window.syncSetupFactionLabels();
         showView('arena-planner', socket);
+    };
+
+    window.loadScheduledPresetIntoSetup = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const item = currentPlannerEvent.schedule[idx];
+        if (!item) return;
+
+        window.editingPlannerRoundIdx = null;
+        document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+
+        // Schiera sempre fazioni e squadre dell'evento/partita quando si clicca [⚡ GIOCA]
+        const customMap = (item.use_custom_teams && item.team_map) ? item.team_map : null;
+        socket.emit('deploy_event_roster', {
+            event_id: currentPlannerEvent.id,
+            clear_existing: true,
+            custom_team_map: customMap,
+            silent: true
+        });
+
+        showView('setup', socket);
+        if (item.config && Object.keys(item.config).length > 0) {
+            applyPresetToUI({ mode: item.mode, config: item.config });
+            setPresetStatus(`PARTITA #${idx + 1}: ${item.title}`, "var(--sop-secondary)");
+        } else if (item.preset_id) {
+            const presetSelect = document.getElementById('setup-preset-select');
+            if (presetSelect) {
+                presetSelect.value = String(item.preset_id);
+                window.onPresetSelectChange(String(item.preset_id));
+            }
+        }
     };
 
     window.toggleScheduleRoundDone = function(idx) {
@@ -2431,37 +2598,6 @@ if (!window.__zuluMainInitialized) {
             notes: document.getElementById('plan-event-notes')?.value || ''
         });
         window.openTacticalAlert("Note di briefing della giornata salvate.", "BRIEFING SALVATO", "info");
-    };
-
-    window.loadScheduledPresetIntoSetup = function(idx) {
-        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
-        const item = currentPlannerEvent.schedule[idx];
-        if (!item) return;
-
-        window.editingPlannerRoundIdx = null;
-        document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
-
-        const customMap = (item.use_custom_teams && item.team_map) ? item.team_map : null;
-        if (customMap || Object.keys(arenaRoster || {}).length > 0) {
-            socket.emit('deploy_event_roster', {
-                event_id: currentPlannerEvent.id,
-                clear_existing: true,
-                custom_team_map: customMap,
-                silent: true
-            });
-        }
-
-        showView('setup', socket);
-        if (item.config && Object.keys(item.config).length > 0) {
-            applyPresetToUI({ mode: item.mode, config: item.config });
-            setPresetStatus(`PARTITA #${idx + 1}: ${item.title}`, "var(--sop-secondary)");
-        } else if (item.preset_id) {
-            const presetSelect = document.getElementById('setup-preset-select');
-            if (presetSelect) {
-                presetSelect.value = String(item.preset_id);
-                window.onPresetSelectChange(String(item.preset_id));
-            }
-        }
     };
 
     socket.on('events_update', (eventsList) => {
@@ -2554,6 +2690,7 @@ if (!window.__zuluMainInitialized) {
 
         updateMonitorDailyWins(currentFactions);
         renderV2Sequences();
+        window.syncSetupFactionLabels();
 
         const attackerSelect = document.getElementById('sd-attacker-team');
         if (attackerSelect) {

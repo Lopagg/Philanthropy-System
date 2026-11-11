@@ -6,7 +6,7 @@
     <div class="sop-card setup-panel">
         <div class="panel-header">
             <h2>MISSION CONFIGURATION</h2>
-            <button type="button" class="back-btn deck-btn" onclick="showView('hub')">[ CANCEL ]</button>
+            <button type="button" class="back-btn deck-btn" onclick="onSetupCancelClick()">[ CANCEL ]</button>
         </div>
 
         <div class="panel-body" style="overflow-y: auto; max-height: 75vh;">
@@ -235,28 +235,28 @@
                 <div id="dom-v2-modular-params" style="background: rgba(0, 0, 0, 0.2); padding: 15px; border: 1px dashed var(--sop-dim);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h4 style="color: var(--sop-text); margin: 0; letter-spacing: 2px;">V2 ZONE CAPTURE SEQUENCES</h4>
-                        <button type="button" class="deck-btn" style="padding: 4px 10px; font-size: 11px; color: var(--sop-secondary); border-color: var(--sop-secondary);" onclick="copyDomAlphaToBravo()">[ COPIA ALPHA → BRAVO ]</button>
+                        <button type="button" id="btn-copy-dom-seq" class="deck-btn" style="padding: 4px 10px; font-size: 11px; color: var(--sop-secondary); border-color: var(--sop-secondary);" onclick="copyDomAlphaToBravo()">[ COPIA ALPHA → BRAVO ]</button>
                     </div>
 
-                    <label class="setup-label" style="color: var(--team-a-color);">TEAM ALPHA CAPTURE SEQUENCE (BUTTON P1)</label>
+                    <label id="dom-seq-lbl-alpha" class="setup-label" style="color: var(--team-a-color);">TEAM ALPHA CAPTURE SEQUENCE (BUTTON P1)</label>
                     <div id="v2-dom-alpha-sequence-container" style="margin-bottom: 15px;"></div>
-                    <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('dom_alpha')">+ ADD ALPHA STEP</button>
+                    <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('dom_alpha')">+ ADD STEP</button>
 
-                    <label class="setup-label" style="color: var(--team-b-color);">TEAM BRAVO CAPTURE SEQUENCE (BUTTON P2)</label>
+                    <label id="dom-seq-lbl-bravo" class="setup-label" style="color: var(--team-b-color);">TEAM BRAVO CAPTURE SEQUENCE (BUTTON P2)</label>
                     <div id="v2-dom-bravo-sequence-container" style="margin-bottom: 10px;"></div>
-                    <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('dom_bravo')">+ ADD BRAVO STEP</button>
+                    <button type="button" class="deck-btn" style="padding: 5px 10px; font-size: 12px; margin-bottom: 20px; margin-left: 0;" onclick="addSequenceStep('dom_bravo')">+ ADD STEP</button>
 
                     <h5 style="color: var(--sop-secondary); margin-top: 15px; margin-bottom: 10px; letter-spacing: 1px;">STEP FAILURE PENALTY RULES (SE SI SBAGLIA UNO STEP)</h5>
                     <div class="row-inputs" style="margin-bottom: 15px;">
                         <div style="flex: 1;">
-                            <label class="setup-label" for="dom-v2-alpha-fail-mode" style="color: var(--team-a-color);">ON ALPHA STEP ERROR</label>
+                            <label id="dom-fail-lbl-alpha" class="setup-label" for="dom-v2-alpha-fail-mode" style="color: var(--team-a-color);">ON ALPHA STEP ERROR</label>
                             <select id="dom-v2-alpha-fail-mode" class="tactical-select">
                                 <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
                                 <option value="RESTART_SEQ">ANNULLA E RIPETI DA CAPO</option>
                             </select>
                         </div>
                         <div style="flex: 1;">
-                            <label class="setup-label" for="dom-v2-bravo-fail-mode" style="color: var(--team-b-color);">ON BRAVO STEP ERROR</label>
+                            <label id="dom-fail-lbl-bravo" class="setup-label" for="dom-v2-bravo-fail-mode" style="color: var(--team-b-color);">ON BRAVO STEP ERROR</label>
                             <select id="dom-v2-bravo-fail-mode" class="tactical-select">
                                 <option value="RETRY_STEP">RIPETI LO STEP SBAGLIATO</option>
                                 <option value="RESTART_SEQ">ANNULLA E RIPETI DA CAPO</option>
