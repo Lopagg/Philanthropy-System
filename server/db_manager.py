@@ -964,7 +964,7 @@ def add_event_participant(event_id, uid=None, guest_name=None, team='AUTO', need
 
 
 def update_event_participant(participant_id, action, value=None):
-    """Aggiorna squadra bozza (swap o set), flag noleggio o stato pagamento di un iscritto."""
+    """Aggiorna squadra bozza (swap o set), nome ospite, flag noleggio o stato pagamento di un iscritto."""
     pid = int(participant_id)
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -976,6 +976,15 @@ def update_event_participant(participant_id, action, value=None):
                 SET team = CASE WHEN team = 'ALPHA' THEN 'BRAVO' ELSE 'ALPHA' END
                 WHERE id = ?
             ''', (pid,))
+        elif action == 'rename_guest':
+            clean_name = str(value or '').strip().upper()
+            if clean_name:
+                c.execute("UPDATE event_participants SET guest_name = ? WHERE id = ?", (clean_name, pid))
+                # Se l'ospite aveva già ricevuto una tessera GUEST allo schieramento, aggiorna anche il suo alias
+                c.execute("SELECT assigned_uid FROM event_participants WHERE id = ?", (pid,))
+                row = c.fetchone()
+                if row and row[0]:
+                    c.execute("UPDATE players SET alias = ? WHERE uid = ?", (clean_name, row[0]))
         elif action == 'toggle_rental':
             c.execute("UPDATE event_participants SET needs_rental = CASE WHEN needs_rental = 1 THEN 0 ELSE 1 END WHERE id = ?", (pid,))
         elif action == 'toggle_paid':

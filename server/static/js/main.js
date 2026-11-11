@@ -1483,6 +1483,7 @@ if (!window.__zuluMainInitialized) {
     let gameEventsList = [];
     let currentPlannerEvent = null;
     let plannerTeamContext = 'BASE'; // 'BASE' oppure indice numerico della partita ('0', '1', ...)
+    let expandedScheduleRoundIdx = null; // Indice della partita con descrizione aperta
 
     const MODE_BADGE_LABELS = {
         'sd':  'S&D',
@@ -1575,6 +1576,7 @@ if (!window.__zuluMainInitialized) {
             `;
             li.onclick = () => {
                 plannerTeamContext = 'BASE';
+                expandedScheduleRoundIdx = null;
                 socket.emit('request_event_details', { id: ev.id });
             };
             listEl.appendChild(li);
@@ -1638,12 +1640,18 @@ if (!window.__zuluMainInitialized) {
                 ? `<span style="color:var(--sop-success); margin-left:auto;">Tag: ${p.assigned_uid.slice(-4)}</span>`
                 : `<span style="color:#666; margin-left:auto;">Tessera allo schieramento</span>`);
 
+        const safeName = String(p.display_name || '').replace(/'/g, "\\'");
+        const renameGuestBtn = !p.uid
+            ? `<span class="action-btn" style="padding:3px 7px; border:1px solid #555; color:#ccc;" onclick="renameEventGuestParticipant(${p.id}, '${safeName}')" title="Rinomina giocatore ospite">[✏️]</span>`
+            : '';
+
         li.innerHTML = `
             <div class="planner-player-top">
                 <div class="planner-player-name ${p.uid ? 'clickable-name' : ''}" title="${p.display_name}">
                     ${p.display_name}
                 </div>
                 <div style="display:flex; align-items:center; gap:5px; font-family:monospace; font-size:14px; flex-shrink:0;">
+                    ${renameGuestBtn}
                     <span class="action-btn" style="padding:3px 7px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="swapEventParticipantTeam(${p.id})" title="Sposta nell'altra squadra">[⇄]</span>
                     <span class="action-btn" style="padding:3px 7px; border:1px solid ${p.needs_rental ? 'var(--sop-secondary)' : '#333'}; background:${p.needs_rental ? 'rgba(255,153,0,0.18)' : 'transparent'}; color:${p.needs_rental ? 'var(--sop-secondary)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_rental')" title="Kit Noleggio ASG/Maschera">[🔫]</span>
                     <span class="action-btn" style="padding:3px 7px; border:1px solid ${p.paid ? 'var(--sop-success)' : '#333'}; background:${p.paid ? 'rgba(85,255,85,0.18)' : 'transparent'}; color:${p.paid ? 'var(--sop-success)' : '#555'};" onclick="toggleEventParticipantFlag(${p.id}, 'toggle_paid')" title="Quota Campo Saldata">[💶]</span>
@@ -1718,6 +1726,9 @@ if (!window.__zuluMainInitialized) {
         const sched = Array.isArray(ev.schedule) ? ev.schedule : [];
         if (plannerTeamContext !== 'BASE' && !sched[parseInt(plannerTeamContext)]) {
             plannerTeamContext = 'BASE';
+        }
+        if (expandedScheduleRoundIdx !== null && !sched[expandedScheduleRoundIdx]) {
+            expandedScheduleRoundIdx = null;
         }
 
         // 2. Selettore Contesto Squadre (Base vs Singola Partita)
@@ -1816,7 +1827,7 @@ if (!window.__zuluMainInitialized) {
             }
         }
 
-        // 6. Scaletta Partite (con Rinomina, Badge Modalità, Regole Anticipate e Squadre Dedicate)
+        // 6. Scaletta Partite (con Descrizione espandibile al click, Rinomina, Regole e Squadre)
         const schedListEl = document.getElementById('planner-schedule-list');
         if (schedListEl) {
             if (sched.length === 0) {
@@ -1824,18 +1835,44 @@ if (!window.__zuluMainInitialized) {
             } else {
                 schedListEl.innerHTML = '';
                 sched.forEach((item, idx) => {
-                    const isEditingTeamsHere = (plannerTeamContext === String(idx));
+                    const isCustomTeamsActiveHere = (plannerTeamContext === String(idx) && item.use_custom_teams);
+                    const isExpanded = (expandedScheduleRoundIdx === idx);
+                    const hasDesc = Boolean(item.description && item.description.trim().length > 0);
                     const modeBadge = MODE_BADGE_LABELS[item.mode] || (item.mode || 'sd').toUpperCase();
+
                     const li = document.createElement('li');
                     li.className = 'planner-player-card';
+                    li.style.cursor = 'pointer';
                     li.style.opacity = item.done ? '0.6' : '1';
+                    // Il bordo diventa arancione SOLO se questa partita ha davvero le squadre dedicate attive
                     li.style.borderLeft = item.done
                         ? '4px solid var(--sop-success)'
-                        : (isEditingTeamsHere ? '4px solid var(--sop-secondary)' : '4px solid var(--sop-primary)');
+                        : (isCustomTeamsActiveHere ? '4px solid var(--sop-secondary)' : '4px solid var(--sop-primary)');
+                    if (isExpanded) {
+                        li.style.background = 'rgba(0, 255, 204, 0.06)';
+                    }
 
                     const customTeamsTag = item.use_custom_teams
                         ? `<span style="color:var(--sop-secondary); font-weight:bold;">[🔀 SQUADRE DEDICATE]</span>`
                         : `<span style="color:#666;">[Squadre Base]</span>`;
+
+                    const descIndicator = hasDesc
+                        ? `<span style="color:var(--sop-primary); font-size:13px; flex-shrink:0;" title="Contiene descrizione partita">📝</span>`
+                        : `<span style="color:#555; font-size:11px; flex-shrink:0;" title="Clicca per aggiungere descrizione">▼</span>`;
+
+                    const descDrawerHtml = isExpanded ? `
+                        <div style="margin-top:8px; padding-top:8px; border-top:1px dashed var(--sop-dim); cursor:default;" onclick="event.stopPropagation()">
+                            <label style="font-size:11px; color:var(--sop-primary); letter-spacing:1px; display:block; margin-bottom:4px;">
+                                📝 DESCRIZIONE / BRIEFING PARTITA #${idx + 1}:
+                            </label>
+                            <textarea id="plan-round-desc-${idx}" class="setup-input tactical-textarea" rows="3" style="font-size:14px; padding:8px; width:100%;" placeholder="Scrivi qui lo scenario, gli obiettivi o le regole speciali di questo match...">${item.description || ''}</textarea>
+                            <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+                                <button type="button" class="deck-btn" style="margin:0; padding:5px 12px; font-size:12px; border-color:var(--sop-primary); color:var(--sop-primary);" onclick="saveScheduleRoundDescription(${idx})">
+                                    [ 💾 SALVA DESCRIZIONE ]
+                                </button>
+                            </div>
+                        </div>
+                    ` : '';
 
                     li.innerHTML = `
                         <div class="planner-player-top">
@@ -1843,30 +1880,72 @@ if (!window.__zuluMainInitialized) {
                                 <span style="background:rgba(0,255,204,0.15); border:1px solid var(--sop-primary); color:var(--sop-primary); padding:2px 7px; border-radius:3px; font-size:13px; font-weight:bold; flex-shrink:0;">
                                     #${idx + 1} ${modeBadge}
                                 </span>
-                                <span class="planner-player-name" style="color:${item.done ? 'var(--sop-success)' : '#fff'};" title="${item.title}">
+                                <span class="planner-player-name" style="color:${item.done ? 'var(--sop-success)' : '#fff'};" title="Clicca per aprire/chiudere la descrizione">
                                     ${item.title}
                                 </span>
-                                <span class="action-btn" style="color:#aaa; font-size:14px; flex-shrink:0;" onclick="renameScheduleRound(${idx})" title="Rinomina questa partita">[✏️]</span>
+                                ${descIndicator}
+                                <span class="action-btn" style="color:#aaa; font-size:14px; flex-shrink:0;" onclick="event.stopPropagation(); renameScheduleRound(${idx})" title="Rinomina questa partita">[✏️]</span>
                             </div>
                             <div style="display:flex; align-items:center; gap:5px; font-family:monospace; font-size:13px; flex-shrink:0;">
-                                <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:3px 6px;" onclick="toggleScheduleRoundDone(${idx})" title="Segna partita come completata">[✓]</span>
-                                <span class="action-btn" style="color:var(--sop-alert); padding:3px 5px;" onclick="removeScheduleRound(${idx})" title="Rimuovi partita">[✕]</span>
+                                <span class="action-btn" style="color:${item.done ? 'var(--sop-success)' : '#777'}; padding:3px 6px;" onclick="event.stopPropagation(); toggleScheduleRoundDone(${idx})" title="Segna partita come completata">[✓]</span>
+                                <span class="action-btn" style="color:var(--sop-alert); padding:3px 5px;" onclick="event.stopPropagation(); removeScheduleRound(${idx})" title="Rimuovi partita">[✕]</span>
                             </div>
                         </div>
                         <div class="planner-player-bottom" style="justify-content:space-between; margin-top:2px;">
                             <span>${summarizeRoundRules(item)} | ${customTeamsTag}</span>
-                            <div style="display:flex; gap:6px;">
+                            <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
                                 <span class="action-btn" style="color:var(--sop-secondary); border:1px solid var(--sop-secondary); padding:3px 8px;" onclick="selectRoundTeamsContext(${idx})" title="Imposta o rimescola le squadre per questa partita">[🔀 SQUADRE]</span>
                                 <span class="action-btn" style="color:#fff; border:1px solid #666; padding:3px 8px;" onclick="openRoundRulesEditor(${idx})" title="Prepara o modifica tutte le regole di questa partita">[⚙️ REGOLE]</span>
                                 <span class="action-btn" style="color:var(--sop-primary); border:1px solid var(--sop-primary); padding:3px 8px; font-weight:bold;" onclick="loadScheduledPresetIntoSetup(${idx})" title="Carica regole e squadre di questa partita per giocare">[⚡ GIOCA]</span>
                             </div>
                         </div>
+                        ${descDrawerHtml}
                     `;
+
+                    li.onclick = () => {
+                        expandedScheduleRoundIdx = (expandedScheduleRoundIdx === idx) ? null : idx;
+                        renderPlannerEventDetails(currentPlannerEvent);
+                    };
+
                     schedListEl.appendChild(li);
                 });
             }
         }
     }
+
+    // --- Gestione Descrizione Partita e Rinomina Ospite ---
+
+    window.saveScheduleRoundDescription = function(idx) {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const sched = [...currentPlannerEvent.schedule];
+        if (!sched[idx]) return;
+        const descEl = document.getElementById(`plan-round-desc-${idx}`);
+        sched[idx].description = (descEl?.value || '').trim();
+        socket.emit('save_event_schedule', {
+            id: currentPlannerEvent.id,
+            schedule: sched
+        });
+        logSystem(`PLANNER: Descrizione salvata per Partita #${idx + 1}.`);
+    };
+
+    window.renameEventGuestParticipant = function(participantId, currentName) {
+        if (!currentPlannerEvent) return;
+        window.openTacticalPrompt({
+            title: "RINOMINA GIOCATORE OSPITE",
+            label: "NUOVO NOME / CALLSIGN DELL'OSPITE",
+            defaultValue: currentName || "",
+            placeholder: "Es. MARCO ROSSI",
+            allowEmpty: false,
+            onConfirm: (newName) => {
+                socket.emit('update_event_participant', {
+                    event_id: currentPlannerEvent.id,
+                    participant_id: participantId,
+                    action: 'rename_guest',
+                    value: newName.toUpperCase()
+                });
+            }
+        });
+    };
 
     // --- Gestione Contesto Squadre per Partita e Rimescolamento ---
 
@@ -1881,7 +1960,6 @@ if (!window.__zuluMainInitialized) {
         const rnd = sched[idx];
         if (!rnd) return;
 
-        // Se non aveva ancora una mappa squadre dedicata, la inizializza copiando le squadre base
         if (!rnd.use_custom_teams) {
             rnd.use_custom_teams = true;
             if (!rnd.team_map || Object.keys(rnd.team_map).length === 0) {
@@ -1906,11 +1984,16 @@ if (!window.__zuluMainInitialized) {
         if (!rnd) return;
 
         rnd.use_custom_teams = Boolean(enabled);
-        if (enabled && (!rnd.team_map || Object.keys(rnd.team_map).length === 0)) {
-            rnd.team_map = {};
-            (currentPlannerEvent.participants || []).forEach(p => {
-                rnd.team_map[String(p.id)] = p.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
-            });
+        if (enabled) {
+            if (!rnd.team_map || Object.keys(rnd.team_map).length === 0) {
+                rnd.team_map = {};
+                (currentPlannerEvent.participants || []).forEach(p => {
+                    rnd.team_map[String(p.id)] = p.team === 'BRAVO' ? 'BRAVO' : 'ALPHA';
+                });
+            }
+        } else {
+            // Togliendo la spunta, riporta subito la vista alle Squadre Base spegnendo il bordo arancione
+            plannerTeamContext = 'BASE';
         }
         socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
     };
@@ -1920,7 +2003,6 @@ if (!window.__zuluMainInitialized) {
         const parts = Array.isArray(currentPlannerEvent.participants) ? [...currentPlannerEvent.participants] : [];
         if (parts.length < 2) return;
 
-        // Fisher-Yates shuffle bilanciato (metà ALPHA, metà BRAVO)
         for (let i = parts.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             const tmp = parts[i];
@@ -2003,6 +2085,8 @@ if (!window.__zuluMainInitialized) {
             () => {
                 socket.emit('delete_game_event', { id: currentPlannerEvent.id });
                 currentPlannerEvent = null;
+                plannerTeamContext = 'BASE';
+                expandedScheduleRoundIdx = null;
                 renderPlannerEventDetails(null);
             }
         );
@@ -2165,6 +2249,7 @@ if (!window.__zuluMainInitialized) {
                     preset_id: presetId,
                     title: customTitle.toUpperCase(),
                     mode: mode,
+                    description: '',
                     config: baseConfig,
                     use_custom_teams: false,
                     team_map: {},
@@ -2261,6 +2346,7 @@ if (!window.__zuluMainInitialized) {
         const sched = [...currentPlannerEvent.schedule];
         sched.splice(idx, 1);
         if (plannerTeamContext === String(idx)) plannerTeamContext = 'BASE';
+        if (expandedScheduleRoundIdx === idx) expandedScheduleRoundIdx = null;
         socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
     };
 
@@ -2282,8 +2368,6 @@ if (!window.__zuluMainInitialized) {
         window.editingPlannerRoundIdx = null;
         document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
 
-        // Se questa partita ha squadre dedicate (o se vogliamo applicare le squadre del round al roster attivo),
-        // aggiorna in automatico il roster attivo mantenendo le stesse tessere GUEST!
         const customMap = (item.use_custom_teams && item.team_map) ? item.team_map : null;
         if (customMap || Object.keys(arenaRoster || {}).length > 0) {
             socket.emit('deploy_event_roster', {
@@ -2310,10 +2394,10 @@ if (!window.__zuluMainInitialized) {
     socket.on('events_update', (eventsList) => {
         gameEventsList = Array.isArray(eventsList) ? eventsList : [];
 
-        // Se la giornata che avevamo aperta è stata eliminata, azzera il riferimento
         if (currentPlannerEvent && !gameEventsList.some(e => e.id === currentPlannerEvent.id)) {
             currentPlannerEvent = null;
             plannerTeamContext = 'BASE';
+            expandedScheduleRoundIdx = null;
         }
 
         renderPlannerEventsList();
@@ -2326,8 +2410,6 @@ if (!window.__zuluMainInitialized) {
             }
         }
     });
-
-    function presetsListFallback(arr) { return arr; }
 
     socket.on('event_details_data', (details) => {
         renderPlannerEventDetails(details);
