@@ -26,6 +26,7 @@ HoldButtonInteraction::HoldButtonInteraction(uint8_t buttonIndex, uint32_t durat
       _bgR(0), _bgG(0), _bgB(0),
       _cancelEvent(cancelEvent),
       _actionLabel(actionLabel.length() > 0 ? actionLabel : (buttonIndex == 1 ? "INNESCA" : "DISINNESCA")),
+      _immediateHold(true),
       _holdingStarted(false),
       _startTime(0),
       _result(INTERACTION_RUNNING) {
@@ -80,7 +81,16 @@ void HoldButtonInteraction::begin() {
         hardware.printLcdLine(1, "TIENI PREMUTO...", true);
         applyOledLabels(true);
         hardware.startToneSweep(_startFreq, _endFreq, _durationMs);
+    } else if (_immediateHold) {
+        // Se HOLD è il primo step (#1), la sequenza è stata avviata proprio premendo questo pulsante:
+        // se il pulsante risulta già rilasciato (tocco rapidissimo), fallisce subito per tornare a riposo!
+        _holdingStarted = true;
+        hardware.noTone();
+        hardware.playTone(250, 300);
+        hardware.triggerLedFlash(255, 80, 0, 90, 90, 3);
+        _result = INTERACTION_FAILED;
     } else {
+        // Step intermedio/finale (#2..#5): attende che l'operatore inizi a premere il pulsante
         _holdingStarted = false;
         String prompt = (_buttonIndex == 1) ? "TIENI PREMUTO P1" : "TIENI PREMUTO P2";
         hardware.printLcdLine(1, prompt, true);

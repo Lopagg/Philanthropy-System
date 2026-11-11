@@ -193,10 +193,15 @@ void DominationMode::startAlphaCapture() {
     _state = DOM_CAPTURING_ALPHA;
     updateSequenceColors();
     hardware.clearLcd();
+    _alphaSequence.begin();
+
+    if (_alphaSequence.getResult() != INTERACTION_RUNNING) {
+        enterCurrentOwnerIdleState(false);
+        return;
+    }
     if (_owner == OWNER_BRAVO) {
         hardware.playAudio("/audio/dom/zone_contested.mp3", AUDIO_CH_VOICE);
     }
-    _alphaSequence.begin();
     sendTelemetry();
 }
 
@@ -212,10 +217,15 @@ void DominationMode::startBravoCapture() {
     _state = DOM_CAPTURING_BRAVO;
     updateSequenceColors();
     hardware.clearLcd();
+    _bravoSequence.begin();
+
+    if (_bravoSequence.getResult() != INTERACTION_RUNNING) {
+        enterCurrentOwnerIdleState(false);
+        return;
+    }
     if (_owner == OWNER_ALPHA) {
         hardware.playAudio("/audio/dom/zone_contested.mp3", AUDIO_CH_VOICE);
     }
-    _bravoSequence.begin();
     sendTelemetry();
 }
 
@@ -553,13 +563,15 @@ void DominationMode::update() {
         return;
     }
 
-    // 1. Effetto Breathing LED continuo quando la zona non è in fase di cattura
-    if (_state == DOM_NEUTRAL) {
-        hardware.updateBreathingEffect(0, 180, 180);
-    } else if (_state == DOM_OWNED_ALPHA) {
-        hardware.updateBreathingEffect(_t1Color[0], _t1Color[1], _t1Color[2]);
-    } else if (_state == DOM_OWNED_BRAVO) {
-        hardware.updateBreathingEffect(_t2Color[0], _t2Color[1], _t2Color[2]);
+    // 1. Effetto Flash prioritario (conquista/errore) oppure Breathing LED continuo quando a riposo
+    if (!hardware.updateLedFlash()) {
+        if (_state == DOM_NEUTRAL) {
+            hardware.updateBreathingEffect(0, 180, 180);
+        } else if (_state == DOM_OWNED_ALPHA) {
+            hardware.updateBreathingEffect(_t1Color[0], _t1Color[1], _t1Color[2]);
+        } else if (_state == DOM_OWNED_BRAVO) {
+            hardware.updateBreathingEffect(_t2Color[0], _t2Color[1], _t2Color[2]);
+        }
     }
 
     // 2. Conteggio locale a 1 Hz del tempo di possesso per aggiornare l'LCD del prop
