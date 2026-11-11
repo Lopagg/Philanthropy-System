@@ -295,15 +295,20 @@
             </div>
         </div>
 
-        <!-- COLONNA 2: Partecipanti Previsti, Logistica e Bozza Squadre su 2 Colonne -->
+        <!-- COLONNA 2: Partecipanti (Switch tra Elenco Globale Iscritti e Divisione Squadre) -->
         <div class="sop-card" style="display: flex; flex-direction: column; min-height: 0;">
-            <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center; font-size: 16px;">
-                <span>👥 PARTECIPANTI &amp; BOZZA SQUADRE</span>
-                <div style="display: flex; gap: 8px;">
-                    <button type="button" id="btn-plan-shuffle" class="deck-btn hidden" style="margin: 0; padding: 5px 10px; font-size: 13px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="shuffleCurrentContextTeams()" title="Rimescola casualmente i giocatori in due squadre dello stesso numero">[ 🎲 RIMESCOLA ]</button>
-                    <button type="button" id="btn-plan-balance" class="deck-btn hidden" style="margin: 0; padding: 5px 10px; font-size: 13px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="autoBalanceCurrentEvent()" title="Bilancia automaticamente per ASD e Win-Rate">[ ⚖️ BILANCIA ASD ]</button>
-                    <button type="button" id="btn-plan-deploy" class="deck-btn hidden" style="margin: 0; padding: 5px 12px; font-size: 13px; border-color: var(--sop-success); color: var(--sop-success); font-weight: bold;" onclick="deployCurrentEventToRoster()" title="Assegna le tessere agli ospiti e carica queste squadre nel Roster attivo">[ 🚀 SCHIERA ORA ]</button>
+            <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center; font-size: 16px; gap: 10px;">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" id="btn-plan-tab-list" class="deck-btn" style="margin: 0; padding: 6px 14px; font-size: 14px; border-color: var(--sop-primary); color: #000; background: var(--sop-primary); font-weight: bold;" onclick="setPlannerCenterTab('LIST')">
+                        [ 📋 ISCRITTI &amp; QUOTE ]
+                    </button>
+                    <button type="button" id="btn-plan-tab-teams" class="deck-btn" style="margin: 0; padding: 6px 14px; font-size: 14px; border-color: var(--sop-dim); color: #aaa; background: transparent;" onclick="setPlannerCenterTab('TEAMS')">
+                        [ ⚔️ DIVISIONE SQUADRE ]
+                    </button>
                 </div>
+                <button type="button" id="btn-plan-deploy" class="deck-btn hidden" style="margin: 0; padding: 6px 14px; font-size: 14px; border-color: var(--sop-success); color: var(--sop-success); font-weight: bold;" onclick="deployCurrentEventToRoster()" title="Assegna le tessere agli ospiti e carica queste squadre nel Roster attivo">
+                    [ 🚀 SCHIERA ORA ]
+                </button>
             </div>
 
             <!-- Barra Contatori Logistici Campo -->
@@ -326,32 +331,9 @@
                 </div>
             </div>
 
-            <!-- Selettore Contesto Squadre (Squadre Base Giornata vs Squadre Dedicate per Singola Partita) -->
-            <div id="planner-team-context-bar" class="hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; background: rgba(0, 255, 204, 0.05); border-bottom: 1px solid var(--sop-dim); flex-shrink: 0;">
-                <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                    <span style="font-size: 13px; color: var(--sop-primary); font-weight: bold; white-space: nowrap;">🔀 VISTA SQUADRE:</span>
-                    <select id="plan-team-context-select" class="tactical-select" style="margin-bottom: 0; padding: 5px 10px; font-size: 14px; flex: 1;" onchange="onPlannerTeamContextChange(this.value)">
-                        <option value="BASE">📋 SQUADRE BASE GIORNATA (DEFAULT)</option>
-                    </select>
-                </div>
-                <label id="plan-round-custom-teams-lbl" class="hidden" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sop-secondary); font-weight: bold; cursor: pointer; white-space: nowrap;">
-                    <input type="checkbox" id="plan-round-custom-teams-chk" style="width: 16px; height: 16px; accent-color: var(--sop-secondary); cursor: pointer;" onchange="toggleRoundCustomTeams(this.checked)">
-                    SQUADRE DEDICATE PER QUESTA PARTITA
-                </label>
-            </div>
-
             <!-- Banner di Avviso se gli Ospiti superano le Tessere Guest disponibili nel DB -->
             <div id="planner-guest-warning" class="hidden" style="background: rgba(255, 51, 51, 0.18); border-bottom: 2px solid var(--sop-alert); color: var(--sop-alert); padding: 8px 14px; font-size: 14px; font-weight: bold; text-align: center; letter-spacing: 1px; flex-shrink: 0;">
                 ⚠️ ATTENZIONE: GLI OSPITI PREVISTI SUPERANO LE TESSERE GUEST DISPONIBILI NEL DATABASE!
-            </div>
-
-            <!-- Barra Aggiunta Rapida Operatore PRO dal DB o Ospite -->
-            <div id="planner-add-bar" class="hidden" style="display: flex; gap: 10px; padding: 10px 15px; border-bottom: 1px dashed var(--sop-dim); align-items: center; flex-shrink: 0;">
-                <select id="plan-add-db-select" class="tactical-select" style="flex: 1; margin-bottom: 0; padding: 8px 12px; font-size: 15px;">
-                    <option value="">+ Seleziona operatore PRO registrato...</option>
-                </select>
-                <button type="button" class="deck-btn" style="margin: 0; padding: 8px 14px; font-size: 14px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="addSelectedDbPlayerToEvent()">[ + AGGIUNGI PRO ]</button>
-                <button type="button" class="deck-btn" style="margin: 0; padding: 8px 14px; font-size: 14px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="promptAddGuestToEvent()" title="Aggiungi un giocatore ospite (la tessera verrà assegnata allo schieramento)">[ + AGGIUNGI OSPITE ]</button>
             </div>
 
             <!-- Messaggio quando nessuna giornata è selezionata -->
@@ -359,22 +341,54 @@
                 SELEZIONA UNA GIORNATA DAL CALENDARIO A SINISTRA
             </div>
 
-            <!-- Griglia Bozza Squadre a 2 Colonne (ALPHA e BRAVO) -->
-            <div id="planner-teams-container" class="planner-teams-grid hidden">
-                <div class="planner-team-col" id="plan-col-alpha">
-                    <div class="planner-team-col-header" id="plan-hdr-alpha" style="background: rgba(255, 51, 51, 0.18); color: var(--team-a-color);">
-                        <span>ALPHA</span>
-                        <span id="plan-cnt-alpha">0</span>
-                    </div>
-                    <ul id="planner-list-alpha" class="roster-list" style="flex: 1; overflow-y: auto; padding: 8px;"></ul>
+            <!-- SOTTO-VISTA 1: ELENCO GLOBALE ISCRITTI (Colonna Singola Larga con Rinomina, Noleggio, Pagamento) -->
+            <div id="planner-subview-list" class="hidden" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                <div style="display: flex; gap: 10px; padding: 10px 15px; border-bottom: 1px dashed var(--sop-dim); align-items: center; flex-shrink: 0;">
+                    <select id="plan-add-db-select" class="tactical-select" style="flex: 1; margin-bottom: 0; padding: 8px 12px; font-size: 15px;">
+                        <option value="">+ Seleziona operatore PRO registrato...</option>
+                    </select>
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 8px 14px; font-size: 14px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="addSelectedDbPlayerToEvent()">[ + AGGIUNGI PRO ]</button>
+                    <button type="button" class="deck-btn" style="margin: 0; padding: 8px 14px; font-size: 14px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="promptAddGuestToEvent()" title="Aggiungi un giocatore ospite (la tessera verrà assegnata allo schieramento)">[ + AGGIUNGI OSPITE ]</button>
                 </div>
 
-                <div class="planner-team-col" id="plan-col-bravo">
-                    <div class="planner-team-col-header" id="plan-hdr-bravo" style="background: rgba(85, 255, 85, 0.18); color: var(--team-b-color);">
-                        <span>BRAVO</span>
-                        <span id="plan-cnt-bravo">0</span>
+                <ul id="planner-global-list" class="roster-list" style="flex: 1; overflow-y: auto; padding: 12px;"></ul>
+            </div>
+
+            <!-- SOTTO-VISTA 2: DIVISIONE SQUADRE (2 Colonne Pulite Alpha / Bravo + Rimescolamento per Partita) -->
+            <div id="planner-subview-teams" class="hidden" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 14px; background: rgba(0, 255, 204, 0.05); border-bottom: 1px solid var(--sop-dim); flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px;">
+                        <span style="font-size: 13px; color: var(--sop-primary); font-weight: bold; white-space: nowrap;">🔀 CONTESTO:</span>
+                        <select id="plan-team-context-select" class="tactical-select" style="margin-bottom: 0; padding: 6px 10px; font-size: 14px; flex: 1;" onchange="onPlannerTeamContextChange(this.value)">
+                            <option value="BASE">📋 SQUADRE BASE GIORNATA (DEFAULT)</option>
+                        </select>
                     </div>
-                    <ul id="planner-list-bravo" class="roster-list" style="flex: 1; overflow-y: auto; padding: 8px;"></ul>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label id="plan-round-custom-teams-lbl" class="hidden" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sop-secondary); font-weight: bold; cursor: pointer; white-space: nowrap; margin-right: 4px;">
+                            <input type="checkbox" id="plan-round-custom-teams-chk" style="width: 16px; height: 16px; accent-color: var(--sop-secondary); cursor: pointer;" onchange="toggleRoundCustomTeams(this.checked)">
+                            DEDICATE
+                        </label>
+                        <button type="button" class="deck-btn" style="margin: 0; padding: 6px 10px; font-size: 13px; border-color: var(--sop-primary); color: var(--sop-primary);" onclick="shuffleCurrentContextTeams()" title="Rimescola casualmente i giocatori in due squadre dello stesso numero">[ 🎲 RIMESCOLA ]</button>
+                        <button type="button" class="deck-btn" style="margin: 0; padding: 6px 10px; font-size: 13px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="autoBalanceCurrentEvent()" title="Bilancia le squadre mantenendo uniti i compagni di ASD">[ ⚖️ BILANCIA ASD ]</button>
+                    </div>
+                </div>
+
+                <div class="planner-teams-grid">
+                    <div class="planner-team-col" id="plan-col-alpha">
+                        <div class="planner-team-col-header" id="plan-hdr-alpha" style="background: rgba(255, 51, 51, 0.18); color: var(--team-a-color);">
+                            <span>ALPHA</span>
+                            <span id="plan-cnt-alpha">0</span>
+                        </div>
+                        <ul id="planner-list-alpha" class="roster-list" style="flex: 1; overflow-y: auto; padding: 8px;"></ul>
+                    </div>
+
+                    <div class="planner-team-col" id="plan-col-bravo">
+                        <div class="planner-team-col-header" id="plan-hdr-bravo" style="background: rgba(85, 255, 85, 0.18); color: var(--team-b-color);">
+                            <span>BRAVO</span>
+                            <span id="plan-cnt-bravo">0</span>
+                        </div>
+                        <ul id="planner-list-bravo" class="roster-list" style="flex: 1; overflow-y: auto; padding: 8px;"></ul>
+                    </div>
                 </div>
             </div>
         </div>
