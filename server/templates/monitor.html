@@ -35,7 +35,7 @@
 
     /* 1. Timer Globale sempre ad altezza fissa e costante */
     #view-monitor .widget-timer {
-        flex: 0 0 215px;
+        flex: 0 0 220px;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -45,7 +45,6 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 10px;
     }
 
     /* 2. Tactical Feed / Map prende tutto lo spazio rimanente a sinistra */
@@ -65,9 +64,10 @@
         min-height: 0;
     }
 
-    /* 3. Operator Count con altezza controllata e scroll interno per le liste */
+    /* 3. Operator Count: mantiene l'allineamento e i font nativi di style.css
+          aggiungendo solo lo scorrimento verticale interno quando ci sono molti giocatori */
     #view-monitor .widget-factions {
-        flex: 1.08;
+        flex: 1.1;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -79,37 +79,19 @@
         flex-direction: column;
         min-height: 0;
         overflow: hidden;
-        padding: 12px 15px;
     }
     #view-monitor .faction-grid {
         flex-shrink: 0;
-        margin-bottom: 10px;
-        padding-bottom: 8px;
     }
     #view-monitor .faction-rosters {
         flex: 1;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 15px;
-        min-height: 0;
-        overflow: hidden;
-    }
-    #view-monitor .monitor-roster-list {
-        height: 100%;
         min-height: 0;
         overflow-y: auto;
-        padding-right: 4px;
-        margin: 0;
-    }
-    #view-monitor .monitor-roster-list li {
-        padding: 5px 8px;
-        font-size: 16px;
-        line-height: 1.25;
     }
 
-    /* 4. Daily Match Wins + Mission Intel sempre visibili e mai schiacciati */
+    /* 4. Daily Match Wins + Mission Intel sempre visibili e proporzionati */
     #view-monitor .widget-rules {
-        flex: 0.92;
+        flex: 0.9;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -119,7 +101,6 @@
         flex: 1;
         min-height: 0;
         overflow-y: auto;
-        padding: 10px 15px;
     }
     #view-monitor .rules-footer {
         flex-shrink: 0;
@@ -131,12 +112,12 @@
 
 <div id="view-monitor" class="view-panel hidden">
     <div class="monitor-controls" style="flex-shrink: 0;">
-        <button type="button" class="back-btn deck-btn" onclick="goBackView('hub')" style="margin-bottom: 6px; margin-left: 0;">[ &lt; RETURN TO HUB ]</button>
+        <button type="button" class="back-btn deck-btn" onclick="goBackView('hub')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; RETURN TO HUB ]</button>
         <span class="monitor-label">STATUS: <span style="color: var(--sop-primary);">GLOBAL TELEMETRY</span></span>
     </div>
     
-    <div style="text-align: center; margin-bottom: 12px; flex-shrink: 0;">
-        <h2 id="monitor-mode-title" style="color: var(--sop-text); letter-spacing: 4px; font-size: 26px; font-weight: bold; margin: 0; text-shadow: 0 0 15px rgba(0,255,204,0.4);">AWAITING MISSION DATA...</h2>
+    <div style="text-align: center; margin-bottom: 15px; flex-shrink: 0;">
+        <h2 id="monitor-mode-title" style="color: var(--sop-text); letter-spacing: 4px; font-size: 28px; font-weight: bold; margin: 0; text-shadow: 0 0 15px rgba(0,255,204,0.4);">AWAITING MISSION DATA...</h2>
     </div>
 
     <div class="monitor-columns-layout">
@@ -216,21 +197,21 @@
             <!-- 4. Vittorie Giornaliere e Riepilogo Regole Missione -->
             <div id="widget-sd-rules" class="widget sop-card widget-rules">
                 <div class="widget-header" style="border-bottom: 1px solid var(--sop-dim); flex-shrink: 0;">DAILY MATCH WINS</div>
-                <div style="display: flex; justify-content: space-around; align-items: center; padding: 8px 0; border-bottom: 2px dashed var(--sop-dim); background: rgba(0,0,0,0.4); flex-shrink: 0;">
+                <div style="display: flex; justify-content: space-around; align-items: center; padding: 15px 0; border-bottom: 2px dashed var(--sop-dim); background: rgba(0,0,0,0.4); flex-shrink: 0;">
                     <div style="text-align: center;">
-                        <div style="font-size: 12px; letter-spacing: 2px; margin-bottom: 2px; color: var(--team-a-color);" id="monitor-wins-lbl-a">ALPHA</div>
-                        <div id="monitor-wins-alpha" style="font-size: 34px; font-weight: bold; line-height: 1; color: var(--team-a-color); text-shadow: 0 0 10px rgba(255, 51, 51, 0.4);">0</div>
+                        <div style="font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; color: var(--team-a-color);" id="monitor-wins-lbl-a">ALPHA</div>
+                        <div id="monitor-wins-alpha" style="font-size: 45px; font-weight: bold; line-height: 1; color: var(--team-a-color); text-shadow: 0 0 10px rgba(255, 51, 51, 0.4);">0</div>
                     </div>
-                    <div style="font-size: 20px; color: #555; font-weight: bold;">-</div>
+                    <div style="font-size: 24px; color: #555; font-weight: bold;">-</div>
                     <div style="text-align: center;">
-                        <div style="font-size: 12px; letter-spacing: 2px; margin-bottom: 2px; color: var(--team-b-color);" id="monitor-wins-lbl-b">BRAVO</div>
-                        <div id="monitor-wins-bravo" style="font-size: 34px; font-weight: bold; line-height: 1; color: var(--team-b-color); text-shadow: 0 0 10px rgba(85, 255, 85, 0.4);">0</div>
+                        <div style="font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; color: var(--team-b-color);" id="monitor-wins-lbl-b">BRAVO</div>
+                        <div id="monitor-wins-bravo" style="font-size: 45px; font-weight: bold; line-height: 1; color: var(--team-b-color); text-shadow: 0 0 10px rgba(85, 255, 85, 0.4);">0</div>
                     </div>
                 </div>
 
                 <div class="widget-header" style="flex-shrink: 0;">MISSION INTEL // RULES</div>
                 <div class="widget-body rules-body">
-                    <ul id="sd-rules-list" class="rules-list" style="margin: 0;">
+                    <ul id="sd-rules-list" class="rules-list">
                         <li>WAITING FOR TELEMETRY...</li>
                     </ul>
                 </div>
