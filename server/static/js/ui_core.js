@@ -1,11 +1,15 @@
 /**
  * @file ui_core.js
- * @brief Gestione della navigazione tra viste, Mini-Log di sistema, lista nodi
- *        hardware (Asset) e pannello Inspector.
+ * @brief Gestione della navigazione tra viste (con History API del browser e stack Indietro),
+ *        Mini-Log di sistema, lista nodi hardware (Asset) e pannello Inspector.
  */
 
 export let activeInspectorId = null;
 let cachedDevicesList = [];
+let currentActiveView = 'hub';
+let viewHistoryStack = ['hub'];
+let cachedNavSocket = null;
+let historyListenerInitialized = false;
 
 const MAX_LOG_ENTRIES = 50;
 
@@ -22,15 +26,132 @@ const VIEW_IDS = {
 };
 
 // ============================================================================
-// NAVIGAZIONE VISTE E LOG DI SISTEMA
+// NAVIGAZIONE VISTE, HISTORY API (TASTO INDIETRO MOUSE) E LOG DI SISTEMA
 // ============================================================================
 
-export function showView(viewName, socket) {
-    if (viewName === 'arena-db' && socket) {
-        socket.emit('request_database');
-    } else if (viewName === 'arena-planner' && socket) {
-        socket.emit('request_events');
-        socket.emit('request_database');
+/**
+ * @brief Controlla se c'è una finestra modale aperta e, in caso affermativo, la chiude.
+ * @return true se ha chiuso un modale, false se nessun modale era aperto.
+ */
+function closeTopOpenModalIfAny() {
+    const dialogModal = document.getElementById('tactical-dialog-modal');
+    if (dialogModal && !dialogModal.classList.contains('hidden')) {
+        window.cancelTacticalDialog?.();
+        return true;
+    }
+    const promptModal = document.getElementById('preset-name-modal');
+    if (promptModal && !promptModal.classList.contains('hidden')) {
+        window.closePresetNameModal?.();
+        return true;
+    }
+    const cropModal = document.getElementById('crop-modal');
+    if (cropModal && !cropModal.classList.contains('hidden')) {
+        window.closeCropModal?.();
+        return true;
+    }
+    const opModal = document.getElementById('operator-modal');
+    if (opModal && !opModal.classList.contains('hidden')) {
+        window.closeModal?.();
+        return true;
+    }
+    const addModal = document.getElementById('add-player-modal');
+    if (addModal && !addModal.classList.contains('hidden')) {
+        window.closeAddPlayerModal?.();
+        return true;
+    }
+    const regModal = document.getElementById('registration-modal');
+    if (regModal && !regModal.classList.contains('hidden')) {
+        window.closeRegistrationModal?.();
+        return true;
+    }
+    const facModal = document.getElementById('faction-edit-modal');
+    if (facModal && !facModal.classList.contains('hidden')) {
+        window.closeFactionModal?.();
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Inizializza l'intercettazione del tasto Indietro del mouse/browser (popstate)
+ *        impedendo di tornare accidentalmente alla pagina di login.
+ */
+function initBrowserHistoryNavigation() {
+    if (historyListenerInitialized) return;
+    historyListenerInitialized = true;
+
+    // Inserisce uno stato sentinella + lo stato iniziale per bloccare il ritorno a /login
+    window.history.replaceState({ view: 'hub', guard: true }, '', '#hub');
+    window.history.pushState({ view: 'hub' }, '', '#hub');
+
+    window.addEventListener('popstate', () => {
+        // 1. Se c'è un modal aperto, il tasto Indietro del mouse chiude solo il modal
+        if (closeTopOpenModalIfAny()) {
+            window.history.pushState({ view: currentActiveView }, '', `#${currentActiveView}`);
+            return;
+        }
+
+        // 2. Se eravamo nell'editor regole di una partita del Planner, torna al Planner
+        if (currentActiveView === 'setup' && window.editingPlannerRoundIdx !== null) {
+            window.editingPlannerRoundIdx = null;
+            document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+            window.syncSetupFactionLabels?.();
+            showView('arena-planner', cachedNavSocket, false);
+            window.history.pushState({ view: 'arena-planner' }, '', '#arena-planner');
+            return;
+        }
+
+        // 3. Torna alla vista precedente nello stack interno
+        if (viewHistoryStack.length > 1) {
+            viewHistoryStack.pop(); // Rimuove la vista corrente
+            const prevView = viewHistoryStack[viewHistoryStack.length - 1] || 'hub';
+            showView(prevView, cachedNavSocket, false);
+            window.history.pushState({ view: prevView }, '', `#${prevView}`);
+        } else {
+            // Siamo già su HUB: rimette lo stato per non far mai uscire il browser verso /login
+            showView('hub', cachedNavSocket, false);
+            window.history.pushState({ view: 'hub' }, '', '#hub');
+        }
+    });
+}
+
+/**
+ * @brief Torna dinamicamente alla schermata visitata prima di quella attuale.
+ */
+export function goBackView(fallbackView = 'hub') {
+    if (currentActiveView === 'setup' && window.editingPlannerRoundIdx !== null) {
+        window.cancelRoundRulesEditor?.();
+        return;
+    }
+    if (viewHistoryStack.length > 1) {
+        viewHistoryStack.pop();
+        const prevView = viewHistoryStack[viewHistoryStack.length - 1] || fallbackView;
+        showView(prevView, cachedNavSocket, false);
+        window.history.pushState({ view: prevView }, '', `#${prevView}`);
+    } else {
+        showView(fallbackView, cachedNavSocket, true);
+    }
+}
+
+window.goBackView = goBackView;
+
+export function showView(viewName, socket, pushToHistory = true) {
+    initBrowserHistoryNavigation();
+    if (socket) cachedNavSocket = socket;
+    const activeSocket = socket || cachedNavSocket || window.__zuluSocket;
+
+    // Se si cambia vista mentre si era in modalità pianificazione round, ripulisce il banner
+    if (viewName !== 'setup' && window.editingPlannerRoundIdx !== null) {
+        window.editingPlannerRoundIdx = null;
+        document.getElementById('setup-planner-round-banner')?.classList.add('hidden');
+        window.syncSetupFactionLabels?.();
+    }
+
+    if (viewName === 'arena-db' && activeSocket) {
+        activeSocket.emit('request_database');
+    } else if (viewName === 'arena-planner' && activeSocket) {
+        activeSocket.emit('request_events');
+        activeSocket.emit('request_database');
     }
 
     Object.values(VIEW_IDS).forEach(id => {
@@ -48,12 +169,37 @@ export function showView(viewName, socket) {
         targetEl.classList.add('active');
     }
 
-    if (viewName === 'hub') {
+    if (viewName !== 'inspector') {
         activeInspectorId = null;
         document.querySelectorAll('.device-item').forEach(el => el.classList.remove('active'));
-    } else if (viewName === 'setup' && typeof window.updateUIForTargetVersion === 'function') {
+    }
+
+    if (viewName === 'setup' && typeof window.updateUIForTargetVersion === 'function') {
         window.updateUIForTargetVersion();
     }
+
+    if (pushToHistory && viewName !== currentActiveView) {
+        // Evita duplicati consecutivi nello stack
+        if (viewHistoryStack[viewHistoryStack.length - 1] !== viewName) {
+            viewHistoryStack.push(viewName);
+            if (viewHistoryStack.length > 25) viewHistoryStack.shift();
+        }
+        window.history.pushState({ view: viewName }, '', `#${viewName}`);
+    }
+
+    currentActiveView = viewName;
+    updateQuickNavHighlight(viewName);
+}
+
+function updateQuickNavHighlight(viewName) {
+    document.querySelectorAll('.quick-nav-btn').forEach(btn => {
+        const target = btn.dataset.navTarget;
+        const isMatch = (target === viewName) ||
+                        (target === 'arena-menu' && viewName.startsWith('arena-') && viewName !== 'arena-planner');
+        btn.style.background  = isMatch ? 'rgba(0, 255, 204, 0.18)' : 'transparent';
+        btn.style.borderColor = isMatch ? 'var(--sop-primary)' : 'var(--sop-dim)';
+        btn.style.color       = isMatch ? 'var(--sop-primary)' : '#aaa';
+    });
 }
 
 export function logSystem(text) {
@@ -111,6 +257,11 @@ export function updateDeviceList(devices, socket, setMonitoredDeviceCb) {
         `;
 
         li.addEventListener('click', () => {
+            // Se clicchi sullo stesso nodo già aperto nell'Inspector, chiude l'Inspector e torna indietro!
+            if (currentActiveView === 'inspector' && activeInspectorId === device.id) {
+                goBackView('hub');
+                return;
+            }
             activeInspectorId = device.id;
             updateInspectorData(device);
             showView('inspector', socket);

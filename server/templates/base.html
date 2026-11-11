@@ -41,7 +41,7 @@
              ================================================================== -->
         <header class="system-header sop-panel">
             <div class="header-left">
-                <div class="logo-box">
+                <div class="logo-box" style="cursor: pointer;" onclick="showView('hub')">
                     <span class="logo-text">PHILANTHROPY</span>
                     <span class="logo-sub">SYSTEM // SOP</span>
                 </div>
@@ -114,14 +114,19 @@
              FOOTER COMANDI RAPIDI E OVERRIDE DI EMERGENZA
              ================================================================== -->
         <footer class="command-deck sop-panel">
-            <div class="deck-label">QUICK COMMANDS // OVERRIDE</div>
-            <div class="deck-controls">
-                <button type="button" class="deck-btn" onclick="showView('monitor')">[ LIVE MONITOR ]</button>
-                <button type="button" class="deck-btn btn-warning" onclick="sendEnvCommand('SIREN_LONG')">[ ARENA HORN ]</button>
-                <button type="button" class="deck-btn btn-danger" onclick="uiForceEndMission()">[ STOP MATCH ]</button>
-                <button type="button" class="deck-btn btn-danger" style="border-color: var(--sop-alert); color: var(--sop-alert); margin-left: auto;" onclick="triggerServerReset()">[ SERVER RESET ]</button>
-            </div>
-        </footer>
+          <div class="deck-label">QUICK NAV &amp; OVERRIDE</div>
+          <div class="deck-controls">
+              <button type="button" class="deck-btn quick-nav-btn" data-nav-target="hub" onclick="showView('hub')">[ 🏠 HUB ]</button>
+              <button type="button" class="deck-btn quick-nav-btn" data-nav-target="arena-planner" onclick="showView('arena-planner')">[ 📅 PLANNER ]</button>
+              <button type="button" class="deck-btn quick-nav-btn" data-nav-target="arena-manage" onclick="showView('arena-manage')">[ 👥 ROSTER ]</button>
+              <button type="button" class="deck-btn quick-nav-btn" data-nav-target="setup" onclick="showView('setup')">[ ⚡ SETUP ]</button>
+              <button type="button" class="deck-btn quick-nav-btn" data-nav-target="monitor" onclick="showView('monitor')">[ 👁️ MONITOR ]</button>
+              <span style="width: 1px; height: 26px; background: var(--sop-dim); margin: 0 8px;"></span>
+              <button type="button" class="deck-btn btn-warning" onclick="sendEnvCommand('SIREN_LONG')">[ ARENA HORN ]</button>
+              <button type="button" class="deck-btn btn-danger" onclick="uiForceEndMission()">[ STOP MATCH ]</button>
+              <button type="button" class="deck-btn btn-danger" style="border-color: var(--sop-alert); color: var(--sop-alert); margin-left: auto;" onclick="triggerServerReset()">[ SERVER RESET ]</button>
+          </div>
+      </footer>
 
     </div>
 
