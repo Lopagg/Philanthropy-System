@@ -2,8 +2,8 @@
      tv.html
      Dashboard pubblica a tutto schermo per la Sala d'Attesa / Spettatori (16:9).
      Sincronizza in tempo reale timer, meteo tattico, stato bomba/dominio,
-     roster in campo (con stato check-in Kiosk e ridimensionamento dinamico del font)
-     e regole complete di missione (sequenze modulari V2, penalità errore ed effetti).
+     roster in campo (con ridimensionamento dinamico del font + auto-scroll in loop
+     per squadre molto numerose) e regole complete di missione.
      ========================================================================== -->
 <!DOCTYPE html>
 <html lang="it">
@@ -33,7 +33,7 @@
             height: 100vh;
             padding: 25px;
             box-sizing: border-box;
-            gap: 25px;
+            gap: 22px;
             z-index: 2;
             position: relative;
         }
@@ -69,15 +69,16 @@
             flex-direction: column; 
             box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
             min-height: 0;
+            overflow: hidden;
         }
         
         .tv-timer-huge { 
-            font-size: 13rem; 
+            font-size: 12.5rem; 
             text-align: center;
             margin: auto; 
             color: var(--sop-primary); 
             text-shadow: 0 0 20px rgba(0, 255, 204, 0.3); 
-            line-height: 1;
+            line-height: 0.92;
             font-weight: bold;
         }
         
@@ -120,10 +121,13 @@
             justify-content: flex-start;
             align-items: stretch;
             background: rgba(0, 0, 0, 0.3);
-            padding: 15px 25px;
+            padding: 12px 18px;
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 0;
             border-left: 5px solid transparent;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
         }
         .tv-roster-row.alpha { border-left-color: var(--team-a-color); }
         .tv-roster-row.bravo { border-left-color: var(--team-b-color); }
@@ -134,12 +138,13 @@
             align-items: center;
             width: 100%;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 5px;
-            margin-bottom: 10px;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+            flex-shrink: 0;
         }
-        .tv-roster-name  { font-size: 3.2rem; color: #ccc; font-weight: bold; }
-        .tv-roster-sub   { font-size: 1.1rem; color: #888; letter-spacing: 1px; font-family: monospace; display: block; margin-top: 2px; }
-        .tv-roster-count { font-size: 6rem; font-weight: bold; line-height: 1; }
+        .tv-roster-name  { font-size: 2.8rem; color: #ccc; font-weight: bold; line-height: 1; }
+        .tv-roster-sub   { font-size: 1.05rem; color: #888; letter-spacing: 1px; font-family: monospace; display: block; margin-top: 4px; }
+        .tv-roster-count { font-size: 5.2rem; font-weight: bold; line-height: 1; }
         
         .tv-roster-list {
             list-style: none;
@@ -147,19 +152,26 @@
             margin: 0;
             display: flex;
             flex-direction: column;
-            gap: 10px; 
-            overflow: hidden;
+            gap: 8px;
+            flex: 1;
+            min-height: 0;
+            overflow-y: hidden;
+            scroll-behavior: auto;
         }
         .tv-roster-list li {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.55);
+            padding: 8px 14px;
             border-radius: 6px;
-            font-size: 2.2rem;
+            font-size: 2.0rem;
+            line-height: 1.2;
             color: #fff;
             border-left: 6px solid #555;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            flex-shrink: 0; /* Impedisce che i box vengano schiacciati tagliando le lettere */
+            display: flex;
+            align-items: center;
         }
 
         .tv-dom-score { font-size: 6rem; font-weight: bold; line-height: 1; }
@@ -199,17 +211,17 @@
             line-height: 1.5;
         }
 
-        /* Animazioni ingresso/uscita operatori nel roster */
+        /* Animazioni ingresso/uscita operatori nel roster (senza max-height fisso che taglia il testo) */
         @keyframes slideInLeft {
-            0%   { opacity: 0; transform: translateX(-50px); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; border-width: 0; }
-            100% { opacity: 1; transform: translateX(0); max-height: 80px; padding-top: 10px; padding-bottom: 10px; margin-top: 0; border-width: 6px; }
+            0%   { opacity: 0; transform: translateX(-40px); }
+            100% { opacity: 1; transform: translateX(0); }
         }
         @keyframes slideOutRight {
-            0%   { opacity: 1; transform: translateX(0); max-height: 80px; padding-top: 10px; padding-bottom: 10px; margin-top: 0; border-width: 6px; }
-            100% { opacity: 0; transform: translateX(50px); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; border-width: 0; overflow: hidden; }
+            0%   { opacity: 1; transform: translateX(0); }
+            100% { opacity: 0; transform: translateX(40px); }
         }
-        .anim-enter { animation: slideInLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-        .anim-exit  { animation: slideOutRight 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .anim-enter { animation: slideInLeft 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .anim-exit  { animation: slideOutRight 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
     </style>
 </head>
 <body class="sop-theme">
@@ -248,23 +260,23 @@
         </header>
 
         <div class="tv-grid">
-            <!-- Colonna 1: Timer Globale e Operatori Attivi in Campo -->
-            <div style="display: flex; flex-direction: column; gap: 25px; min-height: 0;">
-                <div class="sop-card tv-widget" style="flex: 0.8;">
+            <!-- Colonna 1: Timer Globale Compatto (220px) + Operatori Attivi in Campo Espanso -->
+            <div style="display: flex; flex-direction: column; gap: 20px; min-height: 0; height: 100%;">
+                <div class="sop-card tv-widget" style="flex: 0 0 220px;">
                     <div class="widget-header">GLOBAL MATCH TIMER</div>
                     <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
                         <div id="tv-global-timer" class="tv-timer-huge">--:--</div>
                     </div>
                 </div>
                 
-                <div class="sop-card tv-widget" style="flex: 1.2;">
-                    <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="sop-card tv-widget" style="flex: 1; min-height: 0;">
+                    <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
                         <span>ACTIVE OPERATORS IN FIELD</span>
                         <span id="tv-checkin-badge" style="font-size: 1.1rem; color: var(--sop-dim); font-family: monospace;">ROSTER: 0/0</span>
                     </div>
-                    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 15px 10px 0 10px; min-height: 0;">
+                    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 12px; min-height: 0; overflow: hidden;">
                         
-                        <div class="tv-roster-row alpha" style="margin-bottom: 0; min-height: 0;">
+                        <div class="tv-roster-row alpha">
                             <div class="tv-roster-header">
                                 <div>
                                     <span class="tv-roster-name" id="tv-name-alpha">TEAM ALPHA</span>
@@ -275,7 +287,7 @@
                             <ul id="tv-list-alpha" class="tv-roster-list alpha"></ul>
                         </div>
                         
-                        <div class="tv-roster-row bravo" style="margin-bottom: 0; min-height: 0;">
+                        <div class="tv-roster-row bravo">
                             <div class="tv-roster-header">
                                 <div>
                                     <span class="tv-roster-name" id="tv-name-bravo">TEAM BRAVO</span>
@@ -384,6 +396,12 @@
         let progDebounce1 = null;
         let progDebounce2 = null;
 
+        // Stato per lo scorrimento verticale automatico quando una squadra supera la capienza visiva
+        const autoScrollState = {
+            'tv-list-alpha': { active: false, pos: 0, dir: 1, pauseUntil: 0 },
+            'tv-list-bravo': { active: false, pos: 0, dir: 1, pauseUntil: 0 }
+        };
+
         const tacticalWeatherIcons = {
             "CLEAR": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4.2'/><line x1='12' y1='2.5' x2='12' y2='4.5'/><line x1='12' y1='19.5' x2='12' y2='21.5'/><line x1='5.28' y1='5.28' x2='6.7' y2='6.7'/><line x1='17.3' y1='17.3' x2='18.72' y2='18.72'/><line x1='2.5' y1='12' x2='4.5' y2='12'/><line x1='19.5' y1='12' x2='21.5' y2='12'/><line x1='5.28' y1='18.72' x2='6.7' y2='17.3'/><line x1='17.3' y1='6.7' x2='18.72' y2='5.28'/></svg>",
             "CLEAR_NIGHT": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ffcc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M19 15.5A7.5 7.5 0 0 1 8.5 5a8.5 8.5 0 1 0 10.5 10.5Z'/><line x1='13' y1='2.5' x2='13' y2='6.5'/><line x1='11' y1='4.5' x2='15' y2='4.5'/><line x1='18.5' y1='7' x2='18.5' y2='11'/><line x1='16.5' y1='9' x2='20.5' y2='9'/></svg>",
@@ -442,37 +460,96 @@
             }
         }
 
-        // Ridimensionamento dinamico dei nomi operatori per non uscire mai dallo schermo TV
+        // Ridimensionamento dinamico sulla vera altezza di <ul> + attivazione Auto-Scroll se > capienza
         function adjustFontSize(listId) {
             const ul = document.getElementById(listId);
-            if (!ul || !ul.parentElement) return;
-            const container = ul.parentElement;
-            
+            if (!ul) return;
+
             const lis = Array.from(ul.querySelectorAll('li')).filter(li => !li.classList.contains('anim-exit'));
-            if (lis.length === 0) return;
+            const st = autoScrollState[listId];
+            if (lis.length === 0) {
+                if (st) { st.active = false; st.pos = 0; }
+                ul.scrollTop = 0;
+                return;
+            }
 
-            ul.style.gap = '10px';
-            lis.forEach(li => {
-                li.style.fontSize = '2.2rem';
-                li.style.padding = '10px 15px';
-            });
+            let fontSize = 2.1;
+            let padV = 9;
+            let gap = 8;
+            const minReadableFont = 1.35; // Sotto questa soglia attiva lo scorrimento fluido in loop
 
-            let fontSize = 2.2;
-            let padding = 10;
-            let gap = 10;
-
-            while (ul.scrollHeight > container.clientHeight && fontSize > 1.0) {
-                fontSize -= 0.1;
-                if (padding > 4) padding -= 0.5;
-                if (gap > 2) gap -= 1;
-
-                ul.style.gap = gap + 'px';
+            const applyMetrics = (f, p, g) => {
+                ul.style.gap = g + 'px';
                 lis.forEach(li => {
-                    li.style.fontSize = fontSize + 'rem';
-                    li.style.padding = padding + 'px 15px';
+                    li.style.fontSize = f.toFixed(2) + 'rem';
+                    li.style.padding = `${p.toFixed(1)}px 14px`;
                 });
+            };
+
+            applyMetrics(fontSize, padV, gap);
+
+            // Misura direttamente ul.scrollHeight rispetto a ul.clientHeight (non il padre!)
+            while (ul.scrollHeight > ul.clientHeight && fontSize > minReadableFont) {
+                fontSize -= 0.08;
+                if (padV > 4) padV -= 0.4;
+                if (gap > 4) gap -= 0.4;
+                applyMetrics(fontSize, padV, gap);
+            }
+
+            if (ul.scrollHeight > ul.clientHeight + 4) {
+                // La squadra è molto numerosa (es. 12-20+ operatori): mantiene un font ben leggibile
+                // e attiva lo scorrimento verticale continuo su e giù
+                applyMetrics(1.48, 6, 6);
+                if (st) {
+                    st.active = true;
+                    st.pos = 0;
+                    st.dir = 1;
+                    st.pauseUntil = Date.now() + 2000;
+                }
+            } else {
+                if (st) {
+                    st.active = false;
+                    st.pos = 0;
+                }
+                ul.scrollTop = 0;
             }
         }
+
+        // Loop a ~30 fps per lo scorrimento automatico morbido delle liste lunghe
+        setInterval(() => {
+            const now = Date.now();
+            ['tv-list-alpha', 'tv-list-bravo'].forEach(listId => {
+                const st = autoScrollState[listId];
+                if (!st || !st.active) return;
+                if (now < st.pauseUntil) return;
+
+                const ul = document.getElementById(listId);
+                if (!ul) return;
+                const maxScroll = ul.scrollHeight - ul.clientHeight;
+                if (maxScroll <= 2) {
+                    st.active = false;
+                    ul.scrollTop = 0;
+                    return;
+                }
+
+                st.pos += st.dir * 0.85;
+                if (st.pos >= maxScroll) {
+                    st.pos = maxScroll;
+                    st.dir = -1;
+                    st.pauseUntil = now + 2200; // Pausa di 2.2s in fondo alla lista
+                } else if (st.pos <= 0) {
+                    st.pos = 0;
+                    st.dir = 1;
+                    st.pauseUntil = now + 2200; // Pausa di 2.2s in cima alla lista
+                }
+                ul.scrollTop = st.pos;
+            });
+        }, 30);
+
+        window.addEventListener('resize', () => {
+            adjustFontSize('tv-list-alpha');
+            adjustFontSize('tv-list-bravo');
+        });
 
         function renderTvRules(payload) {
             if (!payload) return;
@@ -673,7 +750,7 @@
                         li.classList.add('anim-exit');
                         setTimeout(() => {
                             if (li.parentElement) li.parentElement.removeChild(li);
-                        }, 450);
+                        }, 360);
                     }
                 }
             });
@@ -703,7 +780,7 @@
             setTimeout(() => {
                 adjustFontSize('tv-list-alpha');
                 adjustFontSize('tv-list-bravo');
-            }, 500);
+            }, 380);
         });
 
         socket.on('esp_event', (msg) => {

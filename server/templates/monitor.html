@@ -1,112 +1,245 @@
 <!-- ==========================================================================
      monitor.html
      Dashboard di monitoraggio telemetria di partita in tempo reale.
+     Layout a 2 colonne verticali indipendenti:
+     - Colonna Sinistra: Match Timer ad altezza fissa + Tactical Feed espanso.
+     - Colonna Destra  : Operator Count con scroll interno + Daily Wins & Rules.
      ========================================================================== -->
+
+<style>
+    #view-monitor {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .monitor-columns-layout {
+        display: grid;
+        grid-template-columns: 1.35fr 1fr;
+        gap: 20px;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .monitor-col {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    /* 1. Timer Globale sempre ad altezza fissa e costante */
+    #view-monitor .widget-timer {
+        flex: 0 0 215px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+    #view-monitor .widget-timer .widget-body {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+    }
+
+    /* 2. Tactical Feed / Map prende tutto lo spazio rimanente a sinistra */
+    #view-monitor .widget-tactical,
+    #view-monitor .widget-map {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+    #view-monitor .tactical-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        min-height: 0;
+    }
+
+    /* 3. Operator Count con altezza controllata e scroll interno per le liste */
+    #view-monitor .widget-factions {
+        flex: 1.08;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+    #view-monitor .faction-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+        padding: 12px 15px;
+    }
+    #view-monitor .faction-grid {
+        flex-shrink: 0;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+    }
+    #view-monitor .faction-rosters {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        min-height: 0;
+        overflow: hidden;
+    }
+    #view-monitor .monitor-roster-list {
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 4px;
+        margin: 0;
+    }
+    #view-monitor .monitor-roster-list li {
+        padding: 5px 8px;
+        font-size: 16px;
+        line-height: 1.25;
+    }
+
+    /* 4. Daily Match Wins + Mission Intel sempre visibili e mai schiacciati */
+    #view-monitor .widget-rules {
+        flex: 0.92;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+    #view-monitor .rules-body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 10px 15px;
+    }
+    #view-monitor .rules-footer {
+        flex-shrink: 0;
+        padding: 10px 15px;
+        border-top: 1px solid var(--sop-dim);
+        background: rgba(0, 0, 0, 0.5);
+    }
+</style>
+
 <div id="view-monitor" class="view-panel hidden">
-    <div class="monitor-controls">
-        <button type="button" class="back-btn deck-btn" onclick="showView('hub')" style="margin-bottom: 10px; margin-left: 0;">[ &lt; RETURN TO HUB ]</button>
+    <div class="monitor-controls" style="flex-shrink: 0;">
+        <button type="button" class="back-btn deck-btn" onclick="goBackView('hub')" style="margin-bottom: 6px; margin-left: 0;">[ &lt; RETURN TO HUB ]</button>
         <span class="monitor-label">STATUS: <span style="color: var(--sop-primary);">GLOBAL TELEMETRY</span></span>
     </div>
     
-    <div style="text-align: center; margin-bottom: 15px;">
-        <h2 id="monitor-mode-title" style="color: var(--sop-text); letter-spacing: 4px; font-size: 28px; font-weight: bold; text-shadow: 0 0 15px rgba(0,255,204,0.4);">AWAITING MISSION DATA...</h2>
+    <div style="text-align: center; margin-bottom: 12px; flex-shrink: 0;">
+        <h2 id="monitor-mode-title" style="color: var(--sop-text); letter-spacing: 4px; font-size: 26px; font-weight: bold; margin: 0; text-shadow: 0 0 15px rgba(0,255,204,0.4);">AWAITING MISSION DATA...</h2>
     </div>
 
-    <div class="grid-dashboard">
-        <!-- 1. Timer Globale Partita -->
-        <div class="widget sop-card widget-timer">
-            <div class="widget-header">MATCH TIMER</div>
-            <div class="widget-body">
-                <h1 id="global-timer-display">--:--</h1>
-            </div>
-        </div>
-        
-        <!-- 2. Conteggio Operatori in Campo per Fazione -->
-        <div class="widget sop-card widget-factions">
-            <div class="widget-header">OPERATOR COUNT</div>
-            <div class="widget-body faction-container">
-                <div class="faction-grid">
-                    <div class="faction faction-a">
-                        <span class="faction-score" id="score-a">0</span>
-                        <span class="faction-name" id="monitor-name-alpha">TEAM ALPHA</span>
-                    </div>
-                    <div class="vs-divider">VS</div>
-                    <div class="faction faction-b">
-                        <span class="faction-score" id="score-b">0</span>
-                        <span class="faction-name" id="monitor-name-bravo">TEAM BRAVO</span>
-                    </div>
-                </div>
-                <div class="faction-rosters">
-                    <ul id="monitor-roster-alpha" class="monitor-roster-list alpha-list"></ul>
-                    <ul id="monitor-roster-bravo" class="monitor-roster-list bravo-list"></ul>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 3A. Pannello Tattico S&D / Domination -->
-        <div id="widget-sd-tactical" class="widget sop-card widget-tactical hidden">
-            <div id="tactical-panel-title" class="widget-header">TACTICAL FEED</div>
-            <div class="widget-body tactical-body">
-                <div class="bomb-status-box">
-                    <span class="label">STATUS:</span>
-                    <span id="sd-bomb-status" class="status-value">SAFE</span>
-                </div>
-                <div class="bomb-timer-container">
-                    <span class="detonation-title">DETONATION SEQUENCE</span>
-                    <div id="sd-bomb-timer" class="digital-clock">--:--</div>
-                </div>
-                <div id="domination-scores" class="dom-scores-box hidden">
-                    <div class="d-score"><span class="d-label" id="dom-lbl-alpha">ALPHA</span><span id="d-val-a" class="d-val-red">0</span></div>
-                    <div class="d-vs">VS</div>
-                    <div class="d-score"><span class="d-label" id="dom-lbl-bravo">BRAVO</span><span id="d-val-b" class="d-val-green">0</span></div>
-                </div>
-                <div class="progress-section">
-                    <div class="prog-group">
-                        <span id="lbl-prog-1" class="prog-label">ACTION 1</span>
-                        <div class="progress-track"><div id="sd-arm-bar" class="progress-fill fill-red" style="width: 0%;"></div></div>
-                    </div>
-                    <div class="prog-group">
-                        <span id="lbl-prog-2" class="prog-label">ACTION 2</span>
-                        <div class="progress-track"><div id="sd-defuse-bar" class="progress-fill fill-green" style="width: 0%;"></div></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 3B. Pannello Telemetria Standard (TDM / Standby) -->
-        <div id="widget-generic-map" class="widget sop-card widget-map">
-            <div class="widget-header">TACTICAL MAP</div>
-            <div class="widget-body">
-                <p class="no-data">STANDARD TELEMETRY ACTIVE</p>
-            </div>
-        </div>
-        
-        <!-- 4. Vittorie Giornaliere e Riepilogo Regole Missione -->
-        <div id="widget-sd-rules" class="widget sop-card widget-rules" style="display: flex; flex-direction: column;">
-            <div class="widget-header" style="border-bottom: 1px solid var(--sop-dim);">DAILY MATCH WINS</div>
-            <div style="display: flex; justify-content: space-around; align-items: center; padding: 15px 0; border-bottom: 2px dashed var(--sop-dim); background: rgba(0,0,0,0.4);">
-                <div style="text-align: center;">
-                    <div style="font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; color: var(--team-a-color);" id="monitor-wins-lbl-a">ALPHA</div>
-                    <div id="monitor-wins-alpha" style="font-size: 45px; font-weight: bold; line-height: 1; color: var(--team-a-color); text-shadow: 0 0 10px rgba(255, 51, 51, 0.4);">0</div>
-                </div>
-                <div style="font-size: 24px; color: #555; font-weight: bold;">-</div>
-                <div style="text-align: center;">
-                    <div style="font-size: 14px; letter-spacing: 2px; margin-bottom: 5px; color: var(--team-b-color);" id="monitor-wins-lbl-b">BRAVO</div>
-                    <div id="monitor-wins-bravo" style="font-size: 45px; font-weight: bold; line-height: 1; color: var(--team-b-color); text-shadow: 0 0 10px rgba(85, 255, 85, 0.4);">0</div>
+    <div class="monitor-columns-layout">
+        <!-- COLONNA SINISTRA: Match Timer (Altezza Fissa) + Tactical Feed -->
+        <div class="monitor-col">
+            <!-- 1. Timer Globale Partita -->
+            <div class="widget sop-card widget-timer">
+                <div class="widget-header">MATCH TIMER</div>
+                <div class="widget-body">
+                    <h1 id="global-timer-display">--:--</h1>
                 </div>
             </div>
 
-            <div class="widget-header">MISSION INTEL // RULES</div>
-            <div class="widget-body rules-body" style="flex: 1; min-height: 0;">
-                <ul id="sd-rules-list" class="rules-list">
-                    <li>WAITING FOR TELEMETRY...</li>
-                </ul>
+            <!-- 3A. Pannello Tattico S&D / Domination -->
+            <div id="widget-sd-tactical" class="widget sop-card widget-tactical hidden">
+                <div id="tactical-panel-title" class="widget-header">TACTICAL FEED</div>
+                <div class="widget-body tactical-body">
+                    <div class="bomb-status-box">
+                        <span class="label">STATUS:</span>
+                        <span id="sd-bomb-status" class="status-value">SAFE</span>
+                    </div>
+                    <div class="bomb-timer-container">
+                        <span class="detonation-title">DETONATION SEQUENCE</span>
+                        <div id="sd-bomb-timer" class="digital-clock">--:--</div>
+                    </div>
+                    <div id="domination-scores" class="dom-scores-box hidden">
+                        <div class="d-score"><span class="d-label" id="dom-lbl-alpha">ALPHA</span><span id="d-val-a" class="d-val-red">0</span></div>
+                        <div class="d-vs">VS</div>
+                        <div class="d-score"><span class="d-label" id="dom-lbl-bravo">BRAVO</span><span id="d-val-b" class="d-val-green">0</span></div>
+                    </div>
+                    <div class="progress-section">
+                        <div class="prog-group">
+                            <span id="lbl-prog-1" class="prog-label">ACTION 1</span>
+                            <div class="progress-track"><div id="sd-arm-bar" class="progress-fill fill-red" style="width: 0%;"></div></div>
+                        </div>
+                        <div class="prog-group">
+                            <span id="lbl-prog-2" class="prog-label">ACTION 2</span>
+                            <div class="progress-track"><div id="sd-defuse-bar" class="progress-fill fill-green" style="width: 0%;"></div></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="rules-footer hidden">
-                <button type="button" id="btn-force-end" class="deck-btn btn-danger full-width" onclick="uiForceEndMission()">
-                    [ TERMINATE MISSION ]
-                </button>
+            <!-- 3B. Pannello Telemetria Standard (TDM / Standby) -->
+            <div id="widget-generic-map" class="widget sop-card widget-map">
+                <div class="widget-header">TACTICAL MAP</div>
+                <div class="widget-body">
+                    <p class="no-data">STANDARD TELEMETRY ACTIVE</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLONNA DESTRA: Operator Count + Daily Wins & Mission Intel -->
+        <div class="monitor-col">
+            <!-- 2. Conteggio Operatori in Campo per Fazione -->
+            <div class="widget sop-card widget-factions">
+                <div class="widget-header">OPERATOR COUNT</div>
+                <div class="widget-body faction-container">
+                    <div class="faction-grid">
+                        <div class="faction faction-a">
+                            <span class="faction-score" id="score-a">0</span>
+                            <span class="faction-name" id="monitor-name-alpha">TEAM ALPHA</span>
+                        </div>
+                        <div class="vs-divider">VS</div>
+                        <div class="faction faction-b">
+                            <span class="faction-score" id="score-b">0</span>
+                            <span class="faction-name" id="monitor-name-bravo">TEAM BRAVO</span>
+                        </div>
+                    </div>
+                    <div class="faction-rosters">
+                        <ul id="monitor-roster-alpha" class="monitor-roster-list alpha-list"></ul>
+                        <ul id="monitor-roster-bravo" class="monitor-roster-list bravo-list"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Vittorie Giornaliere e Riepilogo Regole Missione -->
+            <div id="widget-sd-rules" class="widget sop-card widget-rules">
+                <div class="widget-header" style="border-bottom: 1px solid var(--sop-dim); flex-shrink: 0;">DAILY MATCH WINS</div>
+                <div style="display: flex; justify-content: space-around; align-items: center; padding: 8px 0; border-bottom: 2px dashed var(--sop-dim); background: rgba(0,0,0,0.4); flex-shrink: 0;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; letter-spacing: 2px; margin-bottom: 2px; color: var(--team-a-color);" id="monitor-wins-lbl-a">ALPHA</div>
+                        <div id="monitor-wins-alpha" style="font-size: 34px; font-weight: bold; line-height: 1; color: var(--team-a-color); text-shadow: 0 0 10px rgba(255, 51, 51, 0.4);">0</div>
+                    </div>
+                    <div style="font-size: 20px; color: #555; font-weight: bold;">-</div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; letter-spacing: 2px; margin-bottom: 2px; color: var(--team-b-color);" id="monitor-wins-lbl-b">BRAVO</div>
+                        <div id="monitor-wins-bravo" style="font-size: 34px; font-weight: bold; line-height: 1; color: var(--team-b-color); text-shadow: 0 0 10px rgba(85, 255, 85, 0.4);">0</div>
+                    </div>
+                </div>
+
+                <div class="widget-header" style="flex-shrink: 0;">MISSION INTEL // RULES</div>
+                <div class="widget-body rules-body">
+                    <ul id="sd-rules-list" class="rules-list" style="margin: 0;">
+                        <li>WAITING FOR TELEMETRY...</li>
+                    </ul>
+                </div>
+
+                <div class="rules-footer hidden">
+                    <button type="button" id="btn-force-end" class="deck-btn btn-danger full-width" style="margin: 0;" onclick="uiForceEndMission()">
+                        [ TERMINATE MISSION ]
+                    </button>
+                </div>
             </div>
         </div>
     </div>
