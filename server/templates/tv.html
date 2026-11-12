@@ -22,12 +22,29 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
     <style>
+        /* Disattiva lo zoom CSS globale su /tv per riempire il 100% dei monitor 1080p
+           e mantenere attivo l'Hardware Video Overlay della GPU (zero lag sui video) */
+        html {
+            zoom: 1 !important;
+            font-size: 16px;
+        }
+        @media (max-width: 2050px), (max-height: 1120px) {
+            html {
+                font-size: 12.5px;
+            }
+        }
+
         body {
             overflow: hidden;
             margin: 0;
             padding: 0;
-            height: 100%;
-            width: 100%;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        body.video-playing .scan-line {
+            animation-play-state: paused !important;
+            opacity: 0.03 !important;
         }
         
         .tv-container {
@@ -35,36 +52,62 @@
             inset: 0;
             display: grid;
             grid-template-rows: auto 1fr;
-            padding: 25px;
+            padding: 20px;
             box-sizing: border-box;
-            gap: 22px;
+            gap: 18px;
             z-index: 2;
         }
 
-        /* Transizioni configurabili per lo Spazio Media TV */
-        @keyframes tvFadeIn {
-            from { opacity: 0; }
-            to   { opacity: 1; }
+        /* Dissolvenza in entrata/uscita dell'intera finestra Media (PIP e Fullscreen) */
+        .tv-pip-media-box,
+        .tv-fullscreen-media-overlay {
+            opacity: 1;
+            transition: opacity 0.55s ease-in-out;
+            will-change: opacity;
         }
+        .tv-pip-media-box.media-box-hiding,
+        .tv-fullscreen-media-overlay.media-box-hiding {
+            opacity: 0 !important;
+            pointer-events: none;
+        }
+
+        /* Layer sovrapposti per vera Dissolvenza Incrociata (Crossfade senza nero) */
+        .tv-media-stage-layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0;
+            transition: opacity 0.7s ease-in-out, transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1);
+            will-change: opacity, transform;
+            transform: translateZ(0);
+        }
+        .tv-media-stage-layer.active-layer {
+            opacity: 1;
+            z-index: 2;
+        }
+        .tv-media-stage-layer.exiting-layer {
+            opacity: 0;
+            z-index: 1;
+        }
+
         @keyframes tvSlideIn {
-            from { opacity: 0; transform: translateX(45px); }
-            to   { opacity: 1; transform: translateX(0); }
+            from { opacity: 0; transform: translate3d(50px, 0, 0); }
+            to   { opacity: 1; transform: translate3d(0, 0, 0); }
         }
         @keyframes tvZoomIn {
-            from { opacity: 0; transform: scale(0.88); }
-            to   { opacity: 1; transform: scale(1); }
+            from { opacity: 0; transform: scale3d(0.88, 0.88, 1); }
+            to   { opacity: 1; transform: scale3d(1, 1, 1); }
         }
         @keyframes tvGlitchIn {
-            0%   { opacity: 0; transform: scaleY(0.05) skewX(15deg); filter: brightness(2.5) contrast(2); }
-            40%  { opacity: 1; transform: scaleY(1.04) skewX(-5deg); filter: brightness(1.4); }
-            70%  { transform: scaleY(0.98) skewX(2deg); }
+            0%   { opacity: 0; transform: scaleY(0.08) skewX(12deg); filter: brightness(2.2); }
+            45%  { opacity: 1; transform: scaleY(1.03) skewX(-4deg); }
             100% { opacity: 1; transform: scaleY(1) skewX(0); filter: none; }
         }
-        .tv-trans-FADE   { animation: tvFadeIn 0.65s ease-out forwards; }
         .tv-trans-SLIDE  { animation: tvSlideIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .tv-trans-ZOOM   { animation: tvZoomIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .tv-trans-GLITCH { animation: tvGlitchIn 0.45s ease-out forwards; }
-        .tv-trans-NONE   { animation: none; }
         
         .tv-header {
             display: flex;
@@ -252,10 +295,10 @@
         /* --- TV MEDIA ENGINE (PIP IN TACTICAL FEED & FULLSCREEN OVERLAY) --- */
         .tv-pip-media-box {
             width: 100%;
+            height: 100%;
             flex: 1;
-            min-height: 220px;
-            max-height: 520px;
-            margin: 15px 0;
+            min-height: 0;
+            margin: 0;
             border: 2px solid var(--sop-primary);
             border-radius: 8px;
             background: #000;
@@ -435,7 +478,7 @@
                 <div class="widget-header" style="text-align: center; font-size: 1.6rem; border-bottom: 2px solid var(--sop-primary);">TACTICAL FEED</div>
                 
                 <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 12px 20px; min-height: 0; overflow: hidden;">
-                    <div style="font-size: 1.6rem; color: #888; letter-spacing: 2px; flex-shrink: 0;">CURRENT STATUS</div>
+                    <div id="tv-tac-status-lbl" style="font-size: 1.6rem; color: #888; letter-spacing: 2px; flex-shrink: 0;">CURRENT STATUS</div>
                     <div id="tv-tac-status" class="tv-status-huge" style="color: var(--sop-primary); flex-shrink: 0;">WAITING FOR DATA</div>
 
                     <!-- Riquadro Briefing Scenario (visibile quando la missione ha una descrizione) -->
@@ -444,11 +487,13 @@
                         <div id="tv-briefing-text" style="font-size: 1.35rem; color: #eee; line-height: 1.35;"></div>
                     </div>
 
-                    <!-- Finestra Media Integrata (PIP dentro Tactical Feed) -->
+                    <!-- Finestra Media Integrata a Tutto Riquadro (con Doppio Buffer A/B per Crossfade) -->
                     <div id="tv-pip-media-container" class="tv-pip-media-box hidden">
                         <span class="tv-media-badge" id="tv-pip-media-label">TACTICAL MEDIA FEED</span>
-                        <img id="tv-pip-img" class="hidden" src="" alt="Media TV">
-                        <video id="tv-pip-video" class="hidden" playsinline></video>
+                        <img id="tv-pip-img-a" class="tv-media-stage-layer hidden" src="" alt="">
+                        <img id="tv-pip-img-b" class="tv-media-stage-layer hidden" src="" alt="">
+                        <video id="tv-pip-video-a" class="tv-media-stage-layer hidden" playsinline preload="auto"></video>
+                        <video id="tv-pip-video-b" class="tv-media-stage-layer hidden" playsinline preload="auto"></video>
                     </div>
                     
                     <div id="tv-bomb-container" style="display: none; width: 100%; text-align: center; margin-top: 15px; flex-shrink: 0;">
@@ -525,12 +570,14 @@
         </div>
     </div>
 
-    <!-- OVERLAY MEDIA A SCHERMO INTERO (Per Spot Periodici o Trigger Manuali) -->
+    <!-- OVERLAY MEDIA A SCHERMO INTERO (Con Doppio Buffer A/B per Crossfade) -->
     <div id="tv-fullscreen-overlay" class="tv-fullscreen-media-overlay hidden" onclick="closeFullscreenMedia()">
         <div class="tv-fullscreen-frame">
             <span class="tv-media-badge" id="tv-fs-media-label">PHILANTHROPY // BROADCAST</span>
-            <img id="tv-fs-img" class="hidden" src="" alt="Fullscreen Media">
-            <video id="tv-fs-video" class="hidden" playsinline></video>
+            <img id="tv-fs-img-a" class="tv-media-stage-layer hidden" src="" alt="">
+            <img id="tv-fs-img-b" class="tv-media-stage-layer hidden" src="" alt="">
+            <video id="tv-fs-video-a" class="tv-media-stage-layer hidden" playsinline preload="auto"></video>
+            <video id="tv-fs-video-b" class="tv-media-stage-layer hidden" playsinline preload="auto"></video>
         </div>
     </div>
 
@@ -756,32 +803,42 @@
         });
 
         // ====================================================================
-        // TV MEDIA ENGINE (CICLO ON/OFF, DURATA FOTO/VIDEO, TRANSIZIONI E STATO LIVE)
+        // TV MEDIA ENGINE (CROSSFADE A/B, DISSOLVENZA FINESTRA, PIP FULL-BOX)
         // ====================================================================
 
         let tvMediaPlaylist = [];
         let tvMediaIdx = 0;
         let tvItemStepTimer = null;
         let tvWindowPhaseTimer = null;
+        let tvHideAnimTimer = null;
         let tvIsInPauseWindow = false;
         let tvWindowExpiredPendingVideo = false;
         let currentPlayingFilename = null;
+        let activeBufferSlot = { PIP: 'a', FULLSCREEN: 'a' };
 
         let tvMediaConfig = JSON.parse(localStorage.getItem('zulu_tv_media_cfg') || JSON.stringify({
-            mode: 'PIP',             // 'OFF', 'PIP', 'FULLSCREEN'
-            photoDurationSec: 10,    // Durata singola foto (sec)
-            playFullVideo: true,     // true = riproduci video per intero, false = usa photoDurationSec
-            showWindowSec: 60,       // Durata finestra in cui i media sono visibili (sec)
-            hideWindowSec: 60,       // Durata pausa in cui i media spariscono (0 = mai in pausa)
-            transition: 'FADE',      // 'FADE', 'SLIDE', 'ZOOM', 'GLITCH', 'NONE'
-            hideWhenActive: true,    // Nascondi durante partita attiva
+            mode: 'PIP',
+            photoDurationSec: 10,
+            playFullVideo: true,
+            showWindowSec: 60,
+            hideWindowSec: 60,
+            transition: 'FADE',
+            hideWhenActive: true,
             muted: true
         }));
 
+        // Consideriamo occupata la TV già a partire da MISSION READY / PREPARING!
         function isMatchActionActive() {
             if (!currentTvState) return false;
-            const idleStates = ['STANDBY', 'WAITING FOR DATA', 'MISSION READY', 'PREPARING', 'STOPPED'];
+            const idleStates = ['STANDBY', 'WAITING FOR DATA'];
             return !idleStates.includes(currentTvState.toUpperCase());
+        }
+
+        function setPipStatusHeaderVisible(visible) {
+            const lblEl = document.getElementById('tv-tac-status-lbl');
+            const stEl  = document.getElementById('tv-tac-status');
+            if (lblEl) lblEl.style.display = visible ? '' : 'none';
+            if (stEl)  stEl.style.display  = visible ? '' : 'none';
         }
 
         function reportTvMediaStatus(playing, itemObj = null, modeOverride = null) {
@@ -795,14 +852,6 @@
                     mode: modeOverride || (playing ? tvMediaConfig.mode : 'OFF')
                 });
             }
-        }
-
-        function applyMediaTransition(el) {
-            if (!el) return;
-            el.classList.remove('tv-trans-FADE', 'tv-trans-SLIDE', 'tv-trans-ZOOM', 'tv-trans-GLITCH', 'tv-trans-NONE');
-            void el.offsetWidth; // Force reflow per riavviare l'animazione CSS
-            const tr = tvMediaConfig.transition || 'FADE';
-            el.classList.add(`tv-trans-${tr}`);
         }
 
         function fetchTvMediaList() {
@@ -827,24 +876,50 @@
         function clearMediaTimers() {
             if (tvItemStepTimer)    { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
             if (tvWindowPhaseTimer) { clearTimeout(tvWindowPhaseTimer); tvWindowPhaseTimer = null; }
+            if (tvHideAnimTimer)    { clearTimeout(tvHideAnimTimer); tvHideAnimTimer = null; }
             tvWindowExpiredPendingVideo = false;
         }
 
-        function hideAllMediaContainers(reportStatus = true) {
+        function stopAllMediaLayers(prefix) {
+            ['a', 'b'].forEach(slot => {
+                const img = document.getElementById(`${prefix}-img-${slot}`);
+                const vid = document.getElementById(`${prefix}-video-${slot}`);
+                if (vid) {
+                    vid.onended = null;
+                    vid.pause();
+                    vid.removeAttribute('src');
+                    vid.classList.remove('active-layer', 'exiting-layer');
+                    vid.classList.add('hidden');
+                }
+                if (img) {
+                    img.classList.remove('active-layer', 'exiting-layer');
+                    img.classList.add('hidden');
+                }
+            });
+        }
+
+        function hideAllMediaContainers(reportStatus = true, immediate = false) {
             const pipBox = document.getElementById('tv-pip-media-container');
-            const pipVid = document.getElementById('tv-pip-video');
-            const pipImg = document.getElementById('tv-pip-img');
             const fsOv   = document.getElementById('tv-fullscreen-overlay');
-            const fsVid  = document.getElementById('tv-fs-video');
-            const fsImg  = document.getElementById('tv-fs-img');
+            document.body.classList.remove('video-playing');
 
-            if (pipVid) { pipVid.onended = null; pipVid.pause(); pipVid.removeAttribute('src'); pipVid.classList.add('hidden'); }
-            if (pipImg) { pipImg.classList.add('hidden'); }
-            if (pipBox) { pipBox.classList.add('hidden'); }
+            const finalizeHide = () => {
+                stopAllMediaLayers('tv-pip');
+                stopAllMediaLayers('tv-fs');
+                if (pipBox) { pipBox.classList.add('hidden'); pipBox.classList.remove('media-box-hiding'); }
+                if (fsOv)   { fsOv.classList.add('hidden');   fsOv.classList.remove('media-box-hiding'); }
+                setPipStatusHeaderVisible(true);
+            };
 
-            if (fsVid)  { fsVid.onended = null; fsVid.pause(); fsVid.removeAttribute('src'); fsVid.classList.add('hidden'); }
-            if (fsImg)  { fsImg.classList.add('hidden'); }
-            if (fsOv)   { fsOv.classList.add('hidden'); }
+            const isAnyOpen = (pipBox && !pipBox.classList.contains('hidden')) || (fsOv && !fsOv.classList.contains('hidden'));
+            if (!immediate && isAnyOpen && tvMediaConfig.transition !== 'NONE') {
+                pipBox?.classList.add('media-box-hiding');
+                fsOv?.classList.add('media-box-hiding');
+                if (tvHideAnimTimer) clearTimeout(tvHideAnimTimer);
+                tvHideAnimTimer = setTimeout(finalizeHide, 550);
+            } else {
+                finalizeHide();
+            }
 
             if (reportStatus) {
                 reportTvMediaStatus(false, null, tvIsInPauseWindow ? 'PAUSED' : 'OFF');
@@ -853,65 +928,129 @@
 
         function closeFullscreenMedia() {
             clearMediaTimers();
-            hideAllMediaContainers(true);
+            hideAllMediaContainers(true, false);
         }
 
         function renderMediaElement(targetMode, itemObj, onItemFinishedCb) {
-            const isFs   = (targetMode === 'FULLSCREEN');
-            const boxEl  = document.getElementById(isFs ? 'tv-fullscreen-overlay' : 'tv-pip-media-container');
-            const otherEl= document.getElementById(isFs ? 'tv-pip-media-container' : 'tv-fullscreen-overlay');
-            const imgEl  = document.getElementById(isFs ? 'tv-fs-img' : 'tv-pip-img');
-            const vidEl  = document.getElementById(isFs ? 'tv-fs-video' : 'tv-pip-video');
-            const lblEl  = document.getElementById(isFs ? 'tv-fs-media-label' : 'tv-pip-media-label');
+            if (tvHideAnimTimer) { clearTimeout(tvHideAnimTimer); tvHideAnimTimer = null; }
 
-            if (!boxEl || !imgEl || !vidEl) return;
+            const isFs    = (targetMode === 'FULLSCREEN');
+            const prefix  = isFs ? 'tv-fs' : 'tv-pip';
+            const boxEl   = document.getElementById(isFs ? 'tv-fullscreen-overlay' : 'tv-pip-media-container');
+            const otherEl = document.getElementById(isFs ? 'tv-pip-media-container' : 'tv-fullscreen-overlay');
+            const lblEl   = document.getElementById(isFs ? 'tv-fs-media-label' : 'tv-pip-media-label');
+
+            if (!boxEl) return;
             otherEl?.classList.add('hidden');
+            stopAllMediaLayers(isFs ? 'tv-pip' : 'tv-fs');
+
+            // Se siamo in PIP durante lo Standby, nasconde WAITING FOR DATA per dare tutto il box ai media
+            setPipStatusHeaderVisible(isFs);
+
+            // Se il box era chiuso, lo fa apparire con una dissolvenza morbida
+            const wasHidden = boxEl.classList.contains('hidden');
             boxEl.classList.remove('hidden');
+            if (wasHidden && tvMediaConfig.transition !== 'NONE') {
+                boxEl.classList.add('media-box-hiding');
+                void boxEl.offsetWidth;
+                boxEl.classList.remove('media-box-hiding');
+            } else {
+                boxEl.classList.remove('media-box-hiding');
+            }
 
             if (lblEl) lblEl.textContent = itemObj.name || (isFs ? 'PHILANTHROPY // BROADCAST' : 'TACTICAL MEDIA FEED');
             reportTvMediaStatus(true, itemObj, targetMode);
 
+            // Seleziona il buffer entrante (A o B) e segna come uscente gli elementi del buffer precedente
+            const curSlot  = activeBufferSlot[targetMode] || 'a';
+            const nextSlot = (curSlot === 'a') ? 'b' : 'a';
+            activeBufferSlot[targetMode] = nextSlot;
+
+            const prevImg = document.getElementById(`${prefix}-img-${curSlot}`);
+            const prevVid = document.getElementById(`${prefix}-video-${curSlot}`);
+            const nextImg = document.getElementById(`${prefix}-img-${nextSlot}`);
+            const nextVid = document.getElementById(`${prefix}-video-${nextSlot}`);
+
+            const tr = tvMediaConfig.transition || 'FADE';
             const photoDurMs = Math.max(3, parseInt(tvMediaConfig.photoDurationSec || tvMediaConfig.durationSec) || 10) * 1000;
             const playFull   = (tvMediaConfig.playFullVideo !== false);
 
             if (tvItemStepTimer) { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
 
+            const crossfadeIn = (incomingEl, outgoingImg, outgoingVid) => {
+                // Prepara gli elementi uscenti per sfumare a 0 sotto al nuovo elemento
+                [outgoingImg, outgoingVid].forEach(el => {
+                    if (el && !el.classList.contains('hidden')) {
+                        el.classList.remove('active-layer', 'tv-trans-SLIDE', 'tv-trans-ZOOM', 'tv-trans-GLITCH');
+                        if (tr === 'NONE') {
+                            el.classList.add('hidden');
+                            if (el.tagName === 'VIDEO') { el.pause(); el.removeAttribute('src'); }
+                        } else {
+                            el.classList.add('exiting-layer');
+                            setTimeout(() => {
+                                if (el.classList.contains('exiting-layer')) {
+                                    el.classList.remove('exiting-layer');
+                                    el.classList.add('hidden');
+                                    if (el.tagName === 'VIDEO') { el.pause(); el.removeAttribute('src'); }
+                                }
+                            }, 720);
+                        }
+                    }
+                });
+
+                incomingEl.classList.remove('hidden', 'exiting-layer', 'tv-trans-SLIDE', 'tv-trans-ZOOM', 'tv-trans-GLITCH');
+                if (tr === 'NONE') {
+                    incomingEl.style.transition = 'none';
+                } else {
+                    incomingEl.style.transition = '';
+                    if (tr !== 'FADE') incomingEl.classList.add(`tv-trans-${tr}`);
+                }
+                void incomingEl.offsetWidth;
+                incomingEl.classList.add('active-layer');
+            };
+
             if (isVideoUrl(itemObj.url)) {
-                imgEl.classList.add('hidden');
-                vidEl.classList.remove('hidden');
-                applyMediaTransition(vidEl);
-                vidEl.muted = Boolean(tvMediaConfig.muted);
-                vidEl.src = itemObj.url;
+                document.body.classList.add('video-playing');
+                if (nextImg) { nextImg.classList.remove('active-layer'); nextImg.classList.add('hidden'); }
+                if (nextVid) {
+                    nextVid.muted = Boolean(tvMediaConfig.muted);
+                    nextVid.src = itemObj.url;
+                    nextVid.onended = () => {
+                        if (tvItemStepTimer) { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
+                        if (onItemFinishedCb) onItemFinishedCb();
+                    };
 
-                vidEl.onended = () => {
-                    if (tvItemStepTimer) { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
-                    if (onItemFinishedCb) onItemFinishedCb();
-                };
+                    crossfadeIn(nextVid, prevImg, prevVid);
 
-                if (!playFull) {
+                    if (!playFull) {
+                        tvItemStepTimer = setTimeout(() => {
+                            nextVid.onended = null;
+                            nextVid.pause();
+                            if (onItemFinishedCb) onItemFinishedCb();
+                        }, photoDurMs);
+                    }
+
+                    nextVid.play().catch(() => {
+                        tvItemStepTimer = setTimeout(() => {
+                            if (onItemFinishedCb) onItemFinishedCb();
+                        }, photoDurMs);
+                    });
+                }
+            } else {
+                document.body.classList.remove('video-playing');
+                if (nextVid) { nextVid.onended = null; nextVid.pause(); nextVid.classList.remove('active-layer'); nextVid.classList.add('hidden'); }
+                if (nextImg) {
+                    nextImg.onload = () => {
+                        crossfadeIn(nextImg, prevImg, prevVid);
+                    };
+                    nextImg.src = itemObj.url;
+                    if (nextImg.complete) {
+                        crossfadeIn(nextImg, prevImg, prevVid);
+                    }
                     tvItemStepTimer = setTimeout(() => {
-                        vidEl.onended = null;
-                        vidEl.pause();
                         if (onItemFinishedCb) onItemFinishedCb();
                     }, photoDurMs);
                 }
-
-                vidEl.play().catch(() => {
-                    tvItemStepTimer = setTimeout(() => {
-                        if (onItemFinishedCb) onItemFinishedCb();
-                    }, photoDurMs);
-                });
-            } else {
-                vidEl.onended = null;
-                vidEl.pause();
-                vidEl.classList.add('hidden');
-                imgEl.classList.remove('hidden');
-                applyMediaTransition(imgEl);
-                imgEl.src = itemObj.url;
-
-                tvItemStepTimer = setTimeout(() => {
-                    if (onItemFinishedCb) onItemFinishedCb();
-                }, photoDurMs);
             }
         }
 
@@ -941,13 +1080,12 @@
 
             const hideSec = Math.max(0, parseInt(tvMediaConfig.hideWindowSec) || 0);
             if (hideSec <= 0) {
-                // Nessuna pausa configurata: continua a mostrare i media ininterrottamente
                 startShowWindowPhase();
                 return;
             }
 
             tvIsInPauseWindow = true;
-            hideAllMediaContainers(true);
+            hideAllMediaContainers(true, false);
             tvWindowPhaseTimer = setTimeout(() => {
                 tvIsInPauseWindow = false;
                 startShowWindowPhase();
@@ -972,8 +1110,9 @@
 
             if (hideSec > 0) {
                 tvWindowPhaseTimer = setTimeout(() => {
-                    // Se sta riproducendo un video con "Riproduci per intero", attende la fine della clip prima di andare in pausa
-                    const activeVid = document.getElementById(tvMediaConfig.mode === 'FULLSCREEN' ? 'tv-fs-video' : 'tv-pip-video');
+                    const prefix = (tvMediaConfig.mode === 'FULLSCREEN') ? 'tv-fs' : 'tv-pip';
+                    const slot = activeBufferSlot[tvMediaConfig.mode] || 'a';
+                    const activeVid = document.getElementById(`${prefix}-video-${slot}`);
                     const isPlayingVideo = activeVid && !activeVid.classList.contains('hidden') && !activeVid.paused;
                     if (isPlayingVideo && tvMediaConfig.playFullVideo !== false) {
                         tvWindowExpiredPendingVideo = true;
@@ -996,7 +1135,6 @@
             startShowWindowPhase();
         }
 
-        // Lancio manuale istantaneo da Regia Admin (PIP o Fullscreen)
         function triggerManualMediaOnTv(targetMode, data) {
             clearMediaTimers();
             tvIsInPauseWindow = false;
@@ -1007,7 +1145,6 @@
                 url: data.url
             };
             renderMediaElement(targetMode, itemObj, () => {
-                // Al termine dello spot manuale, riprende il ciclo programmato se attivo
                 if (tvMediaConfig.mode !== 'OFF') {
                     syncTvMediaEngine();
                 } else {
@@ -1381,10 +1518,14 @@
                 log("MISSION INTEL CARICATA.");
                 renderTvRules(payload);
                 const statusEl = document.getElementById('tv-tac-status');
-                if (type === 'SETTINGS_UPDATE' && statusEl && statusEl.textContent === 'WAITING FOR DATA') {
+                if (type === 'SETTINGS_UPDATE' && statusEl && (statusEl.textContent === 'WAITING FOR DATA' || statusEl.textContent === 'MISSION READY')) {
                     statusEl.textContent = "MISSION READY";
                     statusEl.style.color = "var(--sop-secondary)";
                     currentTvState = "MISSION READY";
+                }
+                if (tvMediaConfig.hideWhenActive) {
+                    clearMediaTimers();
+                    hideAllMediaContainers(true, false);
                 }
             }
 

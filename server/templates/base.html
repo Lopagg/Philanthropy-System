@@ -376,10 +376,54 @@
     </div>
 
     <!-- ======================================================================
-         MODALE 8: REGIA MEDIA TV (3 COLONNE: CONFIG, PLAYLIST DRAG&DROP, PREVIEW)
+         MODALE 8: REGIA MEDIA TV (3 COLONNE ALLARGATE: CONFIG, LIBRERIA, PREVIEW)
          ====================================================================== -->
+    <style>
+        #tv-media-admin-modal .tv-admin-modal-card {
+            width: 1540px !important;
+            max-width: 96vw !important;
+        }
+        #tv-media-admin-modal .tv-admin-grid {
+            display: grid;
+            grid-template-columns: 470px minmax(420px, 1.15fr) minmax(390px, 1fr);
+            gap: 18px;
+            padding: 20px;
+            max-height: 84vh;
+            overflow-y: auto;
+        }
+        #tv-media-admin-modal .tv-admin-col {
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid var(--sop-dim);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
+        }
+        #tv-media-admin-modal .tv-form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            align-items: end;
+        }
+        #tv-media-admin-modal .setup-label {
+            font-size: 11.5px;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #tv-media-admin-modal .setup-input,
+        #tv-media-admin-modal .tactical-select {
+            font-size: 14px;
+            padding: 9px 10px;
+            height: 40px;
+        }
+    </style>
+
     <div id="tv-media-admin-modal" class="modal-overlay hidden" style="z-index: 2150;">
-        <div class="sop-card profile-modal" style="width: 1280px; max-width: 96vw;">
+        <div class="sop-card profile-modal tv-admin-modal-card">
             <div class="panel-header" style="margin-bottom: 0;">
                 <div style="display: flex; align-items: center; gap: 15px; padding: 8px 10px;">
                     <h2 style="margin: 0; color: var(--sop-primary); letter-spacing: 2px; font-size: 22px;">
@@ -392,77 +436,77 @@
                 <button type="button" class="close-modal-btn" style="padding-right: 15px;" onclick="closeTvMediaAdminModal()">[X]</button>
             </div>
 
-            <div class="panel-body" style="padding: 20px; display: grid; grid-template-columns: 420px 1.15fr 0.95fr; gap: 18px; max-height: 82vh; overflow-y: auto;">
+            <div class="panel-body tv-admin-grid">
                 
                 <!-- COLONNA 1: Programmazione Tempi, Finestre ON/OFF e Transizioni -->
-                <div style="background: rgba(0,0,0,0.45); border: 1px solid var(--sop-dim); padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div class="tv-admin-col">
                     <div style="color: var(--sop-secondary); font-weight: bold; letter-spacing: 1.5px; font-size: 14px; border-bottom: 1px solid var(--sop-dim); padding-bottom: 6px;">
                         ⚙️ 1. PROGRAMMAZIONE CICLO E TRANSIZIONI
                     </div>
 
                     <div>
-                        <label class="setup-label" style="font-size: 12px; margin-bottom: 5px;" for="admin-tv-mode">MODALITÀ VISUALIZZAZIONE SULLA TV</label>
-                        <select id="admin-tv-mode" class="tactical-select" style="font-size: 14px; padding: 8px 10px;">
+                        <label class="setup-label" for="admin-tv-mode">MODALITÀ VISUALIZZAZIONE SULLA TV</label>
+                        <select id="admin-tv-mode" class="tactical-select">
                             <option value="OFF">DISATTIVATO (Solo Telemetria)</option>
                             <option value="PIP">FINESTRA DENTRO TACTICAL FEED (PIP)</option>
                             <option value="FULLSCREEN">SPOT A SCHERMO INTERO (FULLSCREEN)</option>
                         </select>
                     </div>
 
-                    <div class="row-inputs" style="gap: 10px;">
-                        <div style="flex: 1;">
-                            <label class="setup-label" style="font-size: 12px; margin-bottom: 5px;" for="admin-tv-photo-dur">DURATA SINGOLA FOTO (SEC)</label>
-                            <input type="number" id="admin-tv-photo-dur" class="setup-input" style="font-size: 15px; padding: 8px 10px;" value="10" min="3">
+                    <div class="tv-form-row">
+                        <div>
+                            <label class="setup-label" for="admin-tv-photo-dur">DURATA FOTO (SEC)</label>
+                            <input type="number" id="admin-tv-photo-dur" class="setup-input" value="10" min="3">
                         </div>
-                        <div style="flex: 1.2;">
-                            <label class="setup-label" style="font-size: 12px; margin-bottom: 5px;" for="admin-tv-full-video">DURATA CLIP VIDEO</label>
-                            <select id="admin-tv-full-video" class="tactical-select" style="font-size: 14px; padding: 8px 10px;">
-                                <option value="true">RIPRODUCI VIDEO PER INTERO</option>
-                                <option value="false">TAGLIA ALLA DURATA FOTO</option>
+                        <div>
+                            <label class="setup-label" for="admin-tv-full-video">DURATA CLIP VIDEO</label>
+                            <select id="admin-tv-full-video" class="tactical-select">
+                                <option value="true">INTERA CLIP VIDEO</option>
+                                <option value="false">USA DURATA FOTO</option>
                             </select>
                         </div>
                     </div>
 
-                    <div class="row-inputs" style="gap: 10px;">
-                        <div style="flex: 1;">
-                            <label class="setup-label" style="font-size: 12px; margin-bottom: 5px; color: var(--sop-primary);" for="admin-tv-show-win" title="Quanto dura il blocco in cui i media vengono mostrati">
-                                ⏱️ FINESTRA MEDIA ON (SEC)
+                    <div class="tv-form-row">
+                        <div>
+                            <label class="setup-label" style="color: var(--sop-primary);" for="admin-tv-show-win" title="Durata del blocco in cui i media vengono mostrati">
+                                ⏱️ FINESTRA ON (SEC)
                             </label>
-                            <input type="number" id="admin-tv-show-win" class="setup-input" style="font-size: 15px; padding: 8px 10px;" value="60" min="5">
+                            <input type="number" id="admin-tv-show-win" class="setup-input" value="60" min="5">
                         </div>
-                        <div style="flex: 1;">
-                            <label class="setup-label" style="font-size: 12px; margin-bottom: 5px; color: var(--sop-secondary);" for="admin-tv-hide-win" title="Quanto dura la pausa senza media (0 = sempre visibili)">
-                                ⏸️ PAUSA MEDIA OFF (0=MAI)
+                        <div>
+                            <label class="setup-label" style="color: var(--sop-secondary);" for="admin-tv-hide-win" title="Durata della pausa senza media (0 = sempre attivi)">
+                                ⏸️ PAUSA OFF (0 = MAI)
                             </label>
-                            <input type="number" id="admin-tv-hide-win" class="setup-input" style="font-size: 15px; padding: 8px 10px;" value="60" min="0">
+                            <input type="number" id="admin-tv-hide-win" class="setup-input" value="60" min="0">
                         </div>
                     </div>
 
-                    <div class="row-inputs" style="gap: 10px;">
-                        <div style="flex: 1;">
-                            <label class="setup-label" style="font-size: 12px; margin-bottom: 5px;" for="admin-tv-transition">TRANSIZIONE TRA I MEDIA</label>
-                            <select id="admin-tv-transition" class="tactical-select" style="font-size: 14px; padding: 8px 10px;">
-                                <option value="FADE">DISSOLVENZA (FADE)</option>
-                                <option value="SLIDE">SCORRIMENTO LATERALE (SLIDE)</option>
-                                <option value="ZOOM">ZOOM TATTICO (SCALE)</option>
-                                <option value="GLITCH">IMPULSO CRT (CYBER GLITCH)</option>
-                                <option value="NONE">TAGLIO NETTO (NESSUNA)</option>
+                    <div class="tv-form-row">
+                        <div>
+                            <label class="setup-label" for="admin-tv-transition">TRANSIZIONE MEDIA</label>
+                            <select id="admin-tv-transition" class="tactical-select">
+                                <option value="FADE">CROSSFADE ( FLUIDA )</option>
+                                <option value="SLIDE">SCORRIMENTO ( SLIDE )</option>
+                                <option value="ZOOM">ZOOM TATTICO ( SCALE )</option>
+                                <option value="GLITCH">IMPULSO CRT ( GLITCH )</option>
+                                <option value="NONE">TAGLIO NETTO ( NESSUNA )</option>
                             </select>
                         </div>
-                        <div style="flex: 1;">
-                            <label class="setup-label" style="font-size: 12px; margin-bottom: 5px;" for="admin-tv-muted">AUDIO CLIP VIDEO</label>
-                            <select id="admin-tv-muted" class="tactical-select" style="font-size: 14px; padding: 8px 10px;">
-                                <option value="true">MUTO (Autoplay Sicuro)</option>
-                                <option value="false">AUDIO ATTIVO SULLA TV</option>
+                        <div>
+                            <label class="setup-label" for="admin-tv-muted">AUDIO CLIP VIDEO</label>
+                            <select id="admin-tv-muted" class="tactical-select">
+                                <option value="true">MUTO (Autoplay OK)</option>
+                                <option value="false">AUDIO ATTIVO TV</option>
                             </select>
                         </div>
                     </div>
 
                     <div>
-                        <label class="setup-label" style="font-size: 12px; margin-bottom: 5px;" for="admin-tv-hide-active">COMPORTAMENTO DURANTE PARTITA IN CORSO</label>
-                        <select id="admin-tv-hide-active" class="tactical-select" style="font-size: 14px; padding: 8px 10px;">
-                            <option value="true">NASCONDI MEDIA DURANTE IL COMBATTIMENTO</option>
-                            <option value="false">MANTIENI MEDIA ANCHE DURANTE LA PARTITA</option>
+                        <label class="setup-label" for="admin-tv-hide-active">VISIBILITÀ CON MISSION READY / PARTITA IN CORSO</label>
+                        <select id="admin-tv-hide-active" class="tactical-select">
+                            <option value="true">NASCONDI DA "MISSION READY" E IN PARTITA</option>
+                            <option value="false">MOSTRA SEMPRE (ANCHE IN PARTITA)</option>
                         </select>
                     </div>
 
@@ -477,8 +521,8 @@
                 </div>
 
                 <!-- COLONNA 2: Playlist File e Area Drag & Drop -->
-                <div id="admin-tv-dropzone" style="background: rgba(0,0,0,0.45); border: 1px solid var(--sop-dim); padding: 16px; display: flex; flex-direction: column; min-height: 430px; position: relative; transition: border-color 0.2s, background 0.2s;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--sop-dim); padding-bottom: 8px; margin-bottom: 10px;">
+                <div id="admin-tv-dropzone" class="tv-admin-col" style="min-height: 430px; position: relative; transition: border-color 0.2s, background 0.2s;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--sop-dim); padding-bottom: 8px;">
                         <span style="color: var(--sop-primary); font-weight: bold; letter-spacing: 1.5px; font-size: 14px;">
                             📁 2. LIBRERIA MEDIA (<span id="admin-tv-files-count">0</span>)
                         </span>
@@ -490,12 +534,11 @@
                         </div>
                     </div>
 
-                    <!-- Zona Drag & Drop Visiva -->
-                    <div onclick="document.getElementById('admin-tv-upload-input').click()" style="border: 1px dashed var(--sop-dim); background: rgba(0, 255, 204, 0.03); border-radius: 4px; padding: 10px; text-align: center; font-size: 12px; color: #999; margin-bottom: 10px; cursor: pointer;">
+                    <div onclick="document.getElementById('admin-tv-upload-input').click()" style="border: 1px dashed var(--sop-dim); background: rgba(0, 255, 204, 0.03); border-radius: 4px; padding: 10px; text-align: center; font-size: 12px; color: #999; cursor: pointer;">
                         📥 <b>TRASCINA QUI FOTO O VIDEO</b> (anche multipli) per caricarli, oppure clicca qui
                     </div>
 
-                    <div id="admin-tv-media-status" style="font-size: 12px; color: #888; font-family: monospace; margin-bottom: 8px;">
+                    <div id="admin-tv-media-status" style="font-size: 12px; color: #888; font-family: monospace;">
                         Clicca su un file nell'elenco per vederne l'anteprima a destra.
                     </div>
 
@@ -503,12 +546,12 @@
                 </div>
 
                 <!-- COLONNA 3: Preview del File Selezionato e Controlli Diretti -->
-                <div style="background: rgba(0,0,0,0.45); border: 1px solid var(--sop-dim); padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div class="tv-admin-col">
                     <div style="color: var(--sop-primary); font-weight: bold; letter-spacing: 1.5px; font-size: 14px; border-bottom: 1px solid var(--sop-dim); padding-bottom: 6px;">
                         👁️ 3. ANTEPRIMA FILE SELEZIONATO
                     </div>
 
-                    <div style="flex: 1; min-height: 230px; max-height: 290px; background: #000; border: 1px solid var(--sop-dim); border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
+                    <div style="flex: 1; min-height: 250px; max-height: 310px; background: #000; border: 1px solid var(--sop-dim); border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
                         <div id="admin-tv-preview-empty" style="color: var(--sop-dim); font-size: 13px; text-align: center; padding: 20px;">
                             NESSUN FILE SELEZIONATO<br><span style="font-size: 11px; color: #555;">Clicca su una riga della libreria</span>
                         </div>
@@ -521,10 +564,10 @@
                     </div>
 
                     <div style="display: flex; gap: 8px; margin-top: auto;">
-                        <button type="button" id="btn-preview-to-pip" class="deck-btn full-width disabled" disabled style="margin: 0; padding: 9px; font-size: 13px; border-color: var(--sop-primary); color: var(--sop-primary);">
+                        <button type="button" id="btn-preview-to-pip" class="deck-btn full-width disabled" disabled style="margin: 0; padding: 10px; font-size: 13px; border-color: var(--sop-primary); color: var(--sop-primary);">
                             [ 📺 MANDA IN PIP ]
                         </button>
-                        <button type="button" id="btn-preview-to-full" class="deck-btn full-width disabled" disabled style="margin: 0; padding: 9px; font-size: 13px; border-color: var(--sop-secondary); color: var(--sop-secondary);">
+                        <button type="button" id="btn-preview-to-full" class="deck-btn full-width disabled" disabled style="margin: 0; padding: 10px; font-size: 13px; border-color: var(--sop-secondary); color: var(--sop-secondary);">
                             [ ⛶ MANDA FULLSCREEN ]
                         </button>
                     </div>
