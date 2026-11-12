@@ -66,6 +66,24 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Titolo e Briefing / Scenario della Partita (Sempre visibile anche per Missione Singola) -->
+            <div class="input-group-tactical" style="margin-bottom: 22px; background: rgba(255, 153, 0, 0.04); border: 1px solid var(--sop-dim); border-left: 3px solid var(--sop-secondary); padding: 14px;">
+                <div class="row-inputs" style="gap: 15px; align-items: flex-start;">
+                    <div style="flex: 1;">
+                        <label class="setup-label" for="setup-mission-title" style="color: var(--sop-secondary);">
+                            🏷️ TITOLO OPERAZIONE / PARTITA (OPZIONALE)
+                        </label>
+                        <input type="text" id="setup-mission-title" class="setup-input" style="padding: 10px 14px; font-size: 16px;" placeholder="Es. OP. BLACKOUT - ASSALTO AL BUNKER" maxlength="60">
+                    </div>
+                    <div style="flex: 1.4;">
+                        <label class="setup-label" for="setup-mission-desc" style="color: var(--sop-primary);">
+                            📋 BRIEFING / SCENARIO (VISIBILE SU MONITOR E TV)
+                        </label>
+                        <input type="text" id="setup-mission-desc" class="setup-input" style="padding: 10px 14px; font-size: 15px;" placeholder="Es. Gli attaccanti hanno 20 minuti per innescare l'ordigno..." maxlength="180">
+                    </div>
+                </div>
+            </div>
             
             <!-- Selezione Modalità e Terminale Hardware -->
             <div class="input-group-tactical" style="margin-bottom: 25px;">

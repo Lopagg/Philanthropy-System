@@ -206,7 +206,7 @@ def index():
 def tv_dashboard():
     return render_template('tv.html')
 
-@app.route('/api/tv/media')
+@app.route('/api/tv/media', methods=['GET'])
 def api_tv_media_list():
     allowed_exts = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov'}
     files = []
@@ -217,15 +217,52 @@ def api_tv_media_list():
                 files.append({
                     "name": os.path.splitext(fname)[0].replace('_', ' ').upper(),
                     "filename": fname,
-                    "url": f"/static/tv_media/{fname}"
+                    "url": f"/static/tv_media/{fname}",
+                    "is_video": ext in {'.mp4', '.webm', '.mov'}
                 })
     return jsonify({"status": "ok", "files": files})
 
 
-@app.route('/mobile')
+@app.route('/api/tv/media/upload', methods=['POST'])
 @admin_required
-def mobile_dashboard():
-    return render_template('mobile.html', username=current_user.name)
+def api_tv_media_upload():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "msg": "Nessun file selezionato."}), 400
+    f = request.files['file']
+    if not f or not f.filename:
+        return jsonify({"status": "error", "msg": "Nome file non valido."}), 400
+
+    allowed_exts = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov'}
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in allowed_exts:
+        return jsonify({"status": "error", "msg": f"Formato {ext} non supportato."}), 400
+
+    safe_name = secure_filename(f.filename)
+    f.save(os.path.join(TV_MEDIA_FOLDER, safe_name))
+    socketio.emit('tv_media_cmd', {'action': 'RELOAD_LIST'})
+    return jsonify({"status": "ok", "filename": safe_name})
+
+
+@app.route('/api/tv/media/delete', methods=['POST'])
+@admin_required
+def api_tv_media_delete():
+    data = request.get_json(silent=True) or {}
+    fname = secure_filename(str(data.get('filename') or ''))
+    if not fname:
+        return jsonify({"status": "error", "msg": "File non specificato."}), 400
+    target_path = os.path.join(TV_MEDIA_FOLDER, fname)
+    if os.path.exists(target_path):
+        os.remove(target_path)
+    socketio.emit('tv_media_cmd', {'action': 'RELOAD_LIST'})
+    return jsonify({"status": "ok"})
+
+
+@socketio.on('admin_tv_media_control')
+@login_required
+def handle_admin_tv_media_control(data):
+    """Inoltra i comandi di regia e configurazione Media dal pannello Admin a tutti gli schermi /tv."""
+    if isinstance(data, dict):
+        socketio.emit('tv_media_cmd', data)
 
 
 @app.route('/login', methods=['GET', 'POST'])

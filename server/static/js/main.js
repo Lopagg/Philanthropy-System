@@ -833,8 +833,6 @@ function buildMissionConfig() {
         targetId = "SERVER-TDM";
     }
 
-    return { mode, targetId, dur, commandData };
-
     commandData.mission_title = (document.getElementById('setup-mission-title')?.value || '').trim().toUpperCase();
     commandData.mission_desc  = (document.getElementById('setup-mission-desc')?.value || '').trim();
 
@@ -1277,6 +1275,129 @@ if (!window.__zuluMainInitialized) {
                 }
             }
         }, 2500);
+
+        // ========================================================================
+        // REGIA REMOTA MEDIA TV (UPLOAD, ELIMINAZIONE, LANCIO SPOT E CONFIG)
+        // ========================================================================
+
+        function setAdminTvMediaStatus(msg, color = '#888') {
+            const el = document.getElementById('admin-tv-media-status');
+            if (el) { el.textContent = msg; el.style.color = color; }
+        }
+
+        window.refreshAdminTvMediaList = function() {
+            const listEl = document.getElementById('admin-tv-media-list');
+            if (!listEl) return;
+            fetch('/api/tv/media')
+                .then(r => r.json())
+                .then(data => {
+                    const files = data.files || [];
+                    listEl.innerHTML = '';
+                    if (files.length === 0) {
+                        listEl.innerHTML = '<li style="color:var(--sop-dim); text-align:center; padding:30px 10px; font-size:14px;">Nessun file presente in static/tv_media.<br>Clicca su [+ CARICA FOTO / VIDEO] in alto a destra.</li>';
+                        return;
+                    }
+                    files.forEach(f => {
+                        const li = document.createElement('li');
+                        li.className = 'roster-item';
+                        li.style.padding = '8px 12px';
+                        li.style.marginBottom = '6px';
+                        li.style.fontSize = '15px';
+                        const badge = f.is_video
+                            ? '<span style="color:var(--sop-secondary); font-size:12px; margin-right:8px;">[🎥 VIDEO]</span>'
+                            : '<span style="color:var(--sop-primary); font-size:12px; margin-right:8px;">[🖼️ FOTO]</span>';
+                        const safeUrl   = f.url.replace(/'/g, "\\'");
+                        const safeTitle = f.name.replace(/'/g, "\\'");
+                        const safeFname = f.filename.replace(/'/g, "\\'");
+
+                        li.innerHTML = `
+                            <div style="flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:10px;">
+                                ${badge}<span style="color:#fff; font-weight:bold;">${f.name}</span>
+                            </div>
+                            <div style="display:flex; gap:6px; font-family:monospace; font-size:12px; flex-shrink:0;">
+                                <span class="action-btn" style="margin:0; padding:3px 7px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="sendAdminTvMediaCmd({action:'PLAY_PIP', url:'${safeUrl}', title:'${safeTitle}'})" title="Mostra subito nel riquadro Tactical Feed">[📺 PIP]</span>
+                                <span class="action-btn" style="margin:0; padding:3px 7px; border:1px solid var(--sop-secondary); color:var(--sop-secondary);" onclick="sendAdminTvMediaCmd({action:'PLAY_FULLSCREEN', url:'${safeUrl}', title:'${safeTitle}', duration:15})" title="Mostra subito a Tutto Schermo sulla TV">[⛶ FULL]</span>
+                                <span class="action-btn" style="margin:0; padding:3px 7px; color:var(--sop-alert);" onclick="deleteTvMediaFile('${safeFname}')" title="Elimina file dal server">[🗑️]</span>
+                            </div>
+                        `;
+                        listEl.appendChild(li);
+                    });
+                });
+        };
+
+        window.openTvMediaAdminModal = function() {
+            const saved = JSON.parse(localStorage.getItem('zulu_tv_media_cfg') || '{}');
+            if (saved.mode)                        document.getElementById('admin-tv-mode').value        = saved.mode;
+            if (saved.intervalSec)                 document.getElementById('admin-tv-interval').value    = saved.intervalSec;
+            if (saved.durationSec)                 document.getElementById('admin-tv-duration').value    = saved.durationSec;
+            if (saved.hideWhenActive !== undefined) document.getElementById('admin-tv-hide-active').value = String(saved.hideWhenActive);
+            if (saved.muted !== undefined)          document.getElementById('admin-tv-muted').value       = String(saved.muted);
+
+            window.refreshAdminTvMediaList();
+            document.getElementById('tv-media-admin-modal')?.classList.remove('hidden');
+        };
+
+        window.closeTvMediaAdminModal = function() {
+            document.getElementById('tv-media-admin-modal')?.classList.add('hidden');
+        };
+
+        window.sendAdminTvMediaCmd = function(cmdPayload) {
+            socket.emit('admin_tv_media_control', cmdPayload);
+            setAdminTvMediaStatus(`COMANDO INVIATO ALLA TV: ${cmdPayload.action}`, 'var(--sop-success)');
+        };
+
+        window.pushTvMediaConfigFromAdmin = function() {
+            const cfg = {
+                mode:           document.getElementById('admin-tv-mode').value,
+                intervalSec:    Math.max(5, parseInt(document.getElementById('admin-tv-interval').value) || 45),
+                durationSec:    Math.max(3, parseInt(document.getElementById('admin-tv-duration').value) || 12),
+                hideWhenActive: document.getElementById('admin-tv-hide-active').value === 'true',
+                muted:          document.getElementById('admin-tv-muted').value === 'true'
+            };
+            localStorage.setItem('zulu_tv_media_cfg', JSON.stringify(cfg));
+            socket.emit('admin_tv_media_control', { action: 'SET_CONFIG', config: cfg });
+            setAdminTvMediaStatus(`PROGRAMMAZIONE [${cfg.mode}] APPLICATA ALLA TV!`, 'var(--sop-primary)');
+        };
+
+        window.uploadTvMediaFile = function(input) {
+            if (!input.files || !input.files[0]) return;
+            const formData = new FormData();
+            formData.append('file', input.files[0]);
+            setAdminTvMediaStatus("CARICAMENTO FILE IN CORSO...", "var(--sop-secondary)");
+
+            fetch('/api/tv/media/upload', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        setAdminTvMediaStatus(`CARICATO: ${data.filename}`, "var(--sop-success)");
+                        window.refreshAdminTvMediaList();
+                    } else {
+                        setAdminTvMediaStatus(`ERRORE: ${data.msg}`, "var(--sop-alert)");
+                    }
+                })
+                .catch(err => setAdminTvMediaStatus(`ERRORE RETE: ${err}`, "var(--sop-alert)"))
+                .finally(() => { input.value = ''; });
+        };
+
+        window.deleteTvMediaFile = function(filename) {
+            window.openTacticalConfirm(
+                `Eliminare il file "${filename}" dalla libreria Media TV?`,
+                "ELIMINA FILE MEDIA",
+                "danger",
+                () => {
+                    fetch('/api/tv/media/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename })
+                    })
+                    .then(() => {
+                        setAdminTvMediaStatus(`ELIMINATO: ${filename}`, "var(--sop-alert)");
+                        window.refreshAdminTvMediaList();
+                    });
+                }
+            );
+        };
+        
     });
 
     // ========================================================================
