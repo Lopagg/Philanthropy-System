@@ -64,17 +64,20 @@
         min-height: 0;
     }
 
-    /* 3. Operator Count: mantiene l'allineamento e i font nativi di style.css
-          aggiungendo solo lo scorrimento verticale interno quando ci sono molti giocatori */
+    /* 3. Operator Count: si adatta al numero di giocatori (flex: 0 1 auto)
+          fino a un massimo del 55% della colonna, poi scorre internamente */
     #view-monitor .widget-factions {
-        flex: 1.1;
+        flex: 0 1 auto;
+        max-height: 55%;
         display: flex;
         flex-direction: column;
         min-height: 0;
         overflow: hidden;
     }
     #view-monitor .faction-container {
-        flex: 1;
+        flex: 0 1 auto !important;
+        height: auto !important;
+        justify-content: flex-start !important;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -84,14 +87,18 @@
         flex-shrink: 0;
     }
     #view-monitor .faction-rosters {
-        flex: 1;
+        flex: 0 1 auto;
         min-height: 0;
         overflow-y: auto;
     }
+    /* Se entrambe le liste sono vuote (0 giocatori in campo), nasconde lo spazio vuoto sotto i contatori */
+    #view-monitor .faction-rosters:has(.alpha-list:empty):has(.bravo-list:empty) {
+        display: none;
+    }
 
-    /* 4. Daily Match Wins + Mission Intel sempre visibili e proporzionati */
+    /* 4. Daily Match Wins + Mission Intel si espande nello spazio lasciato libero da Operator Count */
     #view-monitor .widget-rules {
-        flex: 0.9;
+        flex: 1 1 0;
         display: flex;
         flex-direction: column;
         min-height: 0;

@@ -293,6 +293,9 @@ function updateForceEndButton(state) {
  */
 export function renderRules(payload) {
     const elSdRulesList = document.getElementById('sd-rules-list');
+    if (!elSdRulesList) return;
+    elSdRulesList.innerHTML = '';
+
     if (payload.mission_title) {
         setElText('monitor-mode-title', `OPERATION: ${(payload.mode || '').replace(/_/g, ' ').toUpperCase()} // ${payload.mission_title}`);
     }
