@@ -1277,67 +1277,176 @@ if (!window.__zuluMainInitialized) {
         }, 2500);
 
         // ========================================================================
-        // REGIA REMOTA MEDIA TV (UPLOAD, ELIMINAZIONE, LANCIO SPOT E CONFIG)
+        // REGIA REMOTA MEDIA TV (DRAG & DROP, PREVIEW, STATO IN ONDA E CONFIG)
         // ========================================================================
+
+        let cachedTvMediaFiles = [];
+        let selectedPreviewFile = null;
+        let currentTvNowPlaying = { playing: false, filename: null, mode: 'OFF' };
 
         function setAdminTvMediaStatus(msg, color = '#888') {
             const el = document.getElementById('admin-tv-media-status');
             if (el) { el.textContent = msg; el.style.color = color; }
         }
 
-        window.refreshAdminTvMediaList = function() {
-            const listEl = document.getElementById('admin-tv-media-list');
+        function updateAdminTvLiveBadge() {
+            const badge = document.getElementById('admin-tv-live-badge');
+            if (!badge) return;
+            if (currentTvNowPlaying && currentTvNowPlaying.playing && currentTvNowPlaying.filename) {
+                badge.textContent = `🔴 IN ONDA (${currentTvNowPlaying.mode}): ${currentTvNowPlaying.title || currentTvNowPlaying.filename}`;
+                badge.style.borderColor = 'var(--sop-success)';
+                badge.style.color = 'var(--sop-success)';
+            } else if (currentTvNowPlaying && currentTvNowPlaying.mode === 'PAUSED') {
+                badge.textContent = `⏸️ TV IN PAUSA MEDIA (SOLO TELEMETRIA)`;
+                badge.style.borderColor = 'var(--sop-secondary)';
+                badge.style.color = 'var(--sop-secondary)';
+            } else {
+                badge.textContent = `⏹️ NESSUN MEDIA IN RIPRODUZIONE`;
+                badge.style.borderColor = 'var(--sop-dim)';
+                badge.style.color = '#888';
+            }
+        }
+
+        window.selectTvMediaForPreview = function(filename) {
+            const found = cachedTvMediaFiles.find(x => x.filename === filename);
+            if (!found) return;
+            selectedPreviewFile = found;
+
+            const emptyEl = document.getElementById('admin-tv-preview-empty');
+            const imgEl   = document.getElementById('admin-tv-preview-img');
+            const vidEl   = document.getElementById('admin-tv-preview-video');
+            const infoEl  = document.getElementById('admin-tv-preview-info');
+            const btnPip  = document.getElementById('btn-preview-to-pip');
+            const btnFull = document.getElementById('btn-preview-to-full');
+
+            emptyEl?.classList.add('hidden');
+            if (infoEl) infoEl.textContent = `${found.name} (${found.filename})`;
+
+            if (found.is_video) {
+                imgEl?.classList.add('hidden');
+                if (vidEl) {
+                    vidEl.classList.remove('hidden');
+                    vidEl.src = found.url;
+                    vidEl.play().catch(() => {});
+                }
+            } else {
+                if (vidEl) { vidEl.pause(); vidEl.removeAttribute('src'); vidEl.classList.add('hidden'); }
+                if (imgEl) {
+                    imgEl.classList.remove('hidden');
+                    imgEl.src = found.url;
+                }
+            }
+
+            if (btnPip) {
+                btnPip.disabled = false;
+                btnPip.classList.remove('disabled');
+                btnPip.onclick = () => window.sendAdminTvMediaCmd({ action: 'PLAY_PIP', url: found.url, title: found.name, filename: found.filename });
+            }
+            if (btnFull) {
+                btnFull.disabled = false;
+                btnFull.classList.remove('disabled');
+                btnFull.onclick = () => window.sendAdminTvMediaCmd({ action: 'PLAY_FULLSCREEN', url: found.url, title: found.name, filename: found.filename });
+            }
+
+            renderAdminTvMediaListDOM();
+        };
+
+        function renderAdminTvMediaListDOM() {
+            const listEl  = document.getElementById('admin-tv-media-list');
+            const countEl = document.getElementById('admin-tv-files-count');
+            if (countEl) countEl.textContent = cachedTvMediaFiles.length;
             if (!listEl) return;
+
+            listEl.innerHTML = '';
+            if (cachedTvMediaFiles.length === 0) {
+                listEl.innerHTML = '<li style="color:var(--sop-dim); text-align:center; padding:30px 10px; font-size:14px;">Nessun file presente in static/tv_media.<br>Trascina qui i file o clicca su [+ CARICA FILE].</li>';
+                return;
+            }
+
+            cachedTvMediaFiles.forEach(f => {
+                const isPlayingHere = Boolean(currentTvNowPlaying?.playing && currentTvNowPlaying?.filename === f.filename);
+                const isSelected    = Boolean(selectedPreviewFile && selectedPreviewFile.filename === f.filename);
+
+                const li = document.createElement('li');
+                li.className = 'roster-item';
+                li.style.padding = '9px 12px';
+                li.style.marginBottom = '6px';
+                li.style.fontSize = '15px';
+                li.style.cursor = 'pointer';
+
+                if (isPlayingHere) {
+                    li.style.borderLeft = '4px solid var(--sop-success)';
+                    li.style.background = 'rgba(85, 255, 85, 0.14)';
+                } else if (isSelected) {
+                    li.style.borderLeft = '4px solid var(--sop-primary)';
+                    li.style.background = 'rgba(0, 255, 204, 0.08)';
+                }
+
+                const badge = f.is_video
+                    ? '<span style="color:var(--sop-secondary); font-size:12px; margin-right:6px;">[🎥 VIDEO]</span>'
+                    : '<span style="color:var(--sop-primary); font-size:12px; margin-right:6px;">[🖼️ FOTO]</span>';
+                const onAirTag = isPlayingHere
+                    ? `<span class="blink" style="color:var(--sop-success); font-weight:bold; font-size:12px; margin-left:8px;">[🔴 IN ONDA: ${currentTvNowPlaying.mode}]</span>`
+                    : '';
+
+                const safeUrl   = f.url.replace(/'/g, "\\'");
+                const safeTitle = f.name.replace(/'/g, "\\'");
+                const safeFname = f.filename.replace(/'/g, "\\'");
+
+                li.onclick = () => window.selectTvMediaForPreview(f.filename);
+
+                li.innerHTML = `
+                    <div style="flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:10px;">
+                        ${badge}<span style="color:#fff; font-weight:bold;">${f.name}</span>${onAirTag}
+                    </div>
+                    <div style="display:flex; gap:6px; font-family:monospace; font-size:12px; flex-shrink:0;" onclick="event.stopPropagation()">
+                        <span class="action-btn" style="margin:0; padding:3px 7px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="sendAdminTvMediaCmd({action:'PLAY_PIP', url:'${safeUrl}', title:'${safeTitle}', filename:'${safeFname}'})" title="Mostra subito nel riquadro Tactical Feed">[📺 PIP]</span>
+                        <span class="action-btn" style="margin:0; padding:3px 7px; border:1px solid var(--sop-secondary); color:var(--sop-secondary);" onclick="sendAdminTvMediaCmd({action:'PLAY_FULLSCREEN', url:'${safeUrl}', title:'${safeTitle}', filename:'${safeFname}'})" title="Mostra subito a Tutto Schermo sulla TV">[⛶ FULL]</span>
+                        <span class="action-btn" style="margin:0; padding:3px 7px; color:var(--sop-alert);" onclick="deleteTvMediaFile('${safeFname}')" title="Elimina file dal server">[🗑️]</span>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        window.refreshAdminTvMediaList = function() {
             fetch('/api/tv/media')
                 .then(r => r.json())
                 .then(data => {
-                    const files = data.files || [];
-                    listEl.innerHTML = '';
-                    if (files.length === 0) {
-                        listEl.innerHTML = '<li style="color:var(--sop-dim); text-align:center; padding:30px 10px; font-size:14px;">Nessun file presente in static/tv_media.<br>Clicca su [+ CARICA FOTO / VIDEO] in alto a destra.</li>';
-                        return;
+                    cachedTvMediaFiles = data.files || [];
+                    if (data.now_playing) {
+                        currentTvNowPlaying = data.now_playing;
+                        updateAdminTvLiveBadge();
                     }
-                    files.forEach(f => {
-                        const li = document.createElement('li');
-                        li.className = 'roster-item';
-                        li.style.padding = '8px 12px';
-                        li.style.marginBottom = '6px';
-                        li.style.fontSize = '15px';
-                        const badge = f.is_video
-                            ? '<span style="color:var(--sop-secondary); font-size:12px; margin-right:8px;">[🎥 VIDEO]</span>'
-                            : '<span style="color:var(--sop-primary); font-size:12px; margin-right:8px;">[🖼️ FOTO]</span>';
-                        const safeUrl   = f.url.replace(/'/g, "\\'");
-                        const safeTitle = f.name.replace(/'/g, "\\'");
-                        const safeFname = f.filename.replace(/'/g, "\\'");
-
-                        li.innerHTML = `
-                            <div style="flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:10px;">
-                                ${badge}<span style="color:#fff; font-weight:bold;">${f.name}</span>
-                            </div>
-                            <div style="display:flex; gap:6px; font-family:monospace; font-size:12px; flex-shrink:0;">
-                                <span class="action-btn" style="margin:0; padding:3px 7px; border:1px solid var(--sop-primary); color:var(--sop-primary);" onclick="sendAdminTvMediaCmd({action:'PLAY_PIP', url:'${safeUrl}', title:'${safeTitle}'})" title="Mostra subito nel riquadro Tactical Feed">[📺 PIP]</span>
-                                <span class="action-btn" style="margin:0; padding:3px 7px; border:1px solid var(--sop-secondary); color:var(--sop-secondary);" onclick="sendAdminTvMediaCmd({action:'PLAY_FULLSCREEN', url:'${safeUrl}', title:'${safeTitle}', duration:15})" title="Mostra subito a Tutto Schermo sulla TV">[⛶ FULL]</span>
-                                <span class="action-btn" style="margin:0; padding:3px 7px; color:var(--sop-alert);" onclick="deleteTvMediaFile('${safeFname}')" title="Elimina file dal server">[🗑️]</span>
-                            </div>
-                        `;
-                        listEl.appendChild(li);
-                    });
+                    renderAdminTvMediaListDOM();
                 });
         };
 
+        socket.on('tv_media_now_playing', (statusData) => {
+            currentTvNowPlaying = statusData || { playing: false, filename: null, mode: 'OFF' };
+            updateAdminTvLiveBadge();
+            renderAdminTvMediaListDOM();
+        });
+
         window.openTvMediaAdminModal = function() {
             const saved = JSON.parse(localStorage.getItem('zulu_tv_media_cfg') || '{}');
-            if (saved.mode)                        document.getElementById('admin-tv-mode').value        = saved.mode;
-            if (saved.intervalSec)                 document.getElementById('admin-tv-interval').value    = saved.intervalSec;
-            if (saved.durationSec)                 document.getElementById('admin-tv-duration').value    = saved.durationSec;
-            if (saved.hideWhenActive !== undefined) document.getElementById('admin-tv-hide-active').value = String(saved.hideWhenActive);
-            if (saved.muted !== undefined)          document.getElementById('admin-tv-muted').value       = String(saved.muted);
+            const setIf = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = String(val); };
+            setIf('admin-tv-mode',        saved.mode || 'PIP');
+            setIf('admin-tv-photo-dur',   saved.photoDurationSec ?? saved.durationSec ?? 10);
+            setIf('admin-tv-full-video',  saved.playFullVideo !== false);
+            setIf('admin-tv-show-win',    saved.showWindowSec ?? saved.intervalSec ?? 60);
+            setIf('admin-tv-hide-win',    saved.hideWindowSec ?? 60);
+            setIf('admin-tv-transition',  saved.transition || 'FADE');
+            setIf('admin-tv-hide-active', saved.hideWhenActive !== false);
+            setIf('admin-tv-muted',       saved.muted !== false);
 
             window.refreshAdminTvMediaList();
             document.getElementById('tv-media-admin-modal')?.classList.remove('hidden');
         };
 
         window.closeTvMediaAdminModal = function() {
+            const vidEl = document.getElementById('admin-tv-preview-video');
+            if (vidEl) { vidEl.pause(); vidEl.removeAttribute('src'); }
             document.getElementById('tv-media-admin-modal')?.classList.add('hidden');
         };
 
@@ -1348,36 +1457,70 @@ if (!window.__zuluMainInitialized) {
 
         window.pushTvMediaConfigFromAdmin = function() {
             const cfg = {
-                mode:           document.getElementById('admin-tv-mode').value,
-                intervalSec:    Math.max(5, parseInt(document.getElementById('admin-tv-interval').value) || 45),
-                durationSec:    Math.max(3, parseInt(document.getElementById('admin-tv-duration').value) || 12),
-                hideWhenActive: document.getElementById('admin-tv-hide-active').value === 'true',
-                muted:          document.getElementById('admin-tv-muted').value === 'true'
+                mode:             document.getElementById('admin-tv-mode').value,
+                photoDurationSec: Math.max(3, parseInt(document.getElementById('admin-tv-photo-dur').value) || 10),
+                playFullVideo:    document.getElementById('admin-tv-full-video').value === 'true',
+                showWindowSec:    Math.max(5, parseInt(document.getElementById('admin-tv-show-win').value) || 60),
+                hideWindowSec:    Math.max(0, parseInt(document.getElementById('admin-tv-hide-win').value) || 0),
+                transition:       document.getElementById('admin-tv-transition').value || 'FADE',
+                hideWhenActive:   document.getElementById('admin-tv-hide-active').value === 'true',
+                muted:            document.getElementById('admin-tv-muted').value === 'true'
             };
             localStorage.setItem('zulu_tv_media_cfg', JSON.stringify(cfg));
             socket.emit('admin_tv_media_control', { action: 'SET_CONFIG', config: cfg });
-            setAdminTvMediaStatus(`PROGRAMMAZIONE [${cfg.mode}] APPLICATA ALLA TV!`, 'var(--sop-primary)');
+            setAdminTvMediaStatus(`PROGRAMMAZIONE [${cfg.mode} | ON:${cfg.showWindowSec}s / OFF:${cfg.hideWindowSec}s] APPLICATA!`, 'var(--sop-primary)');
         };
 
-        window.uploadTvMediaFile = function(input) {
-            if (!input.files || !input.files[0]) return;
-            const formData = new FormData();
-            formData.append('file', input.files[0]);
-            setAdminTvMediaStatus("CARICAMENTO FILE IN CORSO...", "var(--sop-secondary)");
+        window.uploadTvMediaFiles = async function(fileList) {
+            if (!fileList || fileList.length === 0) return;
+            const filesArr = Array.from(fileList);
+            let okCount = 0;
 
-            fetch('/api/tv/media/upload', { method: 'POST', body: formData })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        setAdminTvMediaStatus(`CARICATO: ${data.filename}`, "var(--sop-success)");
-                        window.refreshAdminTvMediaList();
-                    } else {
-                        setAdminTvMediaStatus(`ERRORE: ${data.msg}`, "var(--sop-alert)");
-                    }
-                })
-                .catch(err => setAdminTvMediaStatus(`ERRORE RETE: ${err}`, "var(--sop-alert)"))
-                .finally(() => { input.value = ''; });
+            for (let i = 0; i < filesArr.length; i++) {
+                const file = filesArr[i];
+                setAdminTvMediaStatus(`CARICAMENTO (${i + 1}/${filesArr.length}): ${file.name}...`, "var(--sop-secondary)");
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const r = await fetch('/api/tv/media/upload', { method: 'POST', body: formData });
+                    const data = await r.json();
+                    if (data.status === 'ok') okCount++;
+                } catch (err) {
+                    setAdminTvMediaStatus(`ERRORE RETE SU ${file.name}`, "var(--sop-alert)");
+                }
+            }
+
+            const inp = document.getElementById('admin-tv-upload-input');
+            if (inp) inp.value = '';
+            setAdminTvMediaStatus(`CARICATI ${okCount}/${filesArr.length} FILE CON SUCCESSO!`, "var(--sop-success)");
+            window.refreshAdminTvMediaList();
         };
+
+        // Supporto Drag & Drop sulla colonna libreria
+        const dropzoneEl = document.getElementById('admin-tv-dropzone');
+        if (dropzoneEl) {
+            ['dragenter', 'dragover'].forEach(evName => {
+                dropzoneEl.addEventListener(evName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzoneEl.style.borderColor = 'var(--sop-primary)';
+                    dropzoneEl.style.background  = 'rgba(0, 255, 204, 0.08)';
+                });
+            });
+            ['dragleave', 'drop'].forEach(evName => {
+                dropzoneEl.addEventListener(evName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzoneEl.style.borderColor = 'var(--sop-dim)';
+                    dropzoneEl.style.background  = 'rgba(0, 0, 0, 0.45)';
+                });
+            });
+            dropzoneEl.addEventListener('drop', (e) => {
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    window.uploadTvMediaFiles(e.dataTransfer.files);
+                }
+            });
+        }
 
         window.deleteTvMediaFile = function(filename) {
             window.openTacticalConfirm(
@@ -1391,6 +1534,12 @@ if (!window.__zuluMainInitialized) {
                         body: JSON.stringify({ filename })
                     })
                     .then(() => {
+                        if (selectedPreviewFile && selectedPreviewFile.filename === filename) {
+                            selectedPreviewFile = null;
+                            document.getElementById('admin-tv-preview-img')?.classList.add('hidden');
+                            document.getElementById('admin-tv-preview-video')?.classList.add('hidden');
+                            document.getElementById('admin-tv-preview-empty')?.classList.remove('hidden');
+                        }
                         setAdminTvMediaStatus(`ELIMINATO: ${filename}`, "var(--sop-alert)");
                         window.refreshAdminTvMediaList();
                     });

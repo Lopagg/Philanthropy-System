@@ -206,6 +206,9 @@ def index():
 def tv_dashboard():
     return render_template('tv.html')
 
+last_tv_media_status = {"playing": False, "filename": None, "url": None, "title": None, "mode": "OFF"}
+
+
 @app.route('/api/tv/media', methods=['GET'])
 def api_tv_media_list():
     allowed_exts = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mov'}
@@ -220,7 +223,7 @@ def api_tv_media_list():
                     "url": f"/static/tv_media/{fname}",
                     "is_video": ext in {'.mp4', '.webm', '.mov'}
                 })
-    return jsonify({"status": "ok", "files": files})
+    return jsonify({"status": "ok", "files": files, "now_playing": last_tv_media_status})
 
 
 @app.route('/api/tv/media/upload', methods=['POST'])
@@ -263,6 +266,15 @@ def handle_admin_tv_media_control(data):
     """Inoltra i comandi di regia e configurazione Media dal pannello Admin a tutti gli schermi /tv."""
     if isinstance(data, dict):
         socketio.emit('tv_media_cmd', data)
+
+
+@socketio.on('tv_media_status_report')
+def handle_tv_media_status_report(data):
+    """Riceve da /tv il file attualmente in onda e aggiorna in tempo reale il pannello Admin."""
+    global last_tv_media_status
+    if isinstance(data, dict):
+        last_tv_media_status = data
+        socketio.emit('tv_media_now_playing', last_tv_media_status)
 
 @app.route('/mobile')
 @admin_required

@@ -26,20 +26,45 @@
             overflow: hidden;
             margin: 0;
             padding: 0;
-            height: 100vh;
-            width: 100vw;
+            height: 100%;
+            width: 100%;
         }
         
         .tv-container {
+            position: fixed;
+            inset: 0;
             display: grid;
             grid-template-rows: auto 1fr;
-            height: 100vh;
             padding: 25px;
             box-sizing: border-box;
             gap: 22px;
             z-index: 2;
-            position: relative;
         }
+
+        /* Transizioni configurabili per lo Spazio Media TV */
+        @keyframes tvFadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        @keyframes tvSlideIn {
+            from { opacity: 0; transform: translateX(45px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes tvZoomIn {
+            from { opacity: 0; transform: scale(0.88); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes tvGlitchIn {
+            0%   { opacity: 0; transform: scaleY(0.05) skewX(15deg); filter: brightness(2.5) contrast(2); }
+            40%  { opacity: 1; transform: scaleY(1.04) skewX(-5deg); filter: brightness(1.4); }
+            70%  { transform: scaleY(0.98) skewX(2deg); }
+            100% { opacity: 1; transform: scaleY(1) skewX(0); filter: none; }
+        }
+        .tv-trans-FADE   { animation: tvFadeIn 0.65s ease-out forwards; }
+        .tv-trans-SLIDE  { animation: tvSlideIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .tv-trans-ZOOM   { animation: tvZoomIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .tv-trans-GLITCH { animation: tvGlitchIn 0.45s ease-out forwards; }
+        .tv-trans-NONE   { animation: none; }
         
         .tv-header {
             display: flex;
@@ -731,18 +756,25 @@
         });
 
         // ====================================================================
-        // TV MEDIA ENGINE (PIP IN TACTICAL FEED & SPOT FULLSCREEN PERIODICI)
+        // TV MEDIA ENGINE (CICLO ON/OFF, DURATA FOTO/VIDEO, TRANSIZIONI E STATO LIVE)
         // ====================================================================
 
         let tvMediaPlaylist = [];
         let tvMediaIdx = 0;
-        let tvMediaTimer = null;
-        let tvFullscreenTimeout = null;
+        let tvItemStepTimer = null;
+        let tvWindowPhaseTimer = null;
+        let tvIsInPauseWindow = false;
+        let tvWindowExpiredPendingVideo = false;
+        let currentPlayingFilename = null;
+
         let tvMediaConfig = JSON.parse(localStorage.getItem('zulu_tv_media_cfg') || JSON.stringify({
-            mode: 'PIP',          // 'OFF', 'PIP', 'FULLSCREEN'
-            intervalSec: 45,      // Ogni quanti secondi ruota o mostra lo spot fullscreen
-            durationSec: 12,      // Durata di visualizzazione per le immagini statiche
-            hideWhenActive: true, // Se true, nasconde i media durante il combattimento attivo
+            mode: 'PIP',             // 'OFF', 'PIP', 'FULLSCREEN'
+            photoDurationSec: 10,    // Durata singola foto (sec)
+            playFullVideo: true,     // true = riproduci video per intero, false = usa photoDurationSec
+            showWindowSec: 60,       // Durata finestra in cui i media sono visibili (sec)
+            hideWindowSec: 60,       // Durata pausa in cui i media spariscono (0 = mai in pausa)
+            transition: 'FADE',      // 'FADE', 'SLIDE', 'ZOOM', 'GLITCH', 'NONE'
+            hideWhenActive: true,    // Nascondi durante partita attiva
             muted: true
         }));
 
@@ -750,6 +782,27 @@
             if (!currentTvState) return false;
             const idleStates = ['STANDBY', 'WAITING FOR DATA', 'MISSION READY', 'PREPARING', 'STOPPED'];
             return !idleStates.includes(currentTvState.toUpperCase());
+        }
+
+        function reportTvMediaStatus(playing, itemObj = null, modeOverride = null) {
+            currentPlayingFilename = (playing && itemObj) ? itemObj.filename : null;
+            if (typeof socket !== 'undefined' && socket.connected) {
+                socket.emit('tv_media_status_report', {
+                    playing: Boolean(playing),
+                    filename: currentPlayingFilename,
+                    url: (playing && itemObj) ? itemObj.url : null,
+                    title: (playing && itemObj) ? itemObj.name : null,
+                    mode: modeOverride || (playing ? tvMediaConfig.mode : 'OFF')
+                });
+            }
+        }
+
+        function applyMediaTransition(el) {
+            if (!el) return;
+            el.classList.remove('tv-trans-FADE', 'tv-trans-SLIDE', 'tv-trans-ZOOM', 'tv-trans-GLITCH', 'tv-trans-NONE');
+            void el.offsetWidth; // Force reflow per riavviare l'animazione CSS
+            const tr = tvMediaConfig.transition || 'FADE';
+            el.classList.add(`tv-trans-${tr}`);
         }
 
         function fetchTvMediaList() {
@@ -771,154 +824,202 @@
             return clean.endsWith('.mp4') || clean.endsWith('.webm') || clean.endsWith('.mov');
         }
 
-        function closeFullscreenMedia() {
-            const fsOv  = document.getElementById('tv-fullscreen-overlay');
-            const fsVid = document.getElementById('tv-fs-video');
-            const fsImg = document.getElementById('tv-fs-img');
-            if (fsFullscreenTimeout) { clearTimeout(tvFullscreenTimeout); tvFullscreenTimeout = null; }
-            if (fsVid) { fsVid.pause(); fsVid.removeAttribute('src'); fsVid.classList.add('hidden'); }
-            if (fsImg) { fsImg.classList.add('hidden'); }
-            if (fsOv)  { fsOv.classList.add('hidden'); }
+        function clearMediaTimers() {
+            if (tvItemStepTimer)    { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
+            if (tvWindowPhaseTimer) { clearTimeout(tvWindowPhaseTimer); tvWindowPhaseTimer = null; }
+            tvWindowExpiredPendingVideo = false;
         }
-        let fsFullscreenTimeout = null;
 
-        function playMediaItemInPip(url, titleLabel = 'TACTICAL MEDIA FEED') {
+        function hideAllMediaContainers(reportStatus = true) {
             const pipBox = document.getElementById('tv-pip-media-container');
-            const pipImg = document.getElementById('tv-pip-img');
             const pipVid = document.getElementById('tv-pip-video');
-            const pipLbl = document.getElementById('tv-pip-media-label');
-            if (!pipBox || !pipImg || !pipVid) return;
+            const pipImg = document.getElementById('tv-pip-img');
+            const fsOv   = document.getElementById('tv-fullscreen-overlay');
+            const fsVid  = document.getElementById('tv-fs-video');
+            const fsImg  = document.getElementById('tv-fs-img');
 
-            if (tvMediaConfig.hideWhenActive && isMatchActionActive()) {
-                pipVid.pause();
-                pipBox.classList.add('hidden');
-                return;
-            }
+            if (pipVid) { pipVid.onended = null; pipVid.pause(); pipVid.removeAttribute('src'); pipVid.classList.add('hidden'); }
+            if (pipImg) { pipImg.classList.add('hidden'); }
+            if (pipBox) { pipBox.classList.add('hidden'); }
 
-            pipBox.classList.remove('hidden');
-            if (pipLbl) pipLbl.textContent = titleLabel;
+            if (fsVid)  { fsVid.onended = null; fsVid.pause(); fsVid.removeAttribute('src'); fsVid.classList.add('hidden'); }
+            if (fsImg)  { fsImg.classList.add('hidden'); }
+            if (fsOv)   { fsOv.classList.add('hidden'); }
 
-            if (isVideoUrl(url)) {
-                pipImg.classList.add('hidden');
-                pipVid.classList.remove('hidden');
-                pipVid.muted = Boolean(tvMediaConfig.muted);
-                pipVid.src = url;
-                pipVid.onended = () => advanceTvMediaCycle();
-                pipVid.play().catch(() => {});
-            } else {
-                pipVid.pause();
-                pipVid.classList.add('hidden');
-                pipImg.classList.remove('hidden');
-                pipImg.src = url;
+            if (reportStatus) {
+                reportTvMediaStatus(false, null, tvIsInPauseWindow ? 'PAUSED' : 'OFF');
             }
         }
 
-        function playMediaItemFullscreen(url, titleLabel = 'PHILANTHROPY // BROADCAST', customDurSec = null) {
-            if (tvMediaConfig.hideWhenActive && isMatchActionActive()) return;
+        function closeFullscreenMedia() {
+            clearMediaTimers();
+            hideAllMediaContainers(true);
+        }
 
-            const fsOv  = document.getElementById('tv-fullscreen-overlay');
-            const fsImg = document.getElementById('tv-fs-img');
-            const fsVid = document.getElementById('tv-fs-video');
-            const fsLbl = document.getElementById('tv-fs-media-label');
-            if (!fsOv || !fsImg || !fsVid) return;
+        function renderMediaElement(targetMode, itemObj, onItemFinishedCb) {
+            const isFs   = (targetMode === 'FULLSCREEN');
+            const boxEl  = document.getElementById(isFs ? 'tv-fullscreen-overlay' : 'tv-pip-media-container');
+            const otherEl= document.getElementById(isFs ? 'tv-pip-media-container' : 'tv-fullscreen-overlay');
+            const imgEl  = document.getElementById(isFs ? 'tv-fs-img' : 'tv-pip-img');
+            const vidEl  = document.getElementById(isFs ? 'tv-fs-video' : 'tv-pip-video');
+            const lblEl  = document.getElementById(isFs ? 'tv-fs-media-label' : 'tv-pip-media-label');
 
-            if (fsFullscreenTimeout) { clearTimeout(fsFullscreenTimeout); fsFullscreenTimeout = null; }
-            fsOv.classList.remove('hidden');
-            if (fsLbl) fsLbl.textContent = titleLabel;
+            if (!boxEl || !imgEl || !vidEl) return;
+            otherEl?.classList.add('hidden');
+            boxEl.classList.remove('hidden');
 
-            const durMs = ((customDurSec || tvMediaConfig.durationSec || 12) * 1000);
+            if (lblEl) lblEl.textContent = itemObj.name || (isFs ? 'PHILANTHROPY // BROADCAST' : 'TACTICAL MEDIA FEED');
+            reportTvMediaStatus(true, itemObj, targetMode);
 
-            if (isVideoUrl(url)) {
-                fsImg.classList.add('hidden');
-                fsVid.classList.remove('hidden');
-                fsVid.muted = Boolean(tvMediaConfig.muted);
-                fsVid.src = url;
-                fsVid.onended = () => closeFullscreenMedia();
-                fsVid.play().catch(() => {
-                    fsFullscreenTimeout = setTimeout(closeFullscreenMedia, durMs);
+            const photoDurMs = Math.max(3, parseInt(tvMediaConfig.photoDurationSec || tvMediaConfig.durationSec) || 10) * 1000;
+            const playFull   = (tvMediaConfig.playFullVideo !== false);
+
+            if (tvItemStepTimer) { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
+
+            if (isVideoUrl(itemObj.url)) {
+                imgEl.classList.add('hidden');
+                vidEl.classList.remove('hidden');
+                applyMediaTransition(vidEl);
+                vidEl.muted = Boolean(tvMediaConfig.muted);
+                vidEl.src = itemObj.url;
+
+                vidEl.onended = () => {
+                    if (tvItemStepTimer) { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
+                    if (onItemFinishedCb) onItemFinishedCb();
+                };
+
+                if (!playFull) {
+                    tvItemStepTimer = setTimeout(() => {
+                        vidEl.onended = null;
+                        vidEl.pause();
+                        if (onItemFinishedCb) onItemFinishedCb();
+                    }, photoDurMs);
+                }
+
+                vidEl.play().catch(() => {
+                    tvItemStepTimer = setTimeout(() => {
+                        if (onItemFinishedCb) onItemFinishedCb();
+                    }, photoDurMs);
                 });
             } else {
-                fsVid.pause();
-                fsVid.classList.add('hidden');
-                fsImg.classList.remove('hidden');
-                fsImg.src = url;
-                fsFullscreenTimeout = setTimeout(closeFullscreenMedia, durMs);
+                vidEl.onended = null;
+                vidEl.pause();
+                vidEl.classList.add('hidden');
+                imgEl.classList.remove('hidden');
+                applyMediaTransition(imgEl);
+                imgEl.src = itemObj.url;
+
+                tvItemStepTimer = setTimeout(() => {
+                    if (onItemFinishedCb) onItemFinishedCb();
+                }, photoDurMs);
             }
         }
 
-        function advanceTvMediaCycle() {
+        function playNextItemInShowWindow() {
             if (tvMediaConfig.mode === 'OFF' || tvMediaPlaylist.length === 0) {
-                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
-                closeFullscreenMedia();
+                hideAllMediaContainers(true);
                 return;
             }
-
             if (tvMediaConfig.hideWhenActive && isMatchActionActive()) {
-                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
-                closeFullscreenMedia();
+                hideAllMediaContainers(true);
+                return;
+            }
+            if (tvWindowExpiredPendingVideo) {
+                enterHideWindowPhase();
                 return;
             }
 
             const item = tvMediaPlaylist[tvMediaIdx % tvMediaPlaylist.length];
             tvMediaIdx = (tvMediaIdx + 1) % tvMediaPlaylist.length;
-
-            if (tvMediaConfig.mode === 'PIP') {
-                closeFullscreenMedia();
-                playMediaItemInPip(item.url, item.name || 'TACTICAL MEDIA FEED');
-            } else if (tvMediaConfig.mode === 'FULLSCREEN') {
-                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
-                playMediaItemFullscreen(item.url, item.name || 'PHILANTHROPY // BROADCAST');
-            }
+            renderMediaElement(tvMediaConfig.mode, item, playNextItemInShowWindow);
         }
 
-        function syncTvMediaEngine() {
-            if (tvMediaTimer) { clearInterval(tvMediaTimer); tvMediaTimer = null; }
+        function enterHideWindowPhase() {
+            if (tvItemStepTimer)    { clearTimeout(tvItemStepTimer); tvItemStepTimer = null; }
+            if (tvWindowPhaseTimer) { clearTimeout(tvWindowPhaseTimer); tvWindowPhaseTimer = null; }
+            tvWindowExpiredPendingVideo = false;
 
-            if (tvMediaConfig.mode === 'OFF' || tvMediaPlaylist.length === 0) {
-                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
-                closeFullscreenMedia();
+            const hideSec = Math.max(0, parseInt(tvMediaConfig.hideWindowSec) || 0);
+            if (hideSec <= 0) {
+                // Nessuna pausa configurata: continua a mostrare i media ininterrottamente
+                startShowWindowPhase();
                 return;
             }
 
-            const periodMs = Math.max(5, parseInt(tvMediaConfig.intervalSec) || 45) * 1000;
-            if (tvMediaConfig.mode === 'PIP') {
-                advanceTvMediaCycle();
+            tvIsInPauseWindow = true;
+            hideAllMediaContainers(true);
+            tvWindowPhaseTimer = setTimeout(() => {
+                tvIsInPauseWindow = false;
+                startShowWindowPhase();
+            }, hideSec * 1000);
+        }
+
+        function startShowWindowPhase() {
+            clearMediaTimers();
+            tvIsInPauseWindow = false;
+
+            if (tvMediaConfig.mode === 'OFF' || tvMediaPlaylist.length === 0) {
+                hideAllMediaContainers(true);
+                return;
             }
-            tvMediaTimer = setInterval(advanceTvMediaCycle, periodMs);
+            if (tvMediaConfig.hideWhenActive && isMatchActionActive()) {
+                hideAllMediaContainers(true);
+                return;
+            }
+
+            const showSec = Math.max(5, parseInt(tvMediaConfig.showWindowSec || tvMediaConfig.intervalSec) || 60);
+            const hideSec = Math.max(0, parseInt(tvMediaConfig.hideWindowSec) || 0);
+
+            if (hideSec > 0) {
+                tvWindowPhaseTimer = setTimeout(() => {
+                    // Se sta riproducendo un video con "Riproduci per intero", attende la fine della clip prima di andare in pausa
+                    const activeVid = document.getElementById(tvMediaConfig.mode === 'FULLSCREEN' ? 'tv-fs-video' : 'tv-pip-video');
+                    const isPlayingVideo = activeVid && !activeVid.classList.contains('hidden') && !activeVid.paused;
+                    if (isPlayingVideo && tvMediaConfig.playFullVideo !== false) {
+                        tvWindowExpiredPendingVideo = true;
+                    } else {
+                        enterHideWindowPhase();
+                    }
+                }, showSec * 1000);
+            }
+
+            playNextItemInShowWindow();
+        }
+
+        function syncTvMediaEngine() {
+            clearMediaTimers();
+            if (tvMediaConfig.mode === 'OFF' || tvMediaPlaylist.length === 0) {
+                tvIsInPauseWindow = false;
+                hideAllMediaContainers(true);
+                return;
+            }
+            startShowWindowPhase();
+        }
+
+        // Lancio manuale istantaneo da Regia Admin (PIP o Fullscreen)
+        function triggerManualMediaOnTv(targetMode, data) {
+            clearMediaTimers();
+            tvIsInPauseWindow = false;
+            const fname = data.filename || String(data.url).split('/').pop().split('?')[0];
+            const itemObj = {
+                name: data.title || fname,
+                filename: fname,
+                url: data.url
+            };
+            renderMediaElement(targetMode, itemObj, () => {
+                // Al termine dello spot manuale, riprende il ciclo programmato se attivo
+                if (tvMediaConfig.mode !== 'OFF') {
+                    syncTvMediaEngine();
+                } else {
+                    hideAllMediaContainers(true);
+                }
+            });
         }
 
         window.toggleTvMediaConfigModal = function() {
             const modal = document.getElementById('tv-media-config-modal');
             if (!modal) return;
-            if (modal.classList.contains('hidden')) {
-                document.getElementById('tv-cfg-mode').value        = tvMediaConfig.mode || 'PIP';
-                document.getElementById('tv-cfg-interval').value    = tvMediaConfig.intervalSec || 45;
-                document.getElementById('tv-cfg-duration').value    = tvMediaConfig.durationSec || 12;
-                document.getElementById('tv-cfg-hide-active').value = String(tvMediaConfig.hideWhenActive !== false);
-                document.getElementById('tv-cfg-sound').value       = String(tvMediaConfig.muted !== false);
-                fetchTvMediaList();
-                modal.classList.remove('hidden');
-            } else {
-                modal.classList.add('hidden');
-            }
-        };
-
-        window.saveTvMediaConfig = function() {
-            tvMediaConfig = {
-                mode:           document.getElementById('tv-cfg-mode').value,
-                intervalSec:    Math.max(5, parseInt(document.getElementById('tv-cfg-interval').value) || 45),
-                durationSec:    Math.max(3, parseInt(document.getElementById('tv-cfg-duration').value) || 12),
-                hideWhenActive: document.getElementById('tv-cfg-hide-active').value === 'true',
-                muted:          document.getElementById('tv-cfg-sound').value === 'true'
-            };
-            localStorage.setItem('zulu_tv_media_cfg', JSON.stringify(tvMediaConfig));
-            document.getElementById('tv-media-config-modal').classList.add('hidden');
-            syncTvMediaEngine();
-        };
-
-        window.testTvMediaNow = function() {
-            saveTvMediaConfig();
-            advanceTvMediaCycle();
+            modal.classList.toggle('hidden');
         };
 
         // ====================================================================
@@ -1066,19 +1167,22 @@
         socket.on('tv_media_cmd', (data) => {
             if (!data) return;
             if (data.action === 'SET_CONFIG' && data.config) {
-                tvMediaConfig = data.config;
+                tvMediaConfig = Object.assign({}, tvMediaConfig, data.config);
                 localStorage.setItem('zulu_tv_media_cfg', JSON.stringify(tvMediaConfig));
                 syncTvMediaEngine();
-                log(`MEDIA CONFIG -> MODE: ${tvMediaConfig.mode}`);
+                log(`MEDIA CONFIG -> MODE: ${tvMediaConfig.mode} | TRANS: ${tvMediaConfig.transition}`);
             } else if (data.action === 'RELOAD_LIST') {
                 fetchTvMediaList();
             } else if (data.action === 'PLAY_FULLSCREEN' && data.url) {
-                playMediaItemFullscreen(data.url, data.title || 'PHILANTHROPY // BROADCAST', data.duration || 15);
+                triggerManualMediaOnTv('FULLSCREEN', data);
             } else if (data.action === 'PLAY_PIP' && data.url) {
-                playMediaItemInPip(data.url, data.title || 'TACTICAL MEDIA FEED');
+                triggerManualMediaOnTv('PIP', data);
             } else if (data.action === 'STOP') {
-                closeFullscreenMedia();
-                document.getElementById('tv-pip-media-container')?.classList.add('hidden');
+                tvMediaConfig.mode = 'OFF';
+                localStorage.setItem('zulu_tv_media_cfg', JSON.stringify(tvMediaConfig));
+                clearMediaTimers();
+                hideAllMediaContainers(true);
+                log("MEDIA ENGINE -> FERMATO DA REMOTO.");
             }
         });
 
