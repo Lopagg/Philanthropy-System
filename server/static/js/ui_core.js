@@ -69,6 +69,11 @@ function closeTopOpenModalIfAny() {
         window.closeFactionModal?.();
         return true;
     }
+    const tvMediaModal = document.getElementById('tv-media-admin-modal');
+    if (tvMediaModal && !tvMediaModal.classList.contains('hidden')) {
+        window.closeTvMediaAdminModal?.();
+        return true;
+    }
     return false;
 }
 

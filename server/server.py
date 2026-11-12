@@ -264,6 +264,11 @@ def handle_admin_tv_media_control(data):
     if isinstance(data, dict):
         socketio.emit('tv_media_cmd', data)
 
+@app.route('/mobile')
+@admin_required
+def mobile_dashboard():
+    return render_template('mobile.html', username=current_user.name)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
