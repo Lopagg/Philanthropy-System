@@ -6,9 +6,9 @@
         "updated_at": "2026-11-09 18:16:50"
     },
     "kiosk-v1": {
-        "version": "v0.0.2",
+        "version": "v0.0.3",
         "file": "kiosk-v1.bin",
-        "size_bytes": 970640,
-        "updated_at": "2026-11-04 19:12:59"
+        "size_bytes": 971328,
+        "updated_at": "2026-11-13 17:57:51"
     }
 }

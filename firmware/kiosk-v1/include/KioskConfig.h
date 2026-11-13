@@ -11,7 +11,7 @@
 // --- Identificativo Nodo, Rete e Versione Firmware ---
 #define KIOSK_DEVICE_ID      "NODE-KIOSK-1"
 #define KIOSK_OTA_HOSTNAME   "PHIL-KIOSK"
-#define FIRMWARE_VERSION     "v0.0.2"
+#define FIRMWARE_VERSION     "v0.0.3"
 
 #define DEFAULT_MQTT_SERVER  "philanthropy-dev.duckdns.org"
 #define DEFAULT_MQTT_PORT    1883
