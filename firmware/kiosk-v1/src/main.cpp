@@ -76,10 +76,12 @@ void onServerCommand(const JsonDocument& doc) {
         handleKioskReply(doc["action"] | "");
     }
     else if (strcmp(cmd, "SIREN_LONG") == 0) {
-        hardware.triggerSiren(5000);
+        unsigned long dur = doc["duration_ms"] | SIREN_LONG_MS;
+        hardware.triggerSiren(dur);
     }
     else if (strcmp(cmd, "SIREN_SHORT") == 0) {
-        hardware.triggerSiren(4000);
+        unsigned long dur = doc["duration_ms"] | SIREN_SHORT_MS;
+        hardware.triggerSiren(dur);
     }
     else if (strcmp(cmd, "SET_FACTIONS") == 0 || strcmp(cmd, "KIOSK_LED_SYNC") == 0) {
         if (doc["t1_c"].is<JsonArray>() && doc["t2_c"].is<JsonArray>()) {

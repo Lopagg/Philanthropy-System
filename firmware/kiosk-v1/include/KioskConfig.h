@@ -49,6 +49,8 @@
 #define SHOW_RESULT_MS        1800
 #define COOLDOWN_MS           400
 #define LED_FRAME_INTERVAL_MS 20   // Aggiornamento striscia LED a 50 FPS
+#define SIREN_LONG_MS         3000 // Durata sirena lunga (3 secondi)
+#define SIREN_SHORT_MS        2000 // Durata sirena corta (2 secondi)
 
 /**
  * @enum KioskState

@@ -269,7 +269,7 @@ void KioskHardware::updateSiren() {
             digitalWrite(PIN_RELAY_SIREN, HIGH);
             Serial.println("[SIREN] Sirena manuale attivata.");
         }
-        unsigned long manualEnd = millis() + 400;
+        unsigned long manualEnd = millis() + 100;
         if (manualEnd > _sirenEndMs) _sirenEndMs = manualEnd;
     } else if (_sirenActive && millis() > _sirenEndMs) {
         _sirenActive = false;
