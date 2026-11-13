@@ -906,6 +906,18 @@ def handle_deploy_event_roster(data):
         emit('event_details_data', db_manager.get_event_details(ev_id))
         emit('event_deployed_ack', res)
 
+@socketio.on('undeploy_event_roster')
+@login_required
+def handle_undeploy_event_roster(data):
+    ev_id = data.get('event_id')
+    if ev_id:
+        db_manager.undeploy_event_from_active_roster(ev_id)
+        socketio.emit('database_update', db_manager.get_all_players())
+        socketio.emit('roster_update', db_manager.get_full_roster())
+        socketio.emit('events_update', db_manager.get_all_events())
+        emit('event_details_data', db_manager.get_event_details(ev_id))
+        emit('event_undeployed_ack', {'event_id': ev_id})
+
 @socketio.on('send_command')
 def handle_socket_command(data):
     try:

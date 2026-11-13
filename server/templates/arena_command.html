@@ -306,9 +306,14 @@
                         [ ⚔️ DIVISIONE SQUADRE ]
                     </button>
                 </div>
-                <button type="button" id="btn-plan-deploy" class="deck-btn hidden" style="margin: 0; padding: 6px 14px; font-size: 14px; border-color: var(--sop-success); color: var(--sop-success); font-weight: bold;" onclick="deployCurrentEventToRoster()" title="Assegna le tessere agli ospiti e carica queste squadre nel Roster attivo">
-                    [ 🚀 SCHIERA ORA ]
-                </button>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" id="btn-plan-undeploy" class="deck-btn btn-warning hidden" style="margin: 0; padding: 6px 12px; font-size: 13px;" onclick="undeployCurrentEventFromRoster()" title="Scollega le tessere GUEST, svuota il Roster attivo e riporta la giornata a Pianificata">
+                        [ ↩ ANNULLA SCHIERAMENTO ]
+                    </button>
+                    <button type="button" id="btn-plan-deploy" class="deck-btn hidden" style="margin: 0; padding: 6px 14px; font-size: 14px; border-color: var(--sop-success); color: var(--sop-success); font-weight: bold;" onclick="deployCurrentEventToRoster()" title="Assegna le tessere agli ospiti e carica queste squadre nel Roster attivo">
+                        [ 🚀 SCHIERA ORA ]
+                    </button>
+                </div>
             </div>
 
             <!-- Barra Contatori Logistici Campo -->

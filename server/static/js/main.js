@@ -2153,6 +2153,7 @@ if (!window.__zuluMainInitialized) {
         const schedAddBar = document.getElementById('planner-schedule-add-bar');
         const notesBox    = document.getElementById('planner-notes-box');
         const btnDeploy   = document.getElementById('btn-plan-deploy');
+        const btnUndeploy = document.getElementById('btn-plan-undeploy');
         const btnMeta     = document.getElementById('btn-toggle-event-meta');
 
         if (!ev) {
@@ -2177,6 +2178,8 @@ if (!window.__zuluMainInitialized) {
 
         emptyMsg?.classList.add('hidden');
         [logBar, schedAddBar, notesBox, btnDeploy, btnMeta].forEach(el => el?.classList.remove('hidden'));
+        const isDeployed = (ev.status === 'ACTIVE') || (ev.participants || []).some(p => Boolean(p.assigned_uid));
+        btnUndeploy?.classList.toggle('hidden', !isDeployed);
         window.setPlannerCenterTab(plannerCenterTab);
         if (titleHeader) titleHeader.textContent = `${ev.event_date} // ${ev.title}`;
 
@@ -2687,6 +2690,27 @@ if (!window.__zuluMainInitialized) {
             }
         );
     };
+
+    window.undeployCurrentEventFromRoster = function() {
+        if (!currentPlannerEvent) return;
+        window.openTacticalConfirm(
+            `Vuoi annullare lo schieramento della giornata "${currentPlannerEvent.title}"?\n\n• Il Roster attivo verrà svuotato\n• Le tessere GUEST verranno scollegate dagli ospiti e torneranno ai nomi originali (OP-X)\n• La giornata tornerà nello stato PIANIFICATA (senza perdere iscritti, squadre o partite)`,
+            "ANNULLA SCHIERAMENTO GIORNATA",
+            "warning",
+            () => {
+                socket.emit('undeploy_event_roster', { event_id: currentPlannerEvent.id });
+            }
+        );
+    };
+
+    socket.on('event_undeployed_ack', () => {
+        logSystem("PLANNER: Schieramento annullato. Tessere GUEST liberate e giornata riportata a PLANNED.");
+        window.openTacticalAlert(
+            "Schieramento annullato con successo.\nIl Roster attivo è stato svuotato, le tessere GUEST sono state liberate e la giornata è tornata nello stato PIANIFICATA.",
+            "GIORNATA RIPRISTINATA",
+            "success"
+        );
+    });
 
     // --- Gestione Scaletta Partite: Creazione, Rinomina, Regole Anticipate e Avvio ---
 

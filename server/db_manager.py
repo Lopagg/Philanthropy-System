@@ -1150,3 +1150,35 @@ def deploy_event_to_active_roster(event_id, clear_existing=True, custom_team_map
         c.execute("UPDATE game_events SET status = 'ACTIVE' WHERE id = ?", (int(event_id),))
         conn.commit()
         return {'imported': imported, 'missing_guests': missing_guests}
+
+def undeploy_event_from_active_roster(event_id):
+    """
+    Annulla lo schieramento di una giornata riportandola allo stato 'PLANNED':
+    - Ripristina l'alias originale (OP-X) delle tessere GUEST assegnate agli ospiti.
+    - Scollega gli UID assegnati (assigned_uid = NULL) mantenendo intatti gli ospiti e le squadre.
+    - Svuota il roster attivo (active_roster) e riporta lo stato della giornata a 'PLANNED'.
+    """
+    ev_id = int(event_id)
+    with get_db_connection() as conn:
+        c = conn.cursor()
+
+        # 1. Trova tutte le tessere GUEST assegnate agli ospiti di questo evento e ripristina il loro alias OP-X
+        c.execute("SELECT assigned_uid FROM event_participants WHERE event_id = ? AND assigned_uid IS NOT NULL", (ev_id,))
+        for (assigned_uid,) in c.fetchall():
+            if assigned_uid:
+                c.execute(
+                    "UPDATE players SET alias = COALESCE(original_alias, alias) WHERE uid = ? AND COALESCE(is_pro, 0) = 0",
+                    (assigned_uid,)
+                )
+
+        # 2. Scollega le tessere GUEST dagli ospiti dell'evento (torneranno 'Tessera allo schieramento')
+        c.execute("UPDATE event_participants SET assigned_uid = NULL WHERE event_id = ?", (ev_id,))
+
+        # 3. Svuota il Roster attivo di giornata
+        c.execute("DELETE FROM active_roster")
+
+        # 4. Riporta lo stato della giornata da 'ACTIVE' a 'PLANNED'
+        c.execute("UPDATE game_events SET status = 'PLANNED' WHERE id = ?", (ev_id,))
+        conn.commit()
+        logger.info(f"[DB] Schieramento annullato e giornata #{ev_id} riportata allo stato PLANNED.")
+        return True
