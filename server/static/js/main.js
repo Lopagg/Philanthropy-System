@@ -2161,6 +2161,8 @@ if (!window.__zuluMainInitialized) {
             [metaBox, logBar, guestWarn, subviewList, subviewTeam, schedAddBar, notesBox, btnDeploy, btnMeta].forEach(el => el?.classList.add('hidden'));
             emptyMsg?.classList.remove('hidden');
 
+            document.getElementById('btn-plan-reset-done')?.classList.add('hidden');
+
             const schedListEl = document.getElementById('planner-schedule-list');
             if (schedListEl) {
                 schedListEl.innerHTML = '<li class="placeholder-text" style="color: var(--sop-dim); text-align: center; margin-top: 20px; font-size: 16px;">NESSUNA PARTITA IN SCALETTA</li>';
@@ -2307,6 +2309,9 @@ if (!window.__zuluMainInitialized) {
                 bravoPlayers.forEach(p => listBravoEl.appendChild(createPlannerTeamCardItem(p, ev, 'BRAVO')));
             }
         }
+
+        const hasAnyDoneRound = sched.some(item => Boolean(item.done));
+        document.getElementById('btn-plan-reset-done')?.classList.toggle('hidden', !hasAnyDoneRound);
 
         // 6. Scaletta Partite (con Descrizione espandibile al click, Rinomina, Regole e Squadre)
         const schedListEl = document.getElementById('planner-schedule-list');
@@ -2893,6 +2898,13 @@ if (!window.__zuluMainInitialized) {
         if (!sched[idx]) return;
         sched[idx].done = !sched[idx].done;
         socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+    };
+
+    window.resetAllScheduleRoundsDone = function() {
+        if (!currentPlannerEvent || !Array.isArray(currentPlannerEvent.schedule)) return;
+        const sched = currentPlannerEvent.schedule.map(item => ({ ...item, done: false }));
+        socket.emit('save_event_schedule', { id: currentPlannerEvent.id, schedule: sched });
+        logSystem("PLANNER: Azzerate le spunte di completamento delle partite in scaletta.");
     };
 
     window.removeScheduleRound = function(idx) {

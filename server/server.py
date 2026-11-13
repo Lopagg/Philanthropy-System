@@ -1002,7 +1002,10 @@ def handle_socket_command(data):
                 return
 
         if target_id == "BROADCAST_ENV":
-            game_engine.mqtt_client.publish("zulu/cmd/broadcast", cmd_str)
+            if isinstance(cmd_obj, dict) and cmd_obj.get("cmd") in ("SIREN_LONG", "SIREN_SHORT"):
+                game_engine.trigger_siren(cmd_obj["cmd"])
+            else:
+                game_engine.mqtt_client.publish("zulu/cmd/broadcast", cmd_str)
             return
 
         if target_id == "SERVER-ROUTER":

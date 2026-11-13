@@ -1156,8 +1156,10 @@ def undeploy_event_from_active_roster(event_id):
     Annulla lo schieramento di una giornata riportandola allo stato 'PLANNED':
     - Ripristina l'alias originale (OP-X) delle tessere GUEST assegnate agli ospiti.
     - Scollega gli UID assegnati (assigned_uid = NULL) mantenendo intatti gli ospiti e le squadre.
+    - Azzera le spunte di completamento ('done': False) delle partite in scaletta.
     - Svuota il roster attivo (active_roster) e riporta lo stato della giornata a 'PLANNED'.
     """
+    import json as _json
     ev_id = int(event_id)
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -1174,11 +1176,25 @@ def undeploy_event_from_active_roster(event_id):
         # 2. Scollega le tessere GUEST dagli ospiti dell'evento (torneranno 'Tessera allo schieramento')
         c.execute("UPDATE event_participants SET assigned_uid = NULL WHERE event_id = ?", (ev_id,))
 
-        # 3. Svuota il Roster attivo di giornata
+        # 3. Azzera le spunte ('done': False) di tutte le partite nella scaletta della giornata
+        c.execute("SELECT schedule_json FROM game_events WHERE id = ?", (ev_id,))
+        row = c.fetchone()
+        if row and row[0]:
+            try:
+                sched = _json.loads(row[0])
+                if isinstance(sched, list):
+                    for item in sched:
+                        if isinstance(item, dict):
+                            item['done'] = False
+                    c.execute("UPDATE game_events SET schedule_json = ? WHERE id = ?", (_json.dumps(sched), ev_id))
+            except Exception:
+                pass
+
+        # 4. Svuota il Roster attivo di giornata
         c.execute("DELETE FROM active_roster")
 
-        # 4. Riporta lo stato della giornata da 'ACTIVE' a 'PLANNED'
+        # 5. Riporta lo stato della giornata da 'ACTIVE' a 'PLANNED'
         c.execute("UPDATE game_events SET status = 'PLANNED' WHERE id = ?", (ev_id,))
         conn.commit()
-        logger.info(f"[DB] Schieramento annullato e giornata #{ev_id} riportata allo stato PLANNED.")
+        logger.info(f"[DB] Schieramento e spunte partite annullati per giornata #{ev_id}.")
         return True

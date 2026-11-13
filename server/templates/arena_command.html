@@ -399,9 +399,13 @@
         </div>
 
         <!-- COLONNA 3: Programma / Scaletta Modalità e Note Logistiche -->
+        <!-- COLONNA 3: Programma / Scaletta Modalità e Note Logistiche -->
         <div class="sop-card" style="display: flex; flex-direction: column; min-height: 0;">
             <div class="widget-header" style="display: flex; justify-content: space-between; align-items: center; font-size: 16px;">
                 <span>📋 PROGRAMMA PARTITE (SCALETTA)</span>
+                <button type="button" id="btn-plan-reset-done" class="deck-btn hidden" style="margin: 0; padding: 3px 10px; font-size: 12px; border-color: var(--sop-secondary); color: var(--sop-secondary);" onclick="resetAllScheduleRoundsDone()" title="Toglie la spunta di completamento da tutte le partite in scaletta">
+                    [ ↺ AZZERA SPUNTE ]
+                </button>
             </div>
 
             <!-- Aggiunta Partita (da Modalità vuota o da Preset) -->

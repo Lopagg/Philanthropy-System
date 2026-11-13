@@ -79,11 +79,21 @@ def build_force_win_payload(mc, winner_team_id, reason_str):
     }
 
 
+SIREN_DURATIONS_MS = {
+    "SIREN_LONG":  3000,  # 3 secondi
+    "SIREN_SHORT": 2000   # 2 secondi
+}
+
+
 def trigger_siren(siren_type="SIREN_LONG"):
-    """Invia in broadcast il comando di attivazione sirena da campo."""
-    logger.info(f"[GAME ENGINE] Sirena attivata: {siren_type}")
+    """Invia in broadcast il comando di attivazione sirena da campo con durata esplicita (3s lunga, 2s corta)."""
+    dur_ms = SIREN_DURATIONS_MS.get(siren_type, 3000)
+    logger.info(f"[GAME ENGINE] Sirena attivata: {siren_type} ({dur_ms} ms)")
     try:
-        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({"cmd": siren_type}))
+        mqtt_client.publish("zulu/cmd/broadcast", json.dumps({
+            "cmd": siren_type,
+            "duration_ms": dur_ms
+        }))
     except Exception as e:
         logger.error(f"[SIREN ERROR] {e}")
 
