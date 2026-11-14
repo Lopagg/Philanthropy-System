@@ -2069,10 +2069,11 @@ if (!window.__zuluMainInitialized) {
             ? `<span style="color:var(--sop-primary); background:rgba(0,255,204,0.1); padding:2px 8px; border-radius:3px; font-size:14px; margin-left:10px;">${p.asd_team}</span>`
             : '';
 
+        const cardLbl = p.assigned_card_label ? `${p.assigned_card_label} — ` : '';
         const subInfo = p.uid
             ? `<span style="color:#888; font-size:13px; font-family:monospace; margin-left:12px;">(UID: ${p.uid} | Win: ${p.win_rate}%)</span>`
             : (p.assigned_uid
-                ? `<span style="color:var(--sop-success); font-size:13px; font-family:monospace; margin-left:12px;">(Tessera assegnata: ${p.assigned_uid})</span>`
+                ? `<span style="color:var(--sop-success); font-size:13px; font-family:monospace; margin-left:12px;">(Tessera: <b>${cardLbl}${p.assigned_uid}</b>)</span>`
                 : `<span style="color:#666; font-size:13px; font-family:monospace; margin-left:12px;">(Tessera allo schieramento)</span>`);
 
         const safeName = String(p.display_name || '').replace(/'/g, "\\'");
@@ -2154,11 +2155,12 @@ if (!window.__zuluMainInitialized) {
         const notesBox    = document.getElementById('planner-notes-box');
         const btnDeploy   = document.getElementById('btn-plan-deploy');
         const btnUndeploy = document.getElementById('btn-plan-undeploy');
+        const btnPrint    = document.getElementById('btn-plan-print-cards');
         const btnMeta     = document.getElementById('btn-toggle-event-meta');
 
         if (!ev) {
             if (titleHeader) titleHeader.textContent = "SELEZIONA UNA GIORNATA";
-            [metaBox, logBar, guestWarn, subviewList, subviewTeam, schedAddBar, notesBox, btnDeploy, btnMeta].forEach(el => el?.classList.add('hidden'));
+            [metaBox, logBar, guestWarn, subviewList, subviewTeam, schedAddBar, notesBox, btnDeploy, btnUndeploy, btnPrint, btnMeta].forEach(el => el?.classList.add('hidden'));
             emptyMsg?.classList.remove('hidden');
 
             document.getElementById('btn-plan-reset-done')?.classList.add('hidden');
@@ -2179,7 +2181,7 @@ if (!window.__zuluMainInitialized) {
         }
 
         emptyMsg?.classList.add('hidden');
-        [logBar, schedAddBar, notesBox, btnDeploy, btnMeta].forEach(el => el?.classList.remove('hidden'));
+        [logBar, schedAddBar, notesBox, btnDeploy, btnPrint, btnMeta].forEach(el => el?.classList.remove('hidden'));
         const isDeployed = (ev.status === 'ACTIVE') || (ev.participants || []).some(p => Boolean(p.assigned_uid));
         btnUndeploy?.classList.toggle('hidden', !isDeployed);
         window.setPlannerCenterTab(plannerCenterTab);
@@ -2694,6 +2696,11 @@ if (!window.__zuluMainInitialized) {
                 });
             }
         );
+    };
+
+    window.openEventCardsPrintSheet = function() {
+        if (!currentPlannerEvent) return;
+        window.open(`/api/event/${currentPlannerEvent.id}/print_cards`, '_blank');
     };
 
     window.undeployCurrentEventFromRoster = function() {

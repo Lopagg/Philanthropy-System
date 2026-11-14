@@ -119,13 +119,8 @@ export function updateUniversalFeed(payload, mode, msgType) {
     if (mode && mode !== lastConfiguredMode) {
         lastConfiguredMode = mode;
 
-        if (isTdm) {
-            document.getElementById('widget-sd-tactical')?.classList.add('hidden');
-            document.getElementById('widget-generic-map')?.classList.remove('hidden');
-        } else {
-            document.getElementById('widget-sd-tactical')?.classList.remove('hidden');
-            document.getElementById('widget-generic-map')?.classList.add('hidden');
-        }
+        document.getElementById('widget-sd-tactical')?.classList.remove('hidden');
+        document.getElementById('widget-generic-map')?.classList.add('hidden');
 
         setElText('monitor-mode-title', `OPERATION: ${mode.replace(/_/g, ' ').toUpperCase()}`);
 
@@ -177,7 +172,7 @@ export function updateUniversalFeed(payload, mode, msgType) {
         }
     }
 
-    // 5. Aggiornamento Pannello Specifico Modalità (S&D vs Domination)
+    // 5. Aggiornamento Pannello Specifico Modalità (S&D vs Domination vs TDM)
     const bombContainer = document.querySelector('.bomb-timer-container');
     const domScores = document.getElementById('domination-scores');
     const progSection = document.querySelector('.progress-section');
@@ -208,6 +203,11 @@ export function updateUniversalFeed(payload, mode, msgType) {
         setElText('lbl-prog-2', `${currentFactions.BRAVO.name} ACTION`);
         if (payload.score_a !== undefined) setElText('d-val-a', formatTime(payload.score_a));
         if (payload.score_b !== undefined) setElText('d-val-b', formatTime(payload.score_b));
+    } else if (isTdm && title && bombContainer && domScores && progSection) {
+        title.textContent = "TACTICAL FEED // TEAM DEATHMATCH";
+        bombContainer.classList.add('hidden');
+        domScores.classList.add('hidden');
+        progSection.classList.add('hidden');
     }
 
     // 6. Aggiornamento Barre di Avanzamento
@@ -307,7 +307,6 @@ export function renderRules(payload) {
         li.innerHTML = `<span class="rule-key" style="color:var(--sop-secondary);">BRIEFING SCENARIO</span> <span class="rule-val" style="text-align:left; font-size:15px; color:#ddd; font-weight:normal;">${payload.mission_desc}</span>`;
         elSdRulesList.appendChild(li);
     }
-    if (!elSdRulesList) return;
     elSdRulesList.innerHTML = '';
 
     if (payload.attacker) {

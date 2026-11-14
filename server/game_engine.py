@@ -645,6 +645,15 @@ class MissionController:
                 rules_payload["game_duration"] = duration
                 socketio.emit('esp_event', {"parsed_data": {"id": "SERVER-TDM", "type": "MODE_ENTER", "payload": rules_payload}})
                 socketio.emit('esp_event', {"parsed_data": {"id": "SERVER-TDM", "type": "SETTINGS_UPDATE", "payload": rules_payload}})
+                socketio.emit('esp_event', {"parsed_data": {
+                    "id": "SERVER-TDM",
+                    "type": "TDM_UPDATE",
+                    "payload": {
+                        "mode": "TEAM_DEATHMATCH",
+                        "state": "ACTIVE",
+                        "game_time": self.global_time_left
+                    }
+                }})
             trigger_siren("SIREN_LONG")
             publish_kiosk_led_sync()
             return

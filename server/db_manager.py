@@ -839,9 +839,11 @@ def get_event_details(event_id):
             SELECT ep.id, ep.event_id, ep.uid, ep.guest_name, ep.team,
                    ep.needs_rental, ep.paid, ep.notes, ep.assigned_uid,
                    p.alias AS db_alias, p.is_pro, p.asd_team,
-                   p.games_played, p.wins
+                   p.games_played, p.wins,
+                   pg.original_alias AS assigned_card_label
             FROM event_participants ep
             LEFT JOIN players p ON ep.uid = p.uid
+            LEFT JOIN players pg ON ep.assigned_uid = pg.uid
             WHERE ep.event_id = ?
             ORDER BY COALESCE(p.alias, ep.guest_name)
         ''', (int(event_id),))

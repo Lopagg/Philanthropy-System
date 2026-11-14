@@ -206,6 +206,200 @@ def index():
 def tv_dashboard():
     return render_template('tv.html')
 
+@app.route('/api/event/<int:event_id>/print_cards')
+@admin_required
+def print_event_cards_sheet(event_id):
+    details = db_manager.get_event_details(event_id)
+    if not details:
+        return "Giornata non trovata", 404
+
+    parts = details.get('participants', [])
+    tot_players = len(parts)
+    tot_guests  = sum(1 for p in parts if p.get('is_guest'))
+    tot_rentals = sum(1 for p in parts if p.get('needs_rental') == 1)
+
+    rows_html = ""
+    for idx, p in enumerate(parts, start=1):
+        name = p.get('display_name') or 'OSPITE'
+        is_pro = (p.get('is_pro') == 1)
+        tipo_str = "★ PRO (Personale)" if is_pro else "OSPITE (Guest)"
+
+        if is_pro:
+            uid_str = f"<b>{p.get('uid') or '--'}</b>"
+        else:
+            assigned_uid = p.get('assigned_uid')
+            card_lbl = p.get('assigned_card_label')
+            if assigned_uid:
+                if card_lbl and card_lbl != assigned_uid:
+                    uid_str = f"<span class='card-code'>{card_lbl}</span> <span class='uid-mono'>({assigned_uid})</span>"
+                else:
+                    uid_str = f"<span class='uid-mono'><b>{assigned_uid}</b></span>"
+            else:
+                uid_str = "<span style='color:#cc0000; font-weight:bold;'>DA ASSEGNARE (Premi Schiera Ora)</span>"
+
+        rental_html = "<span class='badge-rental'>SÌ - NOLEGGIO</span>" if p.get('needs_rental') == 1 else "NO"
+
+        rows_html += f"""
+        <tr>
+            <td style="text-align:center; font-weight:bold;">{idx}</td>
+            <td style="font-size:15px; font-weight:bold;">{name}</td>
+            <td style="font-size:12px;">{tipo_str}</td>
+            <td>{uid_str}</td>
+            <td style="text-align:center;">{rental_html}</td>
+            <td style="text-align:center;"><span class="chk-box"></span></td>
+        </tr>
+        """
+
+    html_doc = f"""<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Lista Tessere - {details.get('title')} ({details.get('event_date')})</title>
+    <style>
+        body {{
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111;
+            background: #fff;
+            margin: 20px;
+        }}
+        .no-print {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #111;
+            color: #00ffcc;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }}
+        .print-btn {{
+            background: #00ffcc;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+        }}
+        .header-box {{
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }}
+        .header-box h1 {{ margin: 0 0 4px 0; font-size: 22px; text-transform: uppercase; }}
+        .summary-bar {{
+            display: flex;
+            gap: 25px;
+            font-size: 14px;
+            margin-bottom: 15px;
+            background: #f2f2f2;
+            padding: 8px 14px;
+            border: 1px solid #ccc;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        th, td {{
+            border: 1px solid #222;
+            padding: 8px 10px;
+            text-align: left;
+        }}
+        th {{
+            background: #e0e0e0;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }}
+        tr:nth-child(even) {{ background: #f9f9f9; }}
+        .card-code {{
+            display: inline-block;
+            background: #111;
+            color: #fff;
+            font-weight: bold;
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-size: 14px;
+            margin-right: 6px;
+        }}
+        .uid-mono {{
+            font-family: "Courier New", monospace;
+            font-size: 13px;
+            color: #333;
+        }}
+        .badge-rental {{
+            display: inline-block;
+            border: 2px solid #000;
+            background: #ffe082;
+            color: #000;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }}
+        .chk-box {{
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #000;
+            vertical-align: middle;
+        }}
+        @media print {{
+            .no-print {{ display: none !important; }}
+            body {{ margin: 0; }}
+            tr {{ page-break-inside: avoid; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <div>
+            <b>PHILANTHROPY // FOGLIO CONSEGNA TESSERE &amp; NOLEGGI</b><br>
+            <span style="font-size:12px; color:#ccc;">Suggerimento: premi [🚀 SCHIERA ORA] nel Planner prima di stampare per vedere le tessere OP-X già abbinate agli ospiti.</span>
+        </div>
+        <button class="print-btn" onclick="window.print()">🖨️ STAMPA / SALVA PDF</button>
+    </div>
+
+    <div class="header-box">
+        <div>
+            <h1>{details.get('title')}</h1>
+            <div style="font-size: 14px; color: #444;">Data Evento: <b>{details.get('event_date')}</b> — Ritrovo: <b>{details.get('start_time') or '08:30'}</b></div>
+        </div>
+        <div style="font-size: 12px; color: #555; text-align: right;">
+            FOGLIO CHECK-IN &amp; DISTRIBUZIONE TESSERE
+        </div>
+    </div>
+
+    <div class="summary-bar">
+        <span>👥 <b>Totale Iscritti:</b> {tot_players}</span>
+        <span>🪪 <b>Tessere Ospiti (Guest):</b> {tot_guests}</span>
+        <span>★ <b>Giocatori PRO:</b> {tot_players - tot_guests}</span>
+        <span>🔫 <b>Kit a Noleggio:</b> {tot_rentals}</span>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 38px; text-align:center;">#</th>
+                <th>OPERATORE</th>
+                <th style="width: 150px;">TIPO</th>
+                <th>TESSERA ASSEGNATA / UID</th>
+                <th style="width: 130px; text-align:center;">NOLEGGIO</th>
+                <th style="width: 90px; text-align:center;">CONSEGNATA</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows_html if rows_html else '<tr><td colspan="6" style="text-align:center; padding:20px;">Nessun partecipante registrato.</td></tr>'}
+        </tbody>
+    </table>
+</body>
+</html>"""
+    return html_doc
+
 last_tv_media_status = {"playing": False, "filename": None, "url": None, "title": None, "mode": "OFF"}
 
 
